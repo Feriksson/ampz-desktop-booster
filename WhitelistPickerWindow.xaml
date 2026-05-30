@@ -1,0 +1,34 @@
+<Window x:Class="AmpzDesktopBooster.WhitelistPickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Permitir app"
+        Width="500" SizeToContent="Height"
+        WindowStyle="None" ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False" Topmost="True"
+        Background="#1E1E1E" UseLayoutRounding="True"
+        FontFamily="Segoe UI">
+
+    <Border BorderBrush="#33FFFFFF" BorderThickness="1" Padding="16">
+        <StackPanel>
+            <TextBlock x:Name="HeaderText" Foreground="#F2F2F2" FontSize="14" FontWeight="SemiBold" />
+            <TextBlock Foreground="#9A9A9A" FontSize="11" Margin="0,2,0,10"
+                       Text="Elegí el escritorio protegido (Enter o doble clic): agrega la app a su whitelist y la mueve ahí." />
+
+            <ListBox x:Name="DeskList" Height="200" Background="#161616" Foreground="#E6E6EA"
+                     BorderBrush="#333" FontSize="13"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+
+            <TextBlock x:Name="EmptyHint" Foreground="#6E6E78" FontSize="11" Margin="0,6,0,0"
+                       TextWrapping="Wrap"
+                       Text="No hay escritorios protegidos. Activá uno con Win+F8."
+                       Visibility="Collapsed" />
+
+            <TextBlock Foreground="#6E6E78" FontSize="10" Margin="0,8,0,0"
+                       Text="Enter / doble clic: agregar y mover · Esc: cancelar" />
+
+            <Button x:Name="CloseBtn" Content="Cancelar" Width="90" Height="26"
+                    HorizontalAlignment="Right" Margin="0,10,0,0" />
+        </StackPanel>
+    </Border>
+</Window>

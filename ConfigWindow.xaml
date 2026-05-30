@@ -1,0 +1,349 @@
+<Window x:Class="AmpzDesktopBooster.ConfigWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Ampz Desktop Booster — Configuración"
+        Width="640" Height="560"
+        WindowStartupLocation="CenterScreen"
+        Background="#1E1E1E" UseLayoutRounding="True"
+        FontFamily="Segoe UI">
+
+    <Window.Resources>
+        <SolidColorBrush x:Key="Fg"      Color="#F2F2F2" />
+        <SolidColorBrush x:Key="FgMuted" Color="#9A9A9A" />
+        <SolidColorBrush x:Key="Panel"   Color="#161616" />
+        <SolidColorBrush x:Key="Accent"  Color="#4FC3F7" />
+        <SolidColorBrush x:Key="Danger"  Color="#E5534B" />
+
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Fg}" />
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="MinWidth" Value="80" />
+        </Style>
+    </Window.Resources>
+
+    <TabControl x:Name="Tabs" Background="#1E1E1E" BorderThickness="0" Margin="8">
+
+        <!-- ===== Pestaña DESKTOPS ===== -->
+        <TabItem Header="Desktops">
+            <Grid Margin="14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold"
+                           Text="Escritorios gestionados" />
+                <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,10"
+                           Text="El orden define el índice del escritorio. La app crea los que falten (Win+Ctrl+D) y renombra los primeros N con estos nombres. Renombrar NO mueve ventanas." />
+
+                <!-- Alta: textbox + Agregar -->
+                <Grid Grid.Row="1" Margin="0,0,0,0" VerticalAlignment="Bottom" Visibility="Collapsed" />
+
+                <Border Grid.Row="2" Background="{StaticResource Panel}" CornerRadius="4" Padding="2">
+                    <ListBox x:Name="DeskList" Background="Transparent" BorderThickness="0"
+                             Foreground="{StaticResource Fg}" FontSize="13"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                </Border>
+
+                <!-- Reordenar / editar -->
+                <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8,0,0">
+                    <Button x:Name="UpBtn"     Content="↑ Subir" />
+                    <Button x:Name="DownBtn"   Content="↓ Bajar" />
+                    <Button x:Name="RenameBtn" Content="Renombrar" />
+                    <Button x:Name="RemoveBtn" Content="Quitar" />
+                </StackPanel>
+
+                <!-- Alta nueva -->
+                <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,8,0,0">
+                    <TextBox x:Name="NameBox" Width="320" Background="#2A2A2A"
+                             Foreground="{StaticResource Fg}" BorderBrush="#444" Padding="6,4"
+                             VerticalContentAlignment="Center" />
+                    <Button x:Name="AddBtn" Content="Agregar" Margin="6,0,0,0" />
+                </StackPanel>
+
+                <!-- Footer: autocreate + acciones -->
+                <Grid Grid.Row="5" Margin="0,14,0,0">
+                    <CheckBox x:Name="AutoCreateChk" Foreground="{StaticResource Fg}"
+                              VerticalAlignment="Center"
+                              Content="Crear escritorios faltantes al iniciar" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="ApplyNowBtn" Content="Crear faltantes ahora" MinWidth="150" />
+                        <Button x:Name="SaveBtn" Content="Guardar" MinWidth="100"
+                                Background="{StaticResource Accent}" Foreground="#10222A" FontWeight="SemiBold" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </TabItem>
+
+        <!-- ===== Pestaña APLICACIONES ===== -->
+        <TabItem Header="Aplicaciones">
+            <Grid Margin="14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold"
+                           Text="Apps para “Abrir con” (Win+F2)" />
+                <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,10"
+                           Text="VS Code, Warp, WSL, Claude/OpenCode CLI se detectan solas si están instaladas. Acá agregás las tuyas. En Argumentos, usá {path} donde va la carpeta (si lo omitís, se pasa la carpeta como argumento)." />
+
+                <Border Grid.Row="2" Background="{StaticResource Panel}" CornerRadius="4" Padding="2">
+                    <ListBox x:Name="AppsList" Background="Transparent" BorderThickness="0"
+                             Foreground="{StaticResource Fg}" FontSize="13"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                </Border>
+
+                <!-- Alta -->
+                <Grid Grid.Row="3" Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="160" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0" x:Name="AppNameBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
+                             BorderBrush="#444" Padding="6,4" Margin="0,0,6,0" VerticalContentAlignment="Center"
+                             ToolTip="Nombre" />
+                    <TextBox Grid.Column="1" x:Name="AppExeBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
+                             BorderBrush="#444" Padding="6,4" Margin="0,0,6,0" VerticalContentAlignment="Center"
+                             ToolTip="Ruta al ejecutable" />
+                    <TextBox Grid.Column="2" x:Name="AppArgsBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
+                             BorderBrush="#444" Padding="6,4" VerticalContentAlignment="Center"
+                             ToolTip="Argumentos (opcional, {path})" />
+                </Grid>
+
+                <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,8,0,0" HorizontalAlignment="Right">
+                    <Button x:Name="AppAddBtn"    Content="Agregar" MinWidth="100" Padding="10,4" Margin="0,0,6,0" />
+                    <Button x:Name="AppRemoveBtn" Content="Quitar seleccionada" MinWidth="150" Padding="10,4" />
+                </StackPanel>
+            </Grid>
+        </TabItem>
+
+        <!-- ===== Pestaña PROTECCIONES ===== -->
+        <TabItem Header="Protecciones">
+            <Grid Margin="14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold"
+                           Text="Protección de escritorios" />
+                <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,10"
+                           Text="Un escritorio protegido solo admite las apps de su lista; cualquier otra que aparezca ahí se manda a MAIN. Solo se pueden proteger los que NO son MAIN ni DESK+ (esos son de proyecto). Los cambios se guardan al instante y se aplican al entrar al escritorio." />
+
+                <!-- Selector de desk + toggle Protegido -->
+                <Grid Grid.Row="2" Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="240" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Escritorio:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <ComboBox Grid.Column="1" x:Name="ProtDeskCombo" Background="#2A2A2A"
+                              Foreground="#10222A" BorderBrush="#444" />
+                    <CheckBox Grid.Column="2" x:Name="ProtectedChk" Content="Protegido"
+                              Foreground="{StaticResource Fg}" VerticalAlignment="Center" Margin="14,0,0,0" />
+                </Grid>
+
+                <TextBlock Grid.Row="3" x:Name="ProtHint" Foreground="{StaticResource FgMuted}"
+                           FontSize="11" FontStyle="Italic" Margin="0,0,0,8" Visibility="Collapsed"
+                           Text="Protegé el escritorio para administrar su lista de apps permitidas." />
+
+                <!-- Dos columnas: permitidas | abiertas -->
+                <Grid Grid.Row="4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="14" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Permitidas -->
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Apps permitidas"
+                               FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <Border Grid.Row="1" Grid.Column="0" Background="{StaticResource Panel}"
+                            CornerRadius="4" Padding="2">
+                        <ListBox x:Name="WhitelistBox" Background="Transparent" BorderThickness="0"
+                                 Foreground="{StaticResource Fg}" FontSize="13"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                    </Border>
+                    <Button Grid.Row="2" Grid.Column="0" x:Name="WlRemoveBtn" Content="Quitar"
+                            Margin="0,6,0,0" HorizontalAlignment="Left" />
+
+                    <!-- Abiertas -->
+                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Apps abiertas"
+                               FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <Border Grid.Row="1" Grid.Column="2" Background="{StaticResource Panel}"
+                            CornerRadius="4" Padding="2">
+                        <ListBox x:Name="RunningBox" Background="Transparent" BorderThickness="0"
+                                 Foreground="{StaticResource Fg}" FontSize="13"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                    </Border>
+                    <StackPanel Grid.Row="2" Grid.Column="2" Orientation="Horizontal" Margin="0,6,0,0">
+                        <Button x:Name="WlAddFromRunningBtn" Content="◀ Agregar" />
+                        <Button x:Name="RunningRefreshBtn" Content="↻ Refrescar" MinWidth="100" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- Alta manual -->
+                <Grid Grid.Row="5" Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Manual:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBox Grid.Column="1" x:Name="WlManualBox" Background="#2A2A2A"
+                             Foreground="{StaticResource Fg}" BorderBrush="#444" Padding="6,4"
+                             VerticalContentAlignment="Center" ToolTip="Nombre del proceso, ej: brave.exe" />
+                    <Button Grid.Column="2" x:Name="WlAddManualBtn" Content="Agregar" Margin="6,0,0,0" />
+                </Grid>
+            </Grid>
+        </TabItem>
+
+        <!-- ===== Pestaña ANCLAJES ===== -->
+        <TabItem Header="Anclajes">
+            <Grid Margin="14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="Apps ancladas" />
+                <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,10"
+                           Text="Una app anclada se mueve y maximiza en su escritorio cada vez que aparece en otro. El anclaje es por NOMBRE de escritorio, así que reordenarlos no lo rompe. Los cambios se guardan al instante." />
+
+                <!-- Dos columnas: ancladas | anclar nueva -->
+                <Grid Grid.Row="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="14" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Izquierda: ancladas actuales -->
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Ancladas" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <Border Grid.Row="1" Grid.Column="0" Background="{StaticResource Panel}"
+                            CornerRadius="4" Padding="2">
+                        <ListBox x:Name="PinnedBox" Background="Transparent" BorderThickness="0"
+                                 Foreground="{StaticResource Fg}" FontSize="13"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                    </Border>
+                    <StackPanel Grid.Row="2" Grid.Column="0" Orientation="Horizontal" Margin="0,6,0,0">
+                        <Button x:Name="UnpinBtn" Content="Desanclar" />
+                        <Button x:Name="UnpinAllBtn" Content="Desanclar todo" MinWidth="120" />
+                    </StackPanel>
+
+                    <!-- Derecha: anclar una app -->
+                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Anclar una app" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <Grid Grid.Row="1" Grid.Column="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0" Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="A:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <ComboBox Grid.Column="1" x:Name="PinDeskCombo" Background="#2A2A2A"
+                                      Foreground="#10222A" BorderBrush="#444" />
+                        </Grid>
+                        <Border Grid.Row="1" Background="{StaticResource Panel}" CornerRadius="4" Padding="2">
+                            <ListBox x:Name="PinRunningBox" Background="Transparent" BorderThickness="0"
+                                     Foreground="{StaticResource Fg}" FontSize="13"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                        </Border>
+                    </Grid>
+                    <StackPanel Grid.Row="2" Grid.Column="2" Orientation="Horizontal" Margin="0,6,0,0">
+                        <Button x:Name="PinAddFromRunningBtn" Content="Anclar ▶" />
+                        <Button x:Name="PinRunningRefreshBtn" Content="↻ Refrescar" MinWidth="100" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- Alta manual (usa el escritorio elegido arriba) -->
+                <Grid Grid.Row="3" Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Manual:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBox Grid.Column="1" x:Name="PinManualBox" Background="#2A2A2A"
+                             Foreground="{StaticResource Fg}" BorderBrush="#444" Padding="6,4"
+                             VerticalContentAlignment="Center" ToolTip="Nombre del proceso, ej: brave.exe — se ancla al escritorio elegido arriba" />
+                    <Button Grid.Column="2" x:Name="PinAddManualBtn" Content="Anclar" Margin="6,0,0,0" />
+                </Grid>
+            </Grid>
+        </TabItem>
+
+        <!-- ===== Pestaña GENERAL ===== -->
+        <TabItem Header="General">
+            <Grid Margin="14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="General" />
+
+                <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
+                           Margin="0,8,0,4" Text="Tu configuración se guarda en:" />
+                <Border Grid.Row="2" Background="{StaticResource Panel}" CornerRadius="4" Padding="8,6">
+                    <TextBlock x:Name="DataPathText" Foreground="{StaticResource Fg}" FontSize="12"
+                               FontFamily="Consolas" TextWrapping="Wrap" />
+                </Border>
+
+                <!-- Zona de riesgo -->
+                <Border Grid.Row="4" BorderBrush="{StaticResource Danger}" BorderThickness="1"
+                        CornerRadius="4" Padding="12" Margin="0,12,0,0">
+                    <StackPanel>
+                        <TextBlock Text="⚠ Zona de riesgo" Foreground="{StaticResource Danger}"
+                                   FontWeight="SemiBold" FontSize="13" />
+                        <TextBlock Foreground="{StaticResource FgMuted}" FontSize="11" TextWrapping="Wrap"
+                                   Margin="0,6,0,10"
+                                   Text="Restablecer borra TODA tu configuración (escritorios, proyectos, pins, protecciones, apps, atajos, widgets y uso) y NO se puede deshacer. La app se reinicia con los valores por defecto." />
+                        <Button x:Name="ResetAllBtn" Content="Restablecer toda la configuración"
+                                HorizontalAlignment="Left" MinWidth="240" Padding="12,6"
+                                Background="{StaticResource Danger}" Foreground="#FFFFFF" FontWeight="SemiBold" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </TabItem>
+
+    </TabControl>
+</Window>

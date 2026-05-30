@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <!-- Requerido por [LibraryImport] (genera marshalling unsafe en compile-time). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- La AppBar trabaja en píxeles físicos: el manifest declara PerMonitorV2. -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- WinForms sólo aporta el tray icon (NotifyIcon), no ventanas con DPI →
+         silenciamos su advertencia WFO0003 (el DPI lo maneja el manifest). -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+    <ApplicationIcon>ampz desktop booster - icon.ico</ApplicationIcon>
+    <AssemblyTitle>Ampz Desktop Booster</AssemblyTitle>
+  </PropertyGroup>
+
+  <!-- WPF + WinForms conviven, pero NO queremos los usings globales de WinForms/Drawing
+       contaminando todo el proyecto (chocan con System.Windows.* de WPF: Application, Brush...).
+       Los removemos como globales: solo TrayIconService los importa explícitamente. -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="ampz desktop booster - icon.ico" />
+  </ItemGroup>
+
+  <!-- Logos de proveedores de IA (widget de uso). Como Resource quedan embebidos en el assembly
+       y accesibles por URI relativo (/Providers/anthropic.png). El None Remove evita el error
+       "duplicate item": el SDK ya los incluiría como None por default. -->
+  <ItemGroup>
+    <None Remove="Providers\*.png" />
+    <Resource Include="Providers\*.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- DLL nativa reutilizada del .ahk original (x64). Se copia junto al .exe. -->
+    <None Update="VirtualDesktopAccessor.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

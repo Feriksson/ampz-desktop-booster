@@ -1,0 +1,33 @@
+<Window x:Class="AmpzDesktopBooster.ToastWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Ampz Toast"
+        WindowStyle="None" ResizeMode="NoResize"
+        ShowInTaskbar="False" ShowActivated="False"
+        AllowsTransparency="True" Background="Transparent"
+        Topmost="True" SizeToContent="WidthAndHeight"
+        WindowStartupLocation="Manual"
+        UseLayoutRounding="True" SnapsToDevicePixels="True">
+
+    <!-- Toast: barra de color a la izquierda (acento por tipo) + 2 líneas: detalle gris arriba,
+         título fuerte abajo. Mismo lenguaje visual que el overlay/legacy. -->
+    <Border x:Name="Card" Background="#F21A1A1A" CornerRadius="10" Padding="0"
+            MinWidth="360" MaxWidth="560">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="4" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border x:Name="AccentBar" Grid.Column="0" Background="#4FC3F7"
+                    CornerRadius="10,0,0,10" />
+
+            <StackPanel Grid.Column="1" Margin="16,12">
+                <TextBlock x:Name="DetailText" FontFamily="Segoe UI" FontSize="11"
+                           Foreground="#888888" TextTrimming="CharacterEllipsis" />
+                <TextBlock x:Name="TitleText" FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
+                           Foreground="#F2F2F2" TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

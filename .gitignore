@@ -1,0 +1,9 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+# Log de crashes (runtime, junto al exe) — nunca se versiona
+*.log
+ampz-crash.log

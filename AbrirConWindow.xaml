@@ -1,0 +1,60 @@
+<Window x:Class="AmpzDesktopBooster.AbrirConWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Abrir con…"
+        Width="380" SizeToContent="Height"
+        WindowStyle="None" ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False" Topmost="True"
+        Background="#1E1E1E" UseLayoutRounding="True"
+        FontFamily="Segoe UI">
+
+    <Window.Resources>
+        <!-- Template propio para que el FOCO se vea fuerte (el default de WPF es un punteado
+             casi invisible). El botón con foco queda con fondo azulado + borde accent. -->
+        <Style TargetType="Button">
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Background" Value="#2A2A2A" />
+            <Setter Property="Foreground" Value="#F2F2F2" />
+            <Setter Property="BorderBrush" Value="#444" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2D4A57" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#4FC3F7" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#34505C" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#4FC3F7" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border BorderBrush="#33FFFFFF" BorderThickness="1" Padding="16">
+        <StackPanel>
+            <TextBlock x:Name="TargetText" Foreground="#9A9A9A" FontSize="11"
+                       TextWrapping="Wrap" Margin="0,0,0,10" />
+            <StackPanel x:Name="ButtonsPanel" />
+            <TextBlock x:Name="EmptyHint" Foreground="#6E6E78" FontSize="11" TextWrapping="Wrap"
+                       Visibility="Collapsed"
+                       Text="No se detectó ninguna app. Agregá una en Configuración → Aplicaciones." />
+            <TextBlock Foreground="#6E6E78" FontSize="10" Margin="0,8,0,0" Text="Esc: cancelar" />
+        </StackPanel>
+    </Border>
+</Window>
