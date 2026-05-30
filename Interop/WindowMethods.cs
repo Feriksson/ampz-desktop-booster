@@ -172,10 +172,35 @@ internal static partial class WindowMethods
         public InputUnion U;
     }
 
+    // OJO: el union TIENE que tener el tamaño de su miembro MÁS GRANDE (MOUSEINPUT), aunque sólo
+    // usemos KEYBDINPUT. Si no, Marshal.SizeOf<INPUT>() da 32 en x64 en vez de los 40 reales, y
+    // SendInput rechaza el cbSize y devuelve 0 (ERROR_INVALID_PARAMETER 87) → el masking nunca
+    // entraba y el menú Inicio se abría con Win+`. Mantener mi y hi para clavar el layout real.
     [StructLayout(LayoutKind.Explicit)]
     public struct InputUnion
     {
+        [FieldOffset(0)] public MOUSEINPUT mi;
         [FieldOffset(0)] public KEYBDINPUT ki;
+        [FieldOffset(0)] public HARDWAREINPUT hi;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MOUSEINPUT
+    {
+        public int dx;
+        public int dy;
+        public uint mouseData;
+        public uint dwFlags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct HARDWAREINPUT
+    {
+        public uint uMsg;
+        public ushort wParamL;
+        public ushort wParamH;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -189,10 +214,28 @@ internal static partial class WindowMethods
     }
 
     /// <summary>
-    /// Enmascara la tecla Win: inyecta un Ctrl down+up mientras Win sigue presionada.
-    /// Así Windows ve actividad y NO interpreta el Win-up como "tap solo" → no abre Start.
+    /// Suelta la tecla Win ENMASCARADA: inyecta Ctrl down+up e inmediatamente después el Win-up,
+    /// todo en un solo <c>SendInput</c> (orden garantizado dentro del batch). Así el shell ve un
+    /// Ctrl JUSTO antes del Win-up y no lo interpreta como "tap de Win solo" → no abre el menú Inicio.
+    ///
+    /// Es lo que hace AutoHotkey: enmascara en el RELEASE de la Win, no en el press. El mask viejo
+    /// (Ctrl tap en el down del hotkey) fallaba porque para cuando llegaba el Win-up ya estaba viejo
+    /// — el shell mira el evento inmediatamente anterior al Win-up, y entremedio pasaba el key-up del
+    /// hotkey + tiempo muerto. El caller TRAGA el Win-up físico y deja que éste lo reponga.
+    ///
+    /// Devuelve true si la inyección entró completa: si fallara, el caller NO debe tragar el Win-up
+    /// físico (si no, la tecla Win queda "pegada" en Windows — el bug que tuvo el intento anterior).
     /// </summary>
-    public static void SendWinMask() => SendKeyTap(VK_CONTROL);
+    public static bool SendMaskedWinUp(ushort winVk)
+    {
+        var inputs = new[]
+        {
+            MakeKey(VK_CONTROL, down: true),
+            MakeKey(VK_CONTROL, down: false),
+            MakeKey(winVk,      down: false), // el Win-up que repone al que tragó el hook
+        };
+        return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>()) == inputs.Length;
+    }
 
     /// <summary>Inyecta un down+up del VK dado, marcado como propio (lo ignora el hook).</summary>
     public static void SendKeyTap(ushort vk)

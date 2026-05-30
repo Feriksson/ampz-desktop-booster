@@ -31,6 +31,10 @@ public sealed class HotkeyService : IDisposable
     private readonly LowLevelKeyboardHook _hook = new();
     private bool _winDown;
     private bool _shiftDown;
+    // True si en este "hold" de Win tragamos algún Win+algo: hay que enmascarar el Win-up para que
+    // el shell no abra el menú Inicio. Un tap PELADO de Win (sin combo) lo deja en false → Start
+    // se abre normal, como el usuario espera.
+    private bool _winComboConsumed;
 
     public bool SuppressWinNumpad { get; set; } = true;
 
@@ -56,11 +60,35 @@ public sealed class HotkeyService : IDisposable
             return;
         }
 
-        // Modificadores. Nunca los suprimimos (suprimir el Win-up dejaba la tecla "pegada" en
-        // Windows; el mask del menú Inicio se hace SOLO en el down, ver más abajo).
+        // Tecla Win. El mask del menú Inicio se hace acá, en el RELEASE (como AHK), no en el down:
+        // el shell mira el evento inmediatamente anterior al Win-up, así que el mask tiene que ir
+        // pegado a ese Win-up. Lo enmascaramos SOLO si usamos la Win como modificador en este hold
+        // (_winComboConsumed) — un tap pelado de Win tiene que seguir abriendo Start normal.
         if (e.VirtualKey is VK_LWIN or VK_RWIN)
         {
-            _winDown = e.IsDown;
+            if (e.IsDown)
+            {
+                // OJO: la tecla Win MANTENIDA auto-repite (genera key-downs repetidos). Reseteamos
+                // el flag SÓLO en la transición real soltado→apretado, NO en cada repeat — si no, un
+                // repeat que llega DESPUÉS del combo borraba la marca y el Win-up no se enmascaraba.
+                if (!_winDown)
+                {
+                    _winDown = true;
+                    _winComboConsumed = false;
+                }
+                return;
+            }
+
+            _winDown = false;
+            if (_winComboConsumed)
+            {
+                _winComboConsumed = false;
+                // Tragamos el Win-up físico y lo reponemos DETRÁS de un Ctrl (un único SendInput,
+                // orden garantizado). Sólo suprimimos si la inyección entró: si fallara, dejamos
+                // pasar el Win-up real para NO dejar la tecla pegada (el bug del intento anterior).
+                if (WindowMethods.SendMaskedWinUp((ushort)e.VirtualKey))
+                    e.Suppress = true;
+            }
             return;
         }
         if (e.VirtualKey is VK_SHIFT or VK_LSHIFT or VK_RSHIFT)
@@ -90,8 +118,10 @@ public sealed class HotkeyService : IDisposable
             {
                 if (SuppressWinNumpad)
                 {
+                    // Tragamos el combo → el shell NO ve la tecla del numpad, así que el Win quedaría
+                    // "tap solo". Marcamos para enmascarar el Win-up cuando se suelte.
                     e.Suppress = true;
-                    WindowMethods.SendWinMask();
+                    _winComboConsumed = true;
                 }
                 HotkeyFired?.Invoke(this, new HotkeyEventArgs(key, _shiftDown, winDown: true));
                 return;
@@ -109,8 +139,10 @@ public sealed class HotkeyService : IDisposable
         // ── Win + F-key / backtick (vkCode estable) ──
         if (_winDown && IsFunctionVk(e.VirtualKey))
         {
+            // Tragamos el combo → marcamos para enmascarar el Win-up en el release (si no, el
+            // backtick/F-key suprimido deja al Win como "tap solo" y abre el menú Inicio).
             e.Suppress = true;
-            WindowMethods.SendWinMask();
+            _winComboConsumed = true;
             WinFunctionKey?.Invoke((int)e.VirtualKey, _shiftDown);
         }
     }
