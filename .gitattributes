@@ -1,0 +1,10 @@
+# Normalización de finales de línea (regla del equipo).
+# text=auto → git detecta texto vs binario; eol=lf → fuerza LF en el repo Y en el working tree,
+# así los finales de línea no dependen del core.autocrlf de cada máquina (diffs limpios, sin ruido).
+* text=auto eol=lf
+
+# Binarios: NUNCA normalizar (text=auto ya los detecta, pero lo hacemos explícito para evitar
+# cualquier riesgo de corrupción al hacer checkout/commit).
+*.dll  binary
+*.ico  binary
+*.png  binary
