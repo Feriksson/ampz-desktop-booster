@@ -216,6 +216,36 @@ cambio de desk), `ConfigWindow` (config, instancia única), `ProjectSetterWindow
   `Dispatcher.BeginInvoke` (hotkeys) o `DispatcherTimer` one-shot (`WindowGovernor.Defer`).
 - Servicios con hooks implementan `IDisposable` y se liberan en `App.OnExit`.
 
+### ⚠ El z-order de la barra ROMPE el hook de teclado — y cómo se arregla (no lo deshagas)
+
+Bug que costó MUCHÍSIMO encontrar (se cazó con `git worktree` del commit pre-feature + instrumentación
+a archivo). Síntoma: tras salir de un **video en pantalla completa** (YouTube con `F`), las hotkeys
+globales dejaban de responder hasta hacer **click en el escritorio**; el overlay central también
+desaparecía. Lo que pasa, confirmado por **bisect** (no teoría):
+
+- **Causa raíz**: CUALQUIER manipulación del z-order de la `BarWindow` (`SetWindowPos` **y/o**
+  `_window.Topmost` de WPF), hecha para ocultar/mostrar la barra al entrar/salir de fullscreen,
+  **corrompe la entrega de teclas del hook `WH_KEYBOARD_LL`** (que vive en el thread de UI). Windows
+  deja de mandarle teclas al hook **hasta el próximo cambio de foco** — ese click que "lo arreglaba"
+  ERA un cambio de foco. **Diferir el `SetWindowPos` 750ms NO lo evita** → no es una carrera de
+  timing, es el acto mismo de tocar el z-order.
+- **Fix (WATCHDOG — auto-curar, no evitar)**: como no se puede impedir que se rompa por esta vía, se
+  **reinstala el hook** = el "click automático". `LowLevelKeyboardHook.Reinstall()` (unhook+hook) →
+  `HotkeyService.ReinstallHook()` (reinstala + resetea `_winDown`/`_shiftDown`/`_winComboConsumed`) →
+  lo dispara `AppBarManager.ZOrderChanged`, cableado en `App.xaml.cs`
+  (`bar.OnBarZOrderChanged = () => _hotkeys?.ReinstallHook()`). El z-order va **diferido 750ms** y
+  maneja `WS_EX_TOPMOST` por `SetWindowLongPtr`, **nunca** por `_window.Topmost` (su setter cambia la
+  activación y agrava el problema).
+- **Red DOBLE** (el reinstall es idempotente, por eso se puede llamar dos veces): `ZOrderChanged` se
+  dispara (1) **al principio** de `SetFullscreenSuppressed` → al SALIR del fullscreen recuperás el
+  teclado al instante, sin esperar los 750ms; y (2) **después** del `ApplyZOrder` diferido → re-cura
+  por si ese cambio de z-order lo volvió a romper. Ambas corren en el thread de UI (el watcher
+  borderless marshalea su evento con `_uiDispatcher.BeginInvoke`; el `ABN_FULLSCREENAPP` llega por el
+  `WndProc`, que ya está en UI) — `ReinstallHook` DEBE correr ahí.
+- **NO lo "simplifiques" deshaciendo esto**: el hook **debe** quedarse en el thread de UI (moverlo a
+  un thread propio rompe el masking de Win en `SendMaskedWinUp`); y tocar el z-order **siempre** va a
+  romper el hook → el watchdog es la cura, no un parche opcional.
+
 ---
 
 ## Convenciones del repo

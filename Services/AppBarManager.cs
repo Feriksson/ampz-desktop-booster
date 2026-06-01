@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Threading;
 using AmpzDesktopBooster.Interop;
 
 namespace AmpzDesktopBooster.Services;
@@ -197,21 +198,87 @@ public sealed class AppBarManager
     ///     hay que mandarla explícitamente abajo de todo.
     /// El hook WM_WINDOWPOSCHANGING sólo clava posición/tamaño, NO el z-order → no pelea con esto.
     /// </summary>
+    // Timer one-shot para DIFERIR el cambio de z-order. Reiniciable: si entrás/salís rápido de
+    // fullscreen, sólo se aplica el último estado pedido.
+    private DispatcherTimer? _suppressTimer;
+
+    /// <summary>
+    /// "Re-armá el hook de teclado". El suscriptor (App → HotkeyService.ReinstallHook) lo usa para
+    /// restaurar la entrega de teclas, que se corrompe cuando se toca el z-order de la barra (ver
+    /// ApplyZOrder) — el "click que lo arregla", automático. Se dispara DOS veces por transición de
+    /// fullscreen (red doble, el handler es idempotente):
+    ///   1. AL PRINCIPIO de SetFullscreenSuppressed → recuperás el teclado al INSTANTE al salir del
+    ///      fullscreen, sin esperar los 750ms (si el hook venía roto de cuando entraste).
+    ///   2. TRAS el ApplyZOrder diferido → re-cura por si ESE cambio de z-order lo volvió a romper.
+    /// </summary>
+    public Action? ZOrderChanged { get; set; }
+
     public void SetFullscreenSuppressed(bool suppressed)
     {
         if (suppressed == _suppressed) return; // idempotente: las dos fuentes pueden coincidir
         _suppressed = suppressed;
 
+        // Red AL PRINCIPIO: re-armar el hook YA, apenas se detecta la transición, sin esperar el
+        // z-order diferido. Corremos en el thread de UI (ABN llega por WndProc; el watcher marshalea
+        // su evento al UI dispatcher), que es justo donde ReinstallHook debe correr.
+        ZOrderChanged?.Invoke();
+
+        // POR QUÉ DIFERIDO (costó MUCHÍSIMO encontrarlo): tocar el z-order de la barra
+        // (SetWindowPos, con o sin Topmost) EN EL INSTANTE en que una app entra/sale de pantalla
+        // completa corrompe el estado de input global de Windows — el hook de teclado WH_KEYBOARD_LL
+        // deja de recibir teclas hasta el próximo cambio de foco (un click). Era el bug de "las
+        // hotkeys se cuelgan tras salir de YouTube fullscreen". La transición de fullscreen YA está
+        // moviendo el foreground; si encima nosotros reordenamos en ese momento, pisamos esa carrera.
+        // La solución: NO reordenar en el momento — esperar a que el foreground se asiente y recién
+        // ahí aplicar. El costo es un pequeño retraso visible (la barra tarda ~750ms en
+        // ocultarse/reaparecer), aceptable a cambio de que el teclado NUNCA se rompa.
+        _suppressTimer ??= new DispatcherTimer();
+        _suppressTimer.Stop();
+        _suppressTimer.Interval = TimeSpan.FromMilliseconds(750);
+        _suppressTimer.Tick -= ApplySuppressTick;
+        _suppressTimer.Tick += ApplySuppressTick;
+        _suppressTimer.Start();
+    }
+
+    private void ApplySuppressTick(object? sender, EventArgs e)
+    {
+        _suppressTimer!.Stop();
+        ApplyZOrder(_suppressed);
+        // El z-order recién tocado pudo cortar la entrega de teclas al hook → re-armarlo. Diferido
+        // con prioridad baja para que el cambio de z-order termine de asentarse antes de reinstalar.
+        _window.Dispatcher.BeginInvoke(DispatcherPriority.Background, () => ZOrderChanged?.Invoke());
+    }
+
+    /// <summary>
+    /// Aplica el z-order SOLO con SetWindowPos + el bit WS_EX_TOPMOST por SetWindowLongPtr. NUNCA
+    /// tocamos _window.Topmost de WPF: su setter cambia la ACTIVACIÓN de la ventana, que es justo lo
+    /// que rompe el input. SWP_NOACTIVATE mueve el z-order sin tocar la activación. Aun así, esto se
+    /// llama DIFERIDO (ver SetFullscreenSuppressed) para no pisar la transición de foreground.
+    /// </summary>
+    private void ApplyZOrder(bool suppressed)
+    {
         if (suppressed)
         {
-            _window.Topmost = false;
+            // Sacar el bit topmost (una ventana topmost no puede ir DEBAJO de ventanas normales) y al fondo.
+            SetExStyleTopmost(false);
             SetWindowPos(_hWnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
         else
         {
-            _window.Topmost = true; // re-aplica WS_EX_TOPMOST → vuelve a la banda topmost
+            // Volver a la banda topmost. HWND_TOPMOST re-agrega WS_EX_TOPMOST por sí mismo.
             SetWindowPos(_hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
+    }
+
+    private const long WS_EX_TOPMOST = 0x00000008;
+
+    /// <summary>Prende/apaga el bit WS_EX_TOPMOST del estilo extendido SIN tocar la activación (a
+    /// diferencia de la propiedad Topmost de WPF, que sí la toca y rompe el input — ver arriba).</summary>
+    private void SetExStyleTopmost(bool on)
+    {
+        long ex = Interop.WindowMethods.GetWindowLongPtr(_hWnd, Interop.WindowMethods.GWL_EXSTYLE).ToInt64();
+        ex = on ? (ex | WS_EX_TOPMOST) : (ex & ~WS_EX_TOPMOST);
+        Interop.WindowMethods.SetWindowLongPtr(_hWnd, Interop.WindowMethods.GWL_EXSTYLE, new IntPtr(ex));
     }
 
     private const int WM_WINDOWPOSCHANGING = 0x0046;

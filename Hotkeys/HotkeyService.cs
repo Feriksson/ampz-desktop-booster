@@ -50,6 +50,20 @@ public sealed class HotkeyService : IDisposable
         WindowMethods.EnsureNumLockOff(); // arranca apagado; el hook lo mantiene así
     }
 
+    /// <summary>
+    /// Re-registra el hook de teclado para restaurar la entrega de teclas tras una alteración del
+    /// estado de input global (la barra reordenándose al salir de pantalla completa la dispara). Es
+    /// el "click que lo arregla", pero automático. También reseteamos los modificadores: si quedó un
+    /// down sin su up durante el lío, su estado pegado se limpia acá.
+    /// </summary>
+    public void ReinstallHook()
+    {
+        _winDown = false;
+        _shiftDown = false;
+        _winComboConsumed = false;
+        _hook.Reinstall();
+    }
+
     private void OnKeyEvent(object? sender, KeyboardHookEventArgs e)
     {
         // NumLock SIEMPRE suprimido (el wildcard *NumLock del .ahk): si Windows nunca lo procesa,

@@ -40,6 +40,23 @@ public sealed class LowLevelKeyboardHook : IDisposable
                 $"No se pudo instalar el hook de teclado (Win32 error {Marshal.GetLastWin32Error()}).");
     }
 
+    /// <summary>
+    /// Re-registra el hook (unhook + hook). Windows puede DEJAR DE ENTREGAR teclas a un hook
+    /// existente tras ciertas alteraciones del estado de input global —en esta app, cuando la barra
+    /// cambia su z-order al salir de pantalla completa— y se queda así hasta el próximo cambio de
+    /// foco (lo que el usuario "arreglaba" con un click). Una registración FRESCA restaura la entrega.
+    /// Debe correr en el thread que bombea mensajes (el de UI), igual que Install/Dispose.
+    /// </summary>
+    public void Reinstall()
+    {
+        if (_hookId != IntPtr.Zero)
+        {
+            UnhookWindowsHookEx(_hookId);
+            _hookId = IntPtr.Zero;
+        }
+        Install();
+    }
+
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode >= 0)

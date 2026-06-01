@@ -116,6 +116,12 @@ public partial class App : Application
             bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c));
         });
 
+        // Watchdog del hook: cuando la barra cambia su z-order (ocultarse/reaparecer en pantalla
+        // completa), Windows corta la entrega de teclas al hook global hasta el próximo cambio de
+        // foco. Re-armamos el hook justo después de ese cambio de z-order → el "click que lo
+        // arregla", automático. Sin esto, las hotkeys se cuelgan al salir de un video fullscreen.
+        bar.OnBarZOrderChanged = () => _hotkeys?.ReinstallHook();
+
         // El overlay central — persistente, oculto hasta el primer cambio de desktop.
         var overlay = new OverlayWindow();
 

@@ -34,6 +34,17 @@ public partial class BarWindow : Window
     /// <summary>Lo invoca el item "Configuración" del tray. Lo setea App antes del Show().</summary>
     public Action? OpenConfig { get; set; }
 
+    /// <summary>
+    /// App lo setea con HotkeyService.ReinstallHook. Lo reenviamos al AppBar: cuando la barra cambia
+    /// su z-order (al entrar/salir de pantalla completa), eso corrompe la entrega de teclas del hook
+    /// global, así que lo re-armamos justo después. Es el "click que lo arregla", automático.
+    /// </summary>
+    public Action? OnBarZOrderChanged
+    {
+        set { if (_appBar is not null) _appBar.ZOrderChanged = value; _pendingZOrderChanged = value; }
+    }
+    private Action? _pendingZOrderChanged; // por si se setea antes de que exista el AppBar
+
     public BarWindow()
     {
         InitializeComponent();
@@ -49,6 +60,7 @@ public partial class BarWindow : Window
     {
         // Recién acá la ventana tiene HWND: registramos la AppBar real.
         _appBar = new AppBarManager(this, BarHeight);
+        _appBar.ZOrderChanged = _pendingZOrderChanged; // si App ya lo seteó antes del handle
         _appBar.Register();
 
         // Pinear la barra a TODOS los virtual desktops. Sin esto vive sólo en el desktop
@@ -66,7 +78,8 @@ public partial class BarWindow : Window
         // Bajar la barra cuando hay una app en PANTALLA COMPLETA (juego, video, app 3D). El AppBar
         // ya escucha ABN_FULLSCREENAPP para el fullscreen EXCLUSIVO; el watcher cubre el "borderless"
         // (YouTube con F, juegos modernos) que esa notificación no dispara. Ambos pegan al MISMO
-        // setter idempotente del AppBar, así que no se pisan.
+        // setter idempotente del AppBar, así que no se pisan. Corre en su propio thread (no en UI),
+        // así su catarata de WinEvents no le roba tiempo al hook de teclado.
         _fullscreen = new FullscreenWatcher(hwnd);
         _fullscreen.FullscreenChanged += suppressed => _appBar?.SetFullscreenSuppressed(suppressed);
         _fullscreen.Start();
