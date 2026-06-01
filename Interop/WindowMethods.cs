@@ -127,6 +127,25 @@ internal static partial class WindowMethods
         }
     }
 
+    /// <summary>
+    /// Primera ventana VISIBLE que cumple <paramref name="match"/> (IntPtr.Zero si ninguna).
+    /// Generaliza el patrón "EnumWindows con corte" que repetían Shell (buscar la ventana de WT) y
+    /// QuickActions (buscar la de Descargas): el filtro de visibilidad va acá una sola vez; el resto
+    /// del criterio (clase, título, escritorio virtual) lo decide el predicado del caller.
+    /// </summary>
+    public static IntPtr FindVisible(Func<IntPtr, bool> match)
+    {
+        IntPtr found = IntPtr.Zero;
+        EnumWindows((hwnd, _) =>
+        {
+            if (!IsWindowVisible(hwnd)) return true; // oculta → seguir enumerando
+            if (!match(hwnd)) return true;           // no cumple el criterio → seguir
+            found = hwnd;
+            return false;                            // encontrada → cortar la enumeración
+        }, IntPtr.Zero);
+        return found;
+    }
+
     /// <summary>Texto de una ventana cualquiera (título) — vacío si no se pudo leer.</summary>
     public static string TextOf(IntPtr hWnd)
     {

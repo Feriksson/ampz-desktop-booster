@@ -20,37 +20,34 @@ public static class QuickActions
     public static void OpenDownloads(DesktopService desktops)
     {
         int current = desktops.Current;
-        IntPtr found = IntPtr.Zero;
 
-        WindowMethods.EnumWindows((hwnd, _) =>
-        {
-            if (!WindowMethods.IsWindowVisible(hwnd)) return true;
-            if (WindowMethods.ClassOf(hwnd) != "CabinetWClass") return true;
-
-            string title = WindowMethods.TextOf(hwnd);
-            bool isDownloads = false;
-            foreach (var t in DownloadTitles)
-                if (title.Equals(t, StringComparison.OrdinalIgnoreCase)) { isDownloads = true; break; }
-            if (!isDownloads) return true;
-
-            if (VirtualDesktopAccessor.GetWindowDesktopNumber(hwnd) == current)
-            {
-                found = hwnd;
-                return false; // cortar la enumeración
-            }
-            return true;
-        }, IntPtr.Zero);
-
+        IntPtr found = WindowMethods.FindVisible(hwnd => IsDownloadsOn(hwnd, current));
         if (found != IntPtr.Zero)
         {
-            WindowMethods.ShowWindow(found, WindowMethods.SW_RESTORE);
-            WindowMethods.SetForegroundWindow(found);
+            // Ya hay una en este desk → traerla al frente con el mismo ForceForeground confiable que
+            // el resto (preserveMaximized: si está maximizada no la achicamos, sólo des-minimizamos).
+            // Antes era Show(SW_RESTORE)+SetForegroundWindow a secas, que no vence el anti-robo de
+            // foco cuando venimos de un hotkey global y encima des-maximizaba.
+            WindowMethods.ForceForeground(found);
             return;
         }
 
-        // No había en este desk → abrir nueva (explorer la lanza en el desktop actual).
+        // No había en este desk → abrir nueva (explorer la lanza en el desktop actual) y, como la
+        // crea explorer.exe (no nosotros), forzarle el foreground cuando aparezca.
         try { Process.Start(new ProcessStartInfo("explorer.exe") { Arguments = "shell:Downloads", UseShellExecute = true }); }
-        catch { }
+        catch { return; }
+        WindowFocuser.FocusWhenReady(hwnd => IsDownloadsOn(hwnd, current));
+    }
+
+    /// <summary>¿Es <paramref name="hwnd"/> la ventana de Descargas en el escritorio virtual dado?</summary>
+    private static bool IsDownloadsOn(IntPtr hwnd, int desktop)
+    {
+        if (WindowMethods.ClassOf(hwnd) != "CabinetWClass") return false;
+        string title = WindowMethods.TextOf(hwnd);
+        bool isDownloads = false;
+        foreach (var t in DownloadTitles)
+            if (title.Equals(t, StringComparison.OrdinalIgnoreCase)) { isDownloads = true; break; }
+        return isDownloads && VirtualDesktopAccessor.GetWindowDesktopNumber(hwnd) == desktop;
     }
 
     /// <summary>Win+`: abre el shell preferido (pwsh → powershell) parado en cada carpeta target.</summary>

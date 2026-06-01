@@ -90,6 +90,24 @@ public sealed class ProjectStore
             : GetSharedPool();
     }
 
+    /// <summary>
+    /// Como <see cref="ResolvePool"/>, pero además expone la pool GLOBAL cuando el scope es de
+    /// proyecto, para mostrarla de SOLO-LECTURA junto a las del proyecto (así no quedás ciego a las
+    /// compartidas). En scope global <paramref name="global"/> queda null: ya estás viendo las
+    /// globales como pool primaria, no hay nada que anexar. Mantiene la regla dual-scope acá, en la
+    /// capa que la conoce — la ventana no la re-implementa.
+    /// </summary>
+    public PathPool ResolvePoolWithGlobal(string deskName, int deskIdx, out PathPool? global)
+    {
+        if (UseProjectScope(deskName, deskIdx, out var project))
+        {
+            global = GetSharedPool();
+            return GetProjectPool(project);
+        }
+        global = null;
+        return GetSharedPool();
+    }
+
     // ── Notas (mismo dual-scope que las variables) ──────────────────────────────
 
     /// <summary>Lee las notas que correspondan al desk: del proyecto activo o las globales.</summary>

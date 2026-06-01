@@ -150,9 +150,68 @@ public sealed class AppBarManager
                     PositionBar(); // la taskbar se movió / cambió la resolución → reacomodamos
                     handled = true;
                     break;
+
+                // Una app entró/salió de PANTALLA COMPLETA EXCLUSIVA (juego/video en modo display real).
+                // lParam != 0 → ABRE: nos corremos al fondo del z-order para no taparla, igual que la
+                // taskbar real de Windows. lParam == 0 → CIERRA: volvemos a topmost. El borderless
+                // (YouTube con F, etc.) NO dispara esto: de eso se encarga FullscreenWatcher por rect.
+                case NativeMethods.ABN_FULLSCREENAPP:
+                    SetFullscreenSuppressed(lParam != IntPtr.Zero);
+                    handled = true;
+                    break;
             }
         }
         return IntPtr.Zero;
+    }
+
+    // ── Pantalla completa (juegos / 3D / video) ──────────────────────────────────────
+    // Windows manda ABN_FULLSCREENAPP a TODAS las appbars cuando una app entra o sale de
+    // fullscreen EXCLUSIVO. Reaccionamos como la taskbar real: nos sacamos del camino del z-order.
+    // (Nota: el fullscreen "borderless windowed" de muchos juegos NO dispara esto; eso necesitaría
+    //  un heurístico de rect de ventana en foco — fuera de alcance de este mecanismo canónico.)
+    private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private static readonly IntPtr HWND_BOTTOM  = new(1);
+    private const uint SWP_NOSIZE     = 0x0001;
+    private const uint SWP_NOMOVE     = 0x0002;
+    private const uint SWP_NOACTIVATE = 0x0010;
+
+    // P/Invoke local y PRIVADO a propósito: AppBarManager es `sealed` (no `partial`), así que no
+    // puede hostear [LibraryImport] (exige método/typo partial). Al ser privado no colisiona con
+    // ninguna declaración de SetWindowPos que pueda existir en WindowMethods/NativeMethods.
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
+        int X, int Y, int cx, int cy, uint uFlags);
+
+    // Estado actual del z-order. El setter es IDEMPOTENTE porque lo llaman DOS fuentes que pueden
+    // coincidir: ABN_FULLSCREENAPP (exclusivo, instantáneo) y FullscreenWatcher (borderless, por
+    // polling cada 500ms). Sin el guard, cada tick del watcher re-pegaría SetWindowPos al pedo.
+    private bool _suppressed;
+
+    /// <summary>
+    /// Sube/baja la barra del z-order según si hay una app en pantalla completa. Tocamos el z-order
+    /// por DOS vías a propósito:
+    ///   · Topmost de WPF: mantiene coherente el estado interno del framework. Si sólo hiciéramos
+    ///     SetWindowPos, WPF puede re-aplicar WS_EX_TOPMOST en cualquier render y volver a tapar.
+    ///   · SetWindowPos a HWND_BOTTOM: sacar el topmost NO empuja la ventana al fondo por sí solo;
+    ///     hay que mandarla explícitamente abajo de todo.
+    /// El hook WM_WINDOWPOSCHANGING sólo clava posición/tamaño, NO el z-order → no pelea con esto.
+    /// </summary>
+    public void SetFullscreenSuppressed(bool suppressed)
+    {
+        if (suppressed == _suppressed) return; // idempotente: las dos fuentes pueden coincidir
+        _suppressed = suppressed;
+
+        if (suppressed)
+        {
+            _window.Topmost = false;
+            SetWindowPos(_hWnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
+        else
+        {
+            _window.Topmost = true; // re-aplica WS_EX_TOPMOST → vuelve a la banda topmost
+            SetWindowPos(_hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
     }
 
     private const int WM_WINDOWPOSCHANGING = 0x0046;

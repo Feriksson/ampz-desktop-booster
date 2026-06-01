@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using AmpzDesktopBooster.Apps;
+using AmpzDesktopBooster.Interop;
 
 namespace AmpzDesktopBooster.Desktops;
 
@@ -36,6 +37,15 @@ public static class PathOpener
             if (Directory.Exists(value) || File.Exists(value))
             {
                 Process.Start(new ProcessStartInfo(value) { UseShellExecute = true });
+                // Sólo carpetas: la ventana del Explorer es identificable (CabinetWClass + nombre de
+                // la carpeta), así que le forzamos el foreground. La ventana la crea explorer.exe (ya
+                // vivo), NO nosotros, y encima venimos de un hotkey global → el anti-robo de foco de
+                // Windows la dejaba en segundo plano. Sin esto, abrir la carpeta y disparar Win+`
+                // acto seguido leía el Escritorio (el foreground real) en vez de esta carpeta.
+                // Un archivo o URL abren una app/pestaña de ventana NO identificable de antemano:
+                // ahí no podemos garantizar el foco, así que no lo intentamos (sería humo).
+                if (Directory.Exists(value))
+                    FocusFolderWhenReady(value);
                 return Result.Opened;
             }
             return Result.NotFound;
@@ -44,6 +54,25 @@ public static class PathOpener
         {
             return Result.Error;
         }
+    }
+
+    /// <summary>
+    /// Trae al frente la ventana de Explorer recién abierta para <paramref name="dir"/>. La
+    /// identifica por clase (<c>CabinetWClass</c>) + título (el nombre de la carpeta) + escritorio
+    /// virtual actual. El filtro por desk evita agarrar otra carpeta del MISMO nombre abierta en OTRO
+    /// escritorio: traerla al frente nos saltaría de desk. El desk actual lo resolvemos por la capa
+    /// alta (<see cref="Shell.Desktops"/>); si todavía no está inyectada, no filtramos por desk.
+    /// </summary>
+    private static void FocusFolderWhenReady(string dir)
+    {
+        string leaf = Path.GetFileName(dir.TrimEnd('\\', '/', ' '));
+        if (leaf == "") return; // raíz de unidad (ej. C:\): el título no es un nombre de carpeta → no arriesgamos
+
+        int desk = Shell.Desktops?.Current ?? -1;
+        WindowFocuser.FocusWhenReady(hwnd =>
+            WindowMethods.ClassOf(hwnd) == "CabinetWClass"
+            && WindowMethods.TextOf(hwnd).Equals(leaf, StringComparison.OrdinalIgnoreCase)
+            && (desk < 0 || VirtualDesktopAccessor.GetWindowDesktopNumber(hwnd) == desk));
     }
 
     /// <summary>

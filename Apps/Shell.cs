@@ -116,25 +116,37 @@ public static class Shell
         // lanza pwsh por el mecanismo correcto (activación AppX). Pasarle el .exe del paquete por
         // ruta lo rompía (hostfxr). Es, además, como el usuario abre WT a diario → garantizado.
         Process.Start(psi);
+
+        // FOCO GARANTIZADO a la ventana NUEVA. El reuse ("last") ya hizo ForceForeground arriba;
+        // el caso pendiente es "new". Aunque sea un Process.Start, la ventana NO siempre nace con
+        // foco: si ya hay un proceso "monarca" de WT vivo (aunque sea en OTRO escritorio), la
+        // ventana nueva la crea ESE proceso —que no es el foreground—, así que el anti-robo-de-foco
+        // de Windows la deja atrás. Encima venimos de un hotkey global (tampoco somos foreground).
+        // wt.exe crea la ventana ASÍNCRONO vía el monarca, así que todavía no existe acá: la
+        // esperamos (sin bloquear el hilo de UI) y la traemos al frente. Sólo si sabemos el desk.
+        // preserveMaximized: no le tocamos el tamaño a WT, sólo le damos foreground/foco. Llegamos
+        // acá sólo cuando NO había WT en este desk, así que la primera ventana de WT que aparezca acá
+        // es la nuestra. El timer corre en el hilo de UI (el router difiere todo al Dispatcher).
+        if (target == "new" && current >= 0)
+            WindowFocuser.FocusWhenReady(hwnd => IsTerminalOn(hwnd, current), preserveMaximized: true);
     }
 
     /// <summary>
-    /// Primera ventana de Windows Terminal VISIBLE que esté en el escritorio virtual dado.
-    /// IntPtr.Zero si no hay ninguna. Mismo patrón "desktop-aware" que <c>QuickActions.OpenDownloads</c>.
+    /// ¿Es <paramref name="hwnd"/> una ventana de Windows Terminal en el escritorio virtual dado?
+    /// El filtro de "visible" lo aplica el enumerador (<see cref="WindowMethods.FindVisible"/> /
+    /// <see cref="WindowFocuser"/>); acá sólo decidimos clase + escritorio. Una única definición del
+    /// criterio, reusada tanto para BUSCAR la ventana (reuse) como para ESPERARLA (ventana nueva).
     /// </summary>
-    private static IntPtr FindTerminalOnDesktop(int desktop)
-    {
-        IntPtr found = IntPtr.Zero;
-        WindowMethods.EnumWindows((hwnd, _) =>
-        {
-            if (!WindowMethods.IsWindowVisible(hwnd)) return true;
-            if (WindowMethods.ClassOf(hwnd) != WtWindowClass) return true;
-            if (VirtualDesktopAccessor.GetWindowDesktopNumber(hwnd) != desktop) return true;
-            found = hwnd;
-            return false; // cortar la enumeración
-        }, IntPtr.Zero);
-        return found;
-    }
+    private static bool IsTerminalOn(IntPtr hwnd, int desktop) =>
+        WindowMethods.ClassOf(hwnd) == WtWindowClass
+        && VirtualDesktopAccessor.GetWindowDesktopNumber(hwnd) == desktop;
+
+    /// <summary>
+    /// Primera ventana de Windows Terminal VISIBLE en el escritorio virtual dado (IntPtr.Zero si
+    /// ninguna). Mismo patrón "desktop-aware" que <c>QuickActions.OpenDownloads</c>.
+    /// </summary>
+    private static IntPtr FindTerminalOnDesktop(int desktop) =>
+        WindowMethods.FindVisible(hwnd => IsTerminalOn(hwnd, desktop));
 
     /// <summary>
     /// Fallback sin Windows Terminal: lanza el .exe directo (UseShellExecute hereda nuestro token

@@ -21,6 +21,7 @@ public partial class BarWindow : Window
     private readonly SystemMonitor _monitor = new();
     private readonly WidgetSettings _settings = WidgetSettings.Load();
     private AppBarManager? _appBar;
+    private FullscreenWatcher? _fullscreen;
     private TrayIconService? _tray;
     private DispatcherTimer? _timer;
 
@@ -61,6 +62,14 @@ public partial class BarWindow : Window
         var ex = Interop.WindowMethods.GetWindowLongPtr(hwnd, Interop.WindowMethods.GWL_EXSTYLE).ToInt64();
         ex |= Interop.WindowMethods.WS_EX_TOOLWINDOW;
         Interop.WindowMethods.SetWindowLongPtr(hwnd, Interop.WindowMethods.GWL_EXSTYLE, new IntPtr(ex));
+
+        // Bajar la barra cuando hay una app en PANTALLA COMPLETA (juego, video, app 3D). El AppBar
+        // ya escucha ABN_FULLSCREENAPP para el fullscreen EXCLUSIVO; el watcher cubre el "borderless"
+        // (YouTube con F, juegos modernos) que esa notificación no dispara. Ambos pegan al MISMO
+        // setter idempotente del AppBar, así que no se pisan.
+        _fullscreen = new FullscreenWatcher(hwnd);
+        _fullscreen.FullscreenChanged += suppressed => _appBar?.SetFullscreenSuppressed(suppressed);
+        _fullscreen.Start();
 
         // Bloquear Alt+F4 (y el "Cerrar" del menú de sistema): la barra es chrome, NO una app —
         // igual que la taskbar de Windows, no se cierra con Alt+F4. Interceptamos el mensaje en su
@@ -303,12 +312,33 @@ public partial class BarWindow : Window
         : pct >= 55 ? "GaugeYellow"
         : "Accent");
 
+    /// <summary>
+    /// Tooltip de una mini-barra. El % NO va acá: ya se ve al lado de la barra (Pct5h/7d/Sonnet),
+    /// repetirlo es ruido. Lo que SÍ aporta el tooltip es lo que la barra NO muestra: el label
+    /// completo (la barra sólo trae el código cripto "5h"/"7d"/"S"), CUÁNTO falta para el reset y
+    /// CUÁNDO cae exactamente. El "falta" se calcula al refrescar el snapshot, no en vivo al hacer
+    /// hover — para ventanas de 5h/7d el desfase del intervalo de polling es despreciable.
+    /// </summary>
     private static string BuildUsageTip(UsageGauge g)
     {
-        var tip = $"{g.Label}: {g.Percent:0.0}%";
-        if (g.ResetsAt is { } reset)
-            tip += $"\nSe reinicia: {reset.ToLocalTime():ddd dd/MM · HH:mm}";
-        return tip;
+        if (g.ResetsAt is not { } reset)
+            return g.Label; // sin dato de reset → al menos el label completo, mejor que nada
+
+        var local = reset.ToLocalTime();
+        var remaining = local - DateTimeOffset.Now;
+        string falta = remaining > TimeSpan.Zero ? FormatRemaining(remaining) : "ya se reinició";
+        return $"{g.Label}\nFalta: {falta}\nSe reinicia: {local:ddd dd/MM · HH:mm}";
+    }
+
+    /// <summary>
+    /// "Tiempo que falta" en formato humano y compacto, SIN segundos (el dato se refresca por minuto
+    /// a lo sumo; los segundos sólo hacen ruido): "2 d 3 h", "3 h 15 min", "12 min". Nunca "0 min".
+    /// </summary>
+    private static string FormatRemaining(TimeSpan t)
+    {
+        if (t.TotalDays >= 1) return $"{(int)t.TotalDays} d {t.Hours} h";
+        if (t.TotalHours >= 1) return $"{(int)t.TotalHours} h {t.Minutes} min";
+        return $"{Math.Max(1, (int)t.TotalMinutes)} min";
     }
 
     /// <summary>
@@ -380,6 +410,7 @@ public partial class BarWindow : Window
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         _timer?.Stop();
+        _fullscreen?.Dispose(); // paramos el poll de fullscreen
         if (_usage is not null) _usage.Updated -= ApplyUsage; // el servicio lo dispone App, acá sólo desuscribimos
         _tray?.Dispose();      // sacamos el ícono de la bandeja
         _appBar?.Unregister(); // CRÍTICO: liberar el espacio reservado en Windows.

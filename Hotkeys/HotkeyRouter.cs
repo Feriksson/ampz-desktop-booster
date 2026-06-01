@@ -251,9 +251,11 @@ public sealed class HotkeyRouter
 
         int idx = _desktops.Current;
         string name = _desktops.GetName(idx);
-        var pool = _projects.ResolvePool(name, idx); // dual-scope: proyecto o global
+        // dual-scope: pool primaria (proyecto o global) + la global de SOLO-LECTURA para anexar
+        // cuando estamos en scope de proyecto (globalPool == null en scope global → no se anexa nada).
+        var pool = _projects.ResolvePoolWithGlobal(name, idx, out var globalPool);
 
-        _pathsWindow = new ProjectPathsWindow(pool, name);
+        _pathsWindow = new ProjectPathsWindow(pool, name, globalPool: globalPool);
         _pathsWindow.Closed += (_, _) => _pathsWindow = null;
         _pathsWindow.ShowFocused();
     }
