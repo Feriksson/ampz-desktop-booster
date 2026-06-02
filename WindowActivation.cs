@@ -14,9 +14,23 @@ namespace AmpzDesktopBooster;
 /// </summary>
 internal static class WindowActivation
 {
+    /// <summary>
+    /// App lo cablea con HotkeyService.ReinstallHook. Cuando una ventana utilitaria (Variables,
+    /// Notas, Config…) se CIERRA en un desk SIN otras ventanas, el foreground queda HUÉRFANO y el
+    /// hook global deja de recibir teclas — mismo mecanismo que el bug de z-order: el SO corta la
+    /// entrega hasta el próximo cambio de foco. Reinstalar el hook al cerrar restaura la entrega
+    /// sin depender de que aparezca un nuevo foreground. (Las versiones viejas mandaban el foco al
+    /// escritorio, lo que también revivía el hook; esto logra lo mismo sin tocar el foco.)
+    /// </summary>
+    public static System.Action? OnUtilityWindowClosed;
+
     /// <summary>Muestra la ventana y le fuerza el primer plano + foco de teclado.</summary>
     public static void ShowFocused(this Window window)
     {
+        // Al cerrarse, re-armamos el hook (ver OnUtilityWindowClosed). Una sola suscripción por
+        // ventana: ShowFocused se llama una vez al abrir; el re-press de los singletons usa
+        // BringToFront, que NO pasa por acá → no se suscribe dos veces.
+        window.Closed += (_, _) => OnUtilityWindowClosed?.Invoke();
         window.Show();
         // Show() es síncrono: al volver, el HWND ya existe y la ventana está visible.
         ForceWithRetry(window);

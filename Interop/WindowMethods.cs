@@ -17,6 +17,8 @@ internal static partial class WindowMethods
     public const ushort VK_CONTROL = 0x11;
     public const ushort VK_NUMLOCK = 0x90;
     public const ushort VK_LWIN    = 0x5B;
+    public const ushort VK_RWIN    = 0x5C;
+    public const ushort VK_SHIFT   = 0x10;
     public const ushort VK_D       = 0x44;
 
     [LibraryImport("user32.dll")]
@@ -27,6 +29,17 @@ internal static partial class WindowMethods
 
     [LibraryImport("user32.dll")]
     public static partial short GetKeyState(int nVirtKey);
+
+    [LibraryImport("user32.dll")]
+    public static partial short GetAsyncKeyState(int vKey);
+
+    /// <summary>
+    /// true si la tecla está FÍSICAMENTE presionada AHORA (bit alto de GetAsyncKeyState). A
+    /// diferencia de GetKeyState, NO depende de la cola de mensajes del thread — refleja el
+    /// estado real del hardware en este instante, que es justo lo que necesitamos al
+    /// re-sincronizar los modificadores tras reinstalar el hook.
+    /// </summary>
+    public static bool IsKeyPhysicallyDown(int vk) => (GetAsyncKeyState(vk) & 0x8000) != 0;
 
     [LibraryImport("user32.dll", EntryPoint = "GetWindowTextW")]
     public static partial int GetWindowText(IntPtr hWnd, IntPtr lpString, int nMaxCount);

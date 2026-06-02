@@ -246,6 +246,51 @@ desaparecía. Lo que pasa, confirmado por **bisect** (no teoría):
   un thread propio rompe el masking de Win en `SendMaskedWinUp`); y tocar el z-order **siempre** va a
   romper el hook → el watchdog es la cura, no un parche opcional.
 
+### ⚠ Corolarios del mismo bug: el ESTADO de modificadores y el FOCO HUÉRFANO (no los deshagas)
+
+La sección de arriba dice "tocar el z-order/foreground rompe el hook → el watchdog (`ReinstallHook`)
+lo cura". Dos casos más, cazados con **instrumentación a archivo** (`Stopwatch` + `AppendAllText`,
+filtrando a Win+numpad) + el usuario observando el PATRÓN, que son COROLARIOS de eso:
+
+**1. El watchdog NO debe resetear `_winDown` a ciegas — descolgaba `Win+Numpad`.**
+Síntoma: con Win MANTENIDA, rafagueando `Win+Numpad`, el combo se descolgaba tras unos saltos
+(NumpadClear pasaba a abrir el DeskPicker PELADO). Patrón clave (lo encontró el usuario): se rafaguea
+INFINITO entre desks VACÍOS, pero el **primer desk CON ventana** lo mata.
+- **Causa**: `bar.OnBarZOrderChanged → ReinstallHook` NO sólo salta al salir de fullscreen — también
+  salta al navegar a un desk CON ventana (la ventana toma foreground → la barra re-evalúa z-order →
+  `ZOrderChanged`). El viejo `ReinstallHook` hacía `_winDown=false` CIEGO, descolgando el combo en
+  pleno uso con la tecla físicamente apretada. Desks vacíos no mueven el foreground → no disparan el
+  watchdog → por eso rafagueaban infinito.
+- **Fix**: `HotkeyService.ReinstallHook` re-sincroniza los modificadores con su estado FÍSICO real
+  (`WindowMethods.IsKeyPhysicallyDown` vía `GetAsyncKeyState`), NUNCA los fuerza a `false`. El log
+  probó que `_winDown` caía a false SIN ningún Win-up en el hook (el hook seguía VIVO entregando
+  teclas — por eso el NumpadClear abría el DeskPicker pelado: hook vivo + flag corrupto).
+- **Teorías DESCARTADAS por el log (no repetir)**: NO hay Win-up sintético/inyectado del sistema; la
+  tecla Win NO auto-repite en este teclado; NO era el "hook muerto" (entregaba todas las teclas).
+  Filtrar `e.IsInjected` en el branch de Win EMPEORÓ las cosas y se revirtió.
+
+**2. El FOCO HUÉRFANO cuelga el hook — al cerrar una ventana en un desk VACÍO.**
+Síntoma: cerrás una ventana de la app (Esc) en un desk SIN otras ventanas → las hotkeys dejan de
+responder. Si hay al menos otra app → anda (Windows le da el foreground a esa app). Las versiones
+viejas mandaban el foco al ESCRITORIO al cerrar la última ventana; eso ERA un cambio de foco que
+mantenía vivo el hook.
+- **Causa**: sin una ventana real que tome el foreground, el foco queda HUÉRFANO
+  (`GetForegroundWindow()` → 0) → mismo mecanismo: el hook deja de recibir teclas. Reinstalar el hook
+  NO alcanza si el foco sigue en el aire.
+- **Fix**: `WindowActivation.OnUtilityWindowClosed` (cableado en `App`; corre al cerrar CUALQUIER
+  ventana abierta con `ShowFocused`) → DIFIERE ~80ms (para que el cierre se asiente) →
+  `WindowMethods.RestoreForegroundOrDesktop(...)` (foco a la top window real del desk, o al ESCRITORIO
+  si está vacío) → `ReinstallHook` de RED.
+- **OJO**: el `SetForegroundWindow` al escritorio NO siempre prende (Windows es caprichoso con darle
+  foco al escritorio por API) — el foreground puede quedar en 0 igual. La red real es el
+  **`ReinstallHook` DIFERIDO**: reinstalar DESPUÉS de que el cierre se asentó restaura la entrega
+  aunque el foco quede huérfano. Reinstalar INMEDIATO en el `Closed` (sin diferir) NO alcanza — fue el
+  primer intento fallido.
+
+**Regla transversal**: estos bugs de hook/foco se cazan SIEMPRE con instrumentación a archivo + el
+usuario reproduciendo y observando el PATRÓN, NUNCA con teoría. Las teorías "lindas" fallaron varias
+veces; el log y el patrón observado siempre ganaron.
+
 ---
 
 ## Convenciones del repo

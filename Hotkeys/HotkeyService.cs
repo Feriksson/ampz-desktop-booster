@@ -58,9 +58,21 @@ public sealed class HotkeyService : IDisposable
     /// </summary>
     public void ReinstallHook()
     {
-        _winDown = false;
-        _shiftDown = false;
-        _winComboConsumed = false;
+        // Re-sincronizamos los modificadores con su estado FÍSICO real — NO asumimos "soltado".
+        // Este reinstall lo dispara el watchdog de z-order de la barra, que NO sólo salta al salir
+        // de pantalla completa: también salta al navegar a un desk CON ventana (esa ventana toma el
+        // foreground y la barra re-evalúa su z-order). Forzar _winDown=false ahí descolgaba el combo
+        // Win+Numpad EN PLENO USO, con la tecla Win físicamente apretada — los desks VACÍOS no
+        // disparan el watchdog (por eso se podía rafaguear infinito entre ellos) y el primer desk
+        // CON ventana lo mataba. GetAsyncKeyState nos da la verdad del hardware en ese instante.
+        bool winDown = WindowMethods.IsKeyPhysicallyDown(WindowMethods.VK_LWIN)
+                    || WindowMethods.IsKeyPhysicallyDown(WindowMethods.VK_RWIN);
+        _winDown = winDown;
+        _shiftDown = WindowMethods.IsKeyPhysicallyDown(WindowMethods.VK_SHIFT);
+        // Si la Win ya NO está apretada, limpiamos la marca: no hay Win-up futuro que enmascarar.
+        // Si SIGUE apretada, la conservamos para que el masking del menú Inicio se haga al soltar.
+        if (!winDown) _winComboConsumed = false;
+
         _hook.Reinstall();
     }
 

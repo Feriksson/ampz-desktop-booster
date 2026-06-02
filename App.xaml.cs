@@ -122,6 +122,24 @@ public partial class App : Application
         // arregla", automático. Sin esto, las hotkeys se cuelgan al salir de un video fullscreen.
         bar.OnBarZOrderChanged = () => _hotkeys?.ReinstallHook();
 
+        // Al CERRAR una ventana utilitaria (Esc) en un desk SIN más ventanas, el foreground queda
+        // HUÉRFANO y el hook se cuelga. Reinstalar el hook NO alcanza si el foco sigue en el aire:
+        // hay que DEVOLVER el foco a algo real (la ventana del frente, o el escritorio — como las
+        // versiones viejas). Diferimos un toque para que el cierre se complete y Windows intente (y
+        // falle) resolver el foreground; recién ahí lo corregimos. El ReinstallHook va de RED, por
+        // si el ForceForeground tocó la entrega del hook.
+        WindowActivation.OnUtilityWindowClosed = () =>
+        {
+            var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
+            t.Tick += (_, _) =>
+            {
+                t.Stop();
+                Interop.WindowMethods.RestoreForegroundOrDesktop("AmpzDesktopBooster.exe");
+                _hotkeys?.ReinstallHook();
+            };
+            t.Start();
+        };
+
         // El overlay central — persistente, oculto hasta el primer cambio de desktop.
         var overlay = new OverlayWindow();
 
