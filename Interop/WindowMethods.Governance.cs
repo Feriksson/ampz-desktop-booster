@@ -16,6 +16,7 @@ internal static partial class WindowMethods
     public const int GWL_STYLE = -16;
     public const long WS_CHILD = 0x40000000;
     public const int SW_SHOWMAXIMIZED = 3;
+    public const int SW_MINIMIZE = 6;
     private const uint GW_OWNER = 4;
 
     [DllImport("user32.dll")]
@@ -59,6 +60,36 @@ internal static partial class WindowMethods
 
     /// <summary>Maximiza la ventana. ShowWindow(3) funciona aun en ventanas de otro desktop.</summary>
     public static void Maximize(IntPtr hWnd) => ShowWindow(hWnd, SW_SHOWMAXIMIZED);
+
+    /// <summary>
+    /// Minimiza TODAS las ventanas top-level reales de OTRAS apps en el desk ACTUAL — nuestro
+    /// "Mostrar escritorio", pero salteando las NUESTRAS (la barra, el overlay) para que la barra
+    /// NO se esconda. Reemplaza al Win+D nativo, que tapa la barra peleando el z-order — batalla
+    /// imposible para una AppBar de terceros (sólo la taskbar del shell está exenta). El hook de
+    /// teclado intercepta Win+D y llama acá en su lugar.
+    ///
+    /// Sólo toca el desk actual: las ventanas de otros escritorios virtuales figuran "cloaked" y se
+    /// saltean. Junta primero y minimiza después (no mutar mientras EnumWindows itera). Excluimos por
+    /// CLASE al escritorio (Progman/WorkerW) y a la taskbar (Shell_TrayWnd), que pasan IsRealTopLevel.
+    /// </summary>
+    public static void MinimizeForeignTopLevel(string ownProcess)
+    {
+        var targets = new List<IntPtr>();
+        EnumWindows((hwnd, _) =>
+        {
+            if (!IsRealTopLevel(hwnd) || IsCloaked(hwnd)) return true; // no real / otro desk / fantasma
+            if (string.Equals(ProcessNameOf(hwnd), ownProcess, StringComparison.OrdinalIgnoreCase))
+                return true;                                            // NO minimizar lo nuestro (la barra)
+            string cls = ClassOf(hwnd);
+            if (cls is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd")
+                return true;                                            // escritorio / taskbar del shell
+            targets.Add(hwnd);
+            return true;
+        }, IntPtr.Zero);
+
+        foreach (var h in targets)
+            ShowWindow(h, SW_MINIMIZE);
+    }
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmGetWindowAttribute(IntPtr hWnd, int dwAttribute, out int pvAttribute, int cbAttribute);

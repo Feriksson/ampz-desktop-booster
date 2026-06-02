@@ -176,6 +176,7 @@ del hook no se puede bloquear).
 | `Win+F11` | Abrir Descargas |
 | `Win+F12` | Panel de refresh rate (Hz) |
 | `` Win+` `` (backtick) | Abrir terminal en el path actual del Explorer |
+| `Win+D` | **Interceptado**: reemplaza el "Mostrar escritorio" nativo por uno propio que minimiza todo **menos la barra** (ver ⚠ abajo) |
 
 Las ventanas de Variables y Notas son de **instancia única**: re-presionar el atajo con la ventana
 abierta NO abre otra (Variables dispara el path predeterminado; Notas la trae al frente).
@@ -290,6 +291,44 @@ mantenía vivo el hook.
 **Regla transversal**: estos bugs de hook/foco se cazan SIEMPRE con instrumentación a archivo + el
 usuario reproduciendo y observando el PATRÓN, NUNCA con teoría. Las teorías "lindas" fallaron varias
 veces; el log y el patrón observado siempre ganaron.
+
+### ⚠ "Mostrar escritorio" (Win+D / Win+M / gesto de 3 dedos) escondía la barra — DOS causas distintas
+
+Síntoma: la barra desaparecía al apretar `Win+D` o al hacer el gesto del touchpad "minimizar todo"
+(3 dedos hacia abajo). Resultó ser DOS problemas con DOS causas distintas, ambos cazados con
+instrumentación a archivo (la regla transversal de arriba). NO los deshagas:
+
+**Causa 1 — `Win+D` empuja el z-order, y esa guerra NO se puede ganar.**
+Instrumentado: `Win+D` NO minimiza ni oculta la barra (cero `WM_SIZE`/`WM_SHOWWINDOW`/`StateChanged`);
+le manda un `WM_WINDOWPOSCHANGING` con `hwndInsertAfter=HWND_BOTTOM` → la hunde detrás del escritorio.
+Probado y DESCARTADO (no repetir): vetar el reorden con `SWP_NOZORDER`, redirigir a `HWND_TOPMOST`, y
+re-subir a topmost diferido — Windows re-hunde la barra al instante (gana la guerra de z-order). La
+taskbar del shell sobrevive porque está exenta; una AppBar de terceros NO (confirmado por Microsoft Q&A).
+- **Fix**: interceptar `Win+D` en el hook de teclado (`HotkeyService`: `VK_D` con `_winDown` →
+  `e.Suppress=true` + `_winComboConsumed=true` para enmascarar el Win-up → evento `ShowDesktopRequested`).
+  En vez del Show Desktop nativo, hacemos el NUESTRO: `WindowMethods.MinimizeForeignTopLevel` minimiza
+  todas las top-level reales del desk actual **salteando nuestro proceso** (la barra/overlay) y el
+  escritorio/taskbar por clase. Cableado en `App` con la MISMA red anti-foco-huérfano que el cierre de
+  ventanas (diferir 80ms → `RestoreForegroundOrDesktop` + `ReinstallHook`, porque al minimizar todo el
+  foco queda huérfano y cuelga el hook). `Win+M` sobrevive solo (no toca tool windows/appbars).
+
+**Causa 2 — el gesto de 3 dedos disparaba NUESTRA propia supresión de fullscreen (el bug real, no obvio).**
+El gesto NO es teclado → el hook no lo puede interceptar. Pero el log reveló algo inesperado: la barra
+NO se escondía por el z-order del gesto, sino porque **Windows manda `ABN_FULLSCREENAPP(true)` al
+"mostrar escritorio"**, y nuestro handler de AppBar lo obedecía a ciegas (igual que con un juego real)
+→ `SetFullscreenSuppressed(true)` → 750ms después NOSOTROS MISMOS bajábamos la barra con `ApplyZOrder`.
+Clave del diagnóstico: aparecía `SetFullscreenSuppressed(True)` SIN el log de `IsForegroundFullscreenOnPrimary`
+→ el suppress venía de `ABN_FULLSCREENAPP`, no del `FullscreenWatcher` (que ya excluye el escritorio por
+geometría).
+- **Fix**: en el handler de `ABN_FULLSCREENAPP` (`AppBarManager.WndProc`), **cross-check por geometría**:
+  solo suprimimos si `IsForegroundFullscreenOnPrimary` confirma que hay de verdad una ventana tapando el
+  monitor primario. En "mostrar escritorio" el foreground es el escritorio (excluido) → geometría false →
+  NO suprimimos. En un fullscreen real la ventana cubre el monitor → geometría true → suprime igual. NO
+  saques este cross-check: sin él, cualquier "mostrar escritorio" (gesto, botón de la taskbar) vuelve a
+  esconder la barra. El fullscreen REAL (YouTube con F, juego) sigue ocultándola y reapareciendo al salir.
+
+**Regla transversal (otra vez)**: la Causa 2 parecía ser "el gesto empuja el z-order" (teoría linda) y
+era NUESTRO propio `ABN_FULLSCREENAPP` mal interpretado. Solo el log lo reveló. Instrumentá, no teorices.
 
 ---
 

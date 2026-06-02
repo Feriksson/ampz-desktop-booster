@@ -28,6 +28,9 @@ public sealed class HotkeyService : IDisposable
     // Son los que interceptamos con Win.
     private const uint VK_F1 = 0x70, VK_F12 = 0x7B, VK_OEM_3 = 0xC0, VK_OEM_2 = 0xBF;
 
+    // 'D' = 0x44. Interceptamos Win+D para reemplazar el "Mostrar escritorio" nativo.
+    private const uint VK_D = 0x44;
+
     private readonly LowLevelKeyboardHook _hook = new();
     private bool _winDown;
     private bool _shiftDown;
@@ -42,6 +45,10 @@ public sealed class HotkeyService : IDisposable
 
     /// <summary>Win + F-key o Win + backtick. Args: (vkCode, shift).</summary>
     public event Action<int, bool>? WinFunctionKey;
+
+    /// <summary>Win + D ("Mostrar escritorio"): el shell NO lo ve (lo tragamos); el caller decide qué
+    /// hacer en su lugar (minimizar todo menos la barra).</summary>
+    public event Action? ShowDesktopRequested;
 
     public void Start()
     {
@@ -135,6 +142,18 @@ public sealed class HotkeyService : IDisposable
 
         if (!e.IsDown)
             return;
+
+        // ── Win + D: interceptamos el "Mostrar escritorio" nativo. El Win+D del shell esconde la
+        //    barra peleando el z-order (batalla imposible para una AppBar de terceros), así que lo
+        //    TRAGAMOS y disparamos NUESTRA versión (minimizar todo menos la barra). Marcamos el combo
+        //    consumido → el Win-up se enmascara y NO se abre el menú Inicio. ──
+        if (_winDown && e.VirtualKey == VK_D)
+        {
+            e.Suppress = true;
+            _winComboConsumed = true;
+            ShowDesktopRequested?.Invoke();
+            return;
+        }
 
         // ── Numpad (por scancode, a prueba de NumLock) ──
         var key = NumpadDecoder.Decode(e.ScanCode, e.IsExtended);

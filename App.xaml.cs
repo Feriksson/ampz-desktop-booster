@@ -140,6 +140,26 @@ public partial class App : Application
             t.Start();
         };
 
+        // Win+D ("Mostrar escritorio"): lo intercepta el hook (el shell NUNCA lo ve) y en su lugar
+        // minimizamos TODO menos lo nuestro → la barra queda firme. La barra no puede ganarle la
+        // guerra de z-order al Show Desktop nativo (es una AppBar de terceros, no la taskbar del
+        // shell), así que reemplazamos el comportamiento entero. Diferido al Dispatcher: el callback
+        // del hook no se puede bloquear. Tras minimizar todo, el foreground puede quedar HUÉRFANO
+        // (mismo mecanismo que cerrar la última ventana de un desk) → aplicamos la MISMA red de
+        // OnUtilityWindowClosed: ~80ms a que se asiente, foco al escritorio y ReinstallHook.
+        _hotkeys.ShowDesktopRequested += () => Dispatcher.BeginInvoke(() =>
+        {
+            Interop.WindowMethods.MinimizeForeignTopLevel("AmpzDesktopBooster.exe");
+            var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
+            t.Tick += (_, _) =>
+            {
+                t.Stop();
+                Interop.WindowMethods.RestoreForegroundOrDesktop("AmpzDesktopBooster.exe");
+                _hotkeys?.ReinstallHook();
+            };
+            t.Start();
+        });
+
         // El overlay central — persistente, oculto hasta el primer cambio de desktop.
         var overlay = new OverlayWindow();
 

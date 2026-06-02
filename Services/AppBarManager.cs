@@ -156,8 +156,19 @@ public sealed class AppBarManager
                 // lParam != 0 → ABRE: nos corremos al fondo del z-order para no taparla, igual que la
                 // taskbar real de Windows. lParam == 0 → CIERRA: volvemos a topmost. El borderless
                 // (YouTube con F, etc.) NO dispara esto: de eso se encarga FullscreenWatcher por rect.
+                //
+                // OJO (bug del gesto "mostrar escritorio"): Windows manda ABN_FULLSCREENAPP(true)
+                // TAMBIÉN al "mostrar escritorio" (gesto de 3 dedos del touchpad, botón de la taskbar),
+                // que NO es una app en fullscreen sino lo CONTRARIO. Confirmado por instrumentación: el
+                // suppress llegaba por acá (no por FullscreenWatcher) y NOSOTROS mismos bajábamos la
+                // barra 750ms después. Cross-check por GEOMETRÍA: sólo suprimimos si de verdad hay una
+                // ventana tapando el monitor primario. En "mostrar escritorio" el foreground es el
+                // escritorio (Progman/WorkerW, excluido) → no suprimimos → la barra NO se esconde. Para
+                // un fullscreen real la ventana SÍ cubre el monitor → la geometría confirma y suprime.
                 case NativeMethods.ABN_FULLSCREENAPP:
-                    SetFullscreenSuppressed(lParam != IntPtr.Zero);
+                    bool reallyFullscreen = lParam != IntPtr.Zero
+                        && Interop.WindowMethods.IsForegroundFullscreenOnPrimary(_hWnd);
+                    SetFullscreenSuppressed(reallyFullscreen);
                     handled = true;
                     break;
             }
