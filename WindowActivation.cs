@@ -41,6 +41,28 @@ internal static class WindowActivation
         => ForceWithRetry(window);
 
     /// <summary>
+    /// Cierra la ventana sola cuando pierde el foreground: al hacer click AFUERA o al cambiar de
+    /// virtual desktop (cambiar de desk activa una ventana del nuevo desk → ésta se DESACTIVA, así
+    /// que un solo mecanismo cubre ambos). Para pickers/flyouts efímeros (TaskPicker, TaskDetail).
+    ///
+    /// ⚠ Se ARMA recién a los 700ms — NO antes. <see cref="ForceWithRetry"/> machaca el foreground
+    /// hasta ~600ms tras el Show(); en ese tramo la activación rebota (Deactivated→Activated) y un
+    /// Deactivated crudo cerraría la ventana al instante de abrirla. Esperar pasado ese techo evita
+    /// el cierre-en-la-cara. 700ms es imperceptible: el usuario está leyendo/tipeando, no clickeando
+    /// afuera en el primer instante. Corre en el hilo de UI (estas ventanas se abren ahí).
+    /// </summary>
+    public static void CloseOnDeactivate(this Window window)
+    {
+        bool armed = false;
+        var arm = new DispatcherTimer { Interval = System.TimeSpan.FromMilliseconds(700) };
+        arm.Tick += (_, _) => { arm.Stop(); armed = true; };
+
+        window.Loaded += (_, _) => arm.Start();
+        window.Deactivated += (_, _) => { if (armed) window.Close(); };
+        window.Closed += (_, _) => arm.Stop(); // si cierra antes de armar, no dejamos el timer colgado
+    }
+
+    /// <summary>
     /// Fuerza foreground + foco de teclado, con REINTENTOS. Un solo <c>ForceForeground</c> sincrónico
     /// justo después de <c>Show()</c> es el instante MÁS racy: todavía se está soltando la tecla Win
     /// del hotkey y WPF está activando la ventana por su cuenta, así que el <c>SetForegroundWindow</c>

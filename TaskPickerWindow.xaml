@@ -1,0 +1,35 @@
+<Window x:Class="AmpzDesktopBooster.TaskPickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Elegir tarea"
+        Width="520" SizeToContent="Height"
+        WindowStyle="None" ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False" Topmost="True"
+        Background="#1E1E1E" UseLayoutRounding="True">
+
+    <Border BorderBrush="#33FFFFFF" BorderThickness="1" Padding="16">
+        <StackPanel>
+            <TextBlock x:Name="HeaderText" Foreground="#F2F2F2" FontFamily="Segoe UI" FontSize="14"
+                       FontWeight="SemiBold" Text="Elegir una tarea para este escritorio" Margin="0,0,0,2" />
+            <TextBlock x:Name="SubHeaderText" Foreground="#9A9A9A" FontFamily="Segoe UI" FontSize="11"
+                       Margin="0,0,0,10" />
+
+            <TextBox x:Name="FilterBox" FontFamily="Segoe UI" FontSize="13"
+                     Background="#2A2A2A" Foreground="#F2F2F2" BorderBrush="#444"
+                     Padding="6,4" Margin="0,0,0,8" />
+
+            <ListBox x:Name="TaskList" Height="280"
+                     FontFamily="Segoe UI" FontSize="13"
+                     Background="#161616" Foreground="#E6E6EA" BorderBrush="#333"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+
+            <TextBlock Foreground="#6E6E78" FontFamily="Segoe UI" FontSize="10" Margin="0,8,0,0"
+                       Text="Enter: anclar (fila / único resultado) · Esc: cerrar" />
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                <Button x:Name="CloseBtn" Content="Cerrar" Width="90" Height="26" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

@@ -13,8 +13,12 @@
 
     <!-- Borde + fondo de la barra -->
     <Border Background="{StaticResource BarBackground}"
-            BorderBrush="{StaticResource Separator}"
+            BorderBrush="#2A4FC3F7"
             BorderThickness="0,1,0,0">
+        <Border.Effect>
+            <DropShadowEffect Color="#4FC3F7" Direction="270"
+                              ShadowDepth="2" BlurRadius="10" Opacity="0.12" />
+        </Border.Effect>
         <Grid Margin="14,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />   <!-- Bloque izquierdo: hora/fecha -->
@@ -61,30 +65,26 @@
                         <!-- Sesión (5h) -->
                         <StackPanel x:Name="Gauge5h" Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Text="5h" Style="{StaticResource WidgetLabel}" Margin="0,0,4,2" />
-                            <Border Width="26" Height="7" CornerRadius="3.5" Background="{StaticResource Separator}" VerticalAlignment="Center">
-                                <Border x:Name="Fill5h" Width="0" CornerRadius="3.5" Background="{StaticResource Accent}" HorizontalAlignment="Left" />
+                            <Border Width="28" Height="8" CornerRadius="4" Background="#1B2D36" VerticalAlignment="Center">
+                                <Border x:Name="Fill5h" Width="0" CornerRadius="4" Background="{StaticResource Accent}" HorizontalAlignment="Left" />
                             </Border>
                             <TextBlock x:Name="Pct5h" Style="{StaticResource WidgetValue}" Margin="5,0,0,0" />
                         </StackPanel>
 
-                        <Rectangle Width="1" Height="11" Fill="{StaticResource Separator}" Opacity="0.5" Margin="5,0" VerticalAlignment="Center" />
-
-                        <!-- Semanal · todos los modelos -->
+                        <Rectangle Width="1" Height="11" Fill="{StaticResource Separator}" Opacity="0.3" Margin="5,0" VerticalAlignment="Center" />
                         <StackPanel x:Name="Gauge7d" Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Text="7d" Style="{StaticResource WidgetLabel}" Margin="0,0,4,2" />
-                            <Border Width="26" Height="7" CornerRadius="3.5" Background="{StaticResource Separator}" VerticalAlignment="Center">
-                                <Border x:Name="Fill7d" Width="0" CornerRadius="3.5" Background="{StaticResource Accent}" HorizontalAlignment="Left" />
+                            <Border Width="28" Height="8" CornerRadius="4" Background="#1B2D36" VerticalAlignment="Center">
+                                <Border x:Name="Fill7d" Width="0" CornerRadius="4" Background="{StaticResource Accent}" HorizontalAlignment="Left" />
                             </Border>
                             <TextBlock x:Name="Pct7d" Style="{StaticResource WidgetValue}" Margin="5,0,0,0" />
                         </StackPanel>
 
-                        <Rectangle Width="1" Height="11" Fill="{StaticResource Separator}" Opacity="0.5" Margin="5,0" VerticalAlignment="Center" />
-
-                        <!-- Semanal · Sonnet -->
+                        <Rectangle Width="1" Height="11" Fill="{StaticResource Separator}" Opacity="0.3" Margin="5,0" VerticalAlignment="Center" />
                         <StackPanel x:Name="GaugeSonnet" Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Text="S" Style="{StaticResource WidgetLabel}" Margin="0,0,4,2" />
-                            <Border Width="26" Height="7" CornerRadius="3.5" Background="{StaticResource Separator}" VerticalAlignment="Center">
-                                <Border x:Name="FillSonnet" Width="0" CornerRadius="3.5" Background="{StaticResource Accent}" HorizontalAlignment="Left" />
+                            <Border Width="28" Height="8" CornerRadius="4" Background="#1B2D36" VerticalAlignment="Center">
+                                <Border x:Name="FillSonnet" Width="0" CornerRadius="4" Background="{StaticResource Accent}" HorizontalAlignment="Left" />
                             </Border>
                             <TextBlock x:Name="PctSonnet" Style="{StaticResource WidgetValue}" Margin="5,0,0,0" />
                         </StackPanel>
@@ -116,6 +116,28 @@
                     <TextBlock x:Name="BatteryText" Style="{StaticResource WidgetValue}" />
                 </StackPanel>
 
+                <!-- Tarea activa del desk: OCULTO hasta pickear una con Win+NumLock. Menos jerarquía
+                     que el widget de Desktop a propósito (es info secundaria): sin dot de color, fondo
+                     más sutil (#08 vs #0C), ícono y texto tenues, título recortado con elipsis. Todo
+                     el bloque es clickable (Cursor=Hand + Background transparente para hit-test) → abre
+                     el TaskDetailWindow. El separador sólo se ve cuando el widget está visible. -->
+                <StackPanel x:Name="TaskWidget" Orientation="Horizontal" VerticalAlignment="Center"
+                            Visibility="Collapsed" Cursor="Hand" Background="Transparent"
+                            ToolTip="Tarea activa — click para ver el detalle">
+                    <Rectangle x:Name="TaskSeparator" Width="1" Height="16" Fill="{StaticResource Separator}" Margin="14,0" />
+                    <Border Background="#08FFFFFF" CornerRadius="8" Padding="7,2">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="&#xE73A;" Style="{StaticResource WidgetIcon}" FontSize="11"
+                                       Foreground="{StaticResource TextMuted}" Margin="0,0,6,0" />
+                            <TextBlock x:Name="TaskIdText" Style="{StaticResource WidgetLabel}"
+                                       Foreground="{StaticResource Accent}" Margin="0,0,6,0" />
+                            <TextBlock x:Name="TaskTitleText" Style="{StaticResource WidgetLabel}"
+                                       Foreground="{StaticResource TextPrimary}"
+                                       MaxWidth="150" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
                 <!-- Desktop actual: ancho FIJO (288) para que la barra NO se desplace al cambiar
                      de desktop. Adentro, dos modos sobre el mismo espacio (como el legacy):
                        · DUAL  → con proyecto: dot + nombre a la izquierda + proyecto a la derecha
@@ -130,24 +152,28 @@
                     <Rectangle Grid.Column="0" Width="1" Height="16" Fill="{StaticResource Separator}" Margin="14,0" />
 
                     <!-- Modo DUAL: desk CON proyecto -->
-                    <Grid x:Name="DeskDualPanel" Grid.Column="1" VerticalAlignment="Center">
+                    <Border Grid.Column="1" Background="#0CFFFFFF" CornerRadius="10" Padding="8,2">
+                    <Grid x:Name="DeskDualPanel" VerticalAlignment="Center">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />  <!-- dot -->
                             <ColumnDefinition Width="70" />    <!-- nombre (fijo) -->
                             <ColumnDefinition Width="*" />     <!-- proyecto (resto, con elipsis) -->
                         </Grid.ColumnDefinitions>
-                        <Ellipse Grid.Column="0" x:Name="DeskDotDual" Width="9" Height="9" Margin="0,0,7,0" VerticalAlignment="Center" />
+                        <Ellipse Grid.Column="0" x:Name="DeskDotDual" Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center" />
                         <TextBlock Grid.Column="1" x:Name="DeskNameDual" Style="{StaticResource WidgetValue}" />
                         <TextBlock Grid.Column="2" x:Name="DeskProjectText" Style="{StaticResource WidgetValue}"
                                    Foreground="#FFD700" TextTrimming="CharacterEllipsis" />
                     </Grid>
+                    </Border>
 
                     <!-- Modo SOLO: desk SIN proyecto (centrado) -->
-                    <StackPanel x:Name="DeskSoloPanel" Grid.Column="1" Orientation="Horizontal"
+                    <Border Grid.Column="1" Background="#0CFFFFFF" CornerRadius="10" Padding="8,2">
+                    <StackPanel x:Name="DeskSoloPanel" Orientation="Horizontal"
                                 HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <Ellipse x:Name="DeskDotSolo" Width="9" Height="9" Margin="0,0,7,0" VerticalAlignment="Center" />
+                        <Ellipse x:Name="DeskDotSolo" Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center" />
                         <TextBlock x:Name="DeskNameSolo" Style="{StaticResource WidgetValue}" />
                     </StackPanel>
+                    </Border>
                 </Grid>
 
             </StackPanel>

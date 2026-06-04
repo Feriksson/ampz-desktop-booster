@@ -50,6 +50,11 @@ public sealed class HotkeyService : IDisposable
     /// hacer en su lugar (minimizar todo menos la barra).</summary>
     public event Action? ShowDesktopRequested;
 
+    /// <summary>Win + NumLock: traer la lista de tareas abiertas para pickear una. El NumLock SIEMPRE
+    /// se traga (no togglea); con Win apretada, además, dispara esto. El caller decide (picker de
+    /// tareas si la integración está activa).</summary>
+    public event Action? TasksRequested;
+
     public void Start()
     {
         _hook.KeyEvent += OnKeyEvent;
@@ -89,6 +94,14 @@ public sealed class HotkeyService : IDisposable
         // nunca togglea → queda clavado en OFF, sin polling.
         if (e.VirtualKey == VK_NUMLOCK)
         {
+            // Win + NumLock: además de tragarlo, dispara el picker de tareas. Sólo en el DOWN (el up
+            // también es VK_NUMLOCK y caería acá). Marcamos el combo consumido para enmascarar el
+            // Win-up — si no, el NumLock suprimido deja el Win "tap solo" y abre el menú Inicio.
+            if (e.IsDown && _winDown)
+            {
+                _winComboConsumed = true;
+                TasksRequested?.Invoke();
+            }
             e.Suppress = true;
             return;
         }

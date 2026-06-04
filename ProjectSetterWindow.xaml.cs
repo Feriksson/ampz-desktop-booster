@@ -88,6 +88,16 @@ public partial class ProjectSetterWindow : Window
         if (name == "")
             return;
 
+        // El nombre de proyecto no puede pasar de 23 caracteres. El textbox ya lo frena con MaxLength,
+        // pero una fila del historial creada antes de esta regla podría superarlo → la cortamos acá.
+        if (name.Length > 23)
+        {
+            MessageBox.Show(
+                $"El nombre del proyecto no puede tener más de 23 caracteres (tiene {name.Length}).",
+                "Nombre demasiado largo", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         _store.SetDeskProject(_deskIdx, name);
         _onChanged();
         Close();

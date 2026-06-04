@@ -34,6 +34,9 @@ public partial class BarWindow : Window
     /// <summary>Lo invoca el item "Configuración" del tray. Lo setea App antes del Show().</summary>
     public Action? OpenConfig { get; set; }
 
+    /// <summary>Click en el widget de tarea activa → abrir el detalle. Lo setea App (lo rutea al router).</summary>
+    public Action? OnTaskWidgetClicked { get; set; }
+
     /// <summary>
     /// App lo setea con HotkeyService.ReinstallHook. Lo reenviamos al AppBar: cuando la barra cambia
     /// su z-order (al entrar/salir de pantalla completa), eso corrompe la entrega de teclas del hook
@@ -51,6 +54,9 @@ public partial class BarWindow : Window
 
         // La fecha arranca ya, sin esperar el primer tick.
         UpdateDate();
+
+        // Click en el widget de tarea activa → el detalle (lo rutea App al router).
+        TaskWidget.MouseLeftButtonUp += (_, _) => OnTaskWidgetClicked?.Invoke();
 
         SourceInitialized += OnSourceInitialized;
         Closing += OnClosing;
@@ -399,6 +405,25 @@ public partial class BarWindow : Window
             DeskDotSolo.Fill = dot;
             DeskNameSolo.Text = name;
         }
+    }
+
+    /// <summary>
+    /// Actualiza el widget de tarea activa (entre RAM y Desktop). null → lo oculta (el estado normal:
+    /// arranca oculto y vuelve a ocultarse al desanclar). Con tarea, muestra identifier + título
+    /// recortado. Lo llama App al cambiar de desk y tras pickear/desanclar, leyendo la TaskSessionStore.
+    /// </summary>
+    public void UpdateDeskTask(Services.Tasks.TaskItem? task)
+    {
+        if (task is null)
+        {
+            TaskWidget.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        TaskIdText.Text = task.Identifier;
+        TaskIdText.Visibility = string.IsNullOrEmpty(task.Identifier) ? Visibility.Collapsed : Visibility.Visible;
+        TaskTitleText.Text = task.Title;
+        TaskWidget.Visibility = Visibility.Visible;
     }
 
     // Alt+F4 / "Cerrar" del menú de sistema llegan como WM_SYSCOMMAND con wParam = SC_CLOSE.

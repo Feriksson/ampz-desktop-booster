@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Threading;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Hotkeys;
+using AmpzDesktopBooster.Services.Tasks;
 using AmpzDesktopBooster.Services.Usage;
 
 namespace AmpzDesktopBooster;
@@ -72,6 +73,7 @@ public partial class App : Application
         _appsConfig = Apps.AppsConfig.Load();
         var pins = new PinStore();
         var restrictions = new RestrictionStore();
+        var taskSession = new TaskSessionStore(); // tarea activa por desk (efímera, igual que la sesión de proyectos)
         desktops.ProjectLookup = projects.GetDeskProject; // el proyecto activo sale de la sesión
         Apps.Shell.Desktops = desktops; // ventaneo de terminal POR ESCRITORIO (Win+`, "Abrir con")
 
@@ -114,7 +116,13 @@ public partial class App : Application
         {
             int c = desktops.Current;
             bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c));
-        });
+        },
+            taskSession,
+            // Refresca el widget de tarea del desk ACTUAL (tras pickear o desanclar).
+            () => bar.UpdateDeskTask(taskSession.GetDeskTask(desktops.Current)));
+
+        // Click en el widget de tarea → el detalle (lo orquesta el router, que tiene la sesión).
+        bar.OnTaskWidgetClicked = () => _router.ShowTaskDetail();
 
         // Watchdog del hook: cuando la barra cambia su z-order (ocultarse/reaparecer en pantalla
         // completa), Windows corta la entrega de teclas al hook global hasta el próximo cambio de
@@ -181,6 +189,7 @@ public partial class App : Application
         {
             bar.EnsurePinned(); // insurance: re-pin por si el del arranque no prendió
             bar.UpdateDesk(desktops.GetName(idx), desktops.GetProject(idx));
+            bar.UpdateDeskTask(taskSession.GetDeskTask(idx)); // tarea activa de ESTE desk (o se oculta)
             _pendingOverlayIdx = idx;
             _overlayDebounce!.Stop();
             _overlayDebounce.Start();
@@ -190,9 +199,11 @@ public partial class App : Application
         _hotkeys.Start();
         _governor.Start();
 
-        // Estado inicial del widget (sin overlay — no hubo "cambio").
+        // Estado inicial del widget (sin overlay — no hubo "cambio"). El widget de tarea arranca
+        // oculto: la sesión es efímera, no hay tarea activa hasta que el usuario pickee una.
         int current = desktops.Current;
         bar.UpdateDesk(desktops.GetName(current), desktops.GetProject(current));
+        bar.UpdateDeskTask(taskSession.GetDeskTask(current));
     }
 
     /// <summary>Abre la ventana de configuración (instancia única — si ya está, la trae al frente).</summary>

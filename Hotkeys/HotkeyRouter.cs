@@ -4,6 +4,7 @@ using AmpzDesktopBooster.Apps;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Interop;
 using AmpzDesktopBooster.Services;
+using AmpzDesktopBooster.Services.Tasks;
 
 namespace AmpzDesktopBooster.Hotkeys;
 
@@ -32,6 +33,8 @@ public sealed class HotkeyRouter
     private readonly RestrictionStore _restrictions;
     private readonly AppShortcutStore _shortcuts;
     private readonly Action _refreshCurrentDesk;
+    private readonly TaskSessionStore _taskSession;
+    private readonly Action _refreshTaskWidget;
 
     // Ventana de variables actualmente abierta (para el "re-press dispara el predeterminado").
     private ProjectPathsWindow? _pathsWindow;
@@ -47,7 +50,7 @@ public sealed class HotkeyRouter
 
     public HotkeyRouter(HotkeyService hotkeys, DesktopService desktops, ProjectStore projects,
         AppsConfig apps, PinStore pins, RestrictionStore restrictions, AppShortcutStore shortcuts,
-        Action refreshCurrentDesk)
+        Action refreshCurrentDesk, TaskSessionStore taskSession, Action refreshTaskWidget)
     {
         _desktops = desktops;
         _projects = projects;
@@ -56,8 +59,11 @@ public sealed class HotkeyRouter
         _restrictions = restrictions;
         _shortcuts = shortcuts;
         _refreshCurrentDesk = refreshCurrentDesk;
+        _taskSession = taskSession;
+        _refreshTaskWidget = refreshTaskWidget;
         hotkeys.HotkeyFired += OnHotkeyFired;
         hotkeys.WinFunctionKey += OnWinFunctionKey;
+        hotkeys.TasksRequested += OnTasksRequested;
     }
 
     private void OnWinFunctionKey(int vk, bool shift)
@@ -280,6 +286,73 @@ public sealed class HotkeyRouter
     private void ShowDeskPicker()
     {
         var w = new DeskPickerWindow(_desktops, _projects, jumpIdx => _desktops.GoTo(jumpIdx));
+        w.ShowFocused();
+    }
+
+    // ── Tareas (Win+NumLock pickear · click en el widget abre el detalle) ────────
+
+    /// <summary>
+    /// Win+NumLock: el callback del hook no se puede bloquear y vamos a hacer I/O de red (fetch de
+    /// tareas) + abrir ventana → diferimos al Dispatcher, igual que el resto de los hotkeys.
+    /// </summary>
+    private void OnTasksRequested() =>
+        Application.Current.Dispatcher.BeginInvoke(async () => await ShowTaskPicker());
+
+    /// <summary>
+    /// Trae las tareas abiertas del provider activo y abre el picker. "Solo si la integración está
+    /// activa Y funcional": si Provider="none" (o id desconocido) → CreateProvider devuelve null →
+    /// avisamos por toast y salimos; si el provider falla o no trae nada → toast y salimos. La tarea
+    /// elegida se ancla al desk ACTUAL (sesión efímera) y el widget aparece.
+    ///
+    /// Cargamos TasksSettings fresco en cada invocación (es un json chico): así toma al instante
+    /// cualquier cambio hecho en Config → Tareas sin reiniciar la app.
+    /// </summary>
+    private async System.Threading.Tasks.Task ShowTaskPicker()
+    {
+        var provider = TasksService.CreateProvider(TasksSettings.Load());
+        if (provider is null)
+        {
+            Toasts.Info("Tareas: integración apagada",
+                "Activá Vikunja o JIRA en Configuración → Tareas.");
+            return;
+        }
+
+        var result = await provider.GetOpenTasksAsync();
+        if (!result.Ok)
+        {
+            Toasts.Error("No se pudieron traer las tareas", result.Error ?? "");
+            return;
+        }
+        if (result.Items.Count == 0)
+        {
+            Toasts.Info("Sin tareas abiertas", "No hay tareas para pickear ahora mismo.");
+            return;
+        }
+
+        int idx = _desktops.Current;
+        var w = new TaskPickerWindow(result.Items, _desktops.GetName(idx), picked =>
+        {
+            _taskSession.SetDeskTask(idx, picked);
+            _refreshTaskWidget(); // el widget aparece con la tarea recién anclada
+        });
+        w.ShowFocused();
+    }
+
+    /// <summary>
+    /// Click en el widget de tarea → mini-panel de detalle. Si el desk no tiene tarea activa (no
+    /// debería: el widget está oculto sin tarea) no hacemos nada. "Elegir otra" reabre el picker;
+    /// "Desanclar" la saca de la sesión y oculta el widget.
+    /// </summary>
+    public void ShowTaskDetail()
+    {
+        int idx = _desktops.Current;
+        var task = _taskSession.GetDeskTask(idx);
+        if (task is null)
+            return;
+
+        var w = new TaskDetailWindow(task,
+            onPickAnother: () => Application.Current.Dispatcher.BeginInvoke(async () => await ShowTaskPicker()),
+            onUnpin: () => { _taskSession.RemoveDeskTask(idx); _refreshTaskWidget(); });
         w.ShowFocused();
     }
 
