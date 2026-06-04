@@ -17,8 +17,13 @@ public static class PathOpener
 {
     public enum Result { Opened, NotFound, Error }
 
-    /// <summary>Abre la variable: si es URL → browser; si es path → explorer/asociación del SO.</summary>
-    public static Result Open(string value)
+    /// <summary>
+    /// Abre la variable: si es URL → browser; si es path → explorer/asociación del SO.
+    /// <paramref name="targetMonitor"/> es el HMONITOR donde está el usuario (el de la ventana de
+    /// Variables); SÓLO se usa para carpetas, para decidir EN QUÉ pantalla mostrarlas (ver
+    /// <see cref="OpenFolderHere"/>). <c>Zero</c> (default) → comportamiento simple sin ventaneo.
+    /// </summary>
+    public static Result Open(string value, IntPtr targetMonitor = default)
     {
         value = value.Trim();
         if (value == "")
@@ -34,18 +39,16 @@ public static class PathOpener
             }
 
             // Path de filesystem: validar existencia antes de abrir (como el legacy).
-            if (Directory.Exists(value) || File.Exists(value))
+            if (Directory.Exists(value))
             {
+                OpenFolderHere(value, targetMonitor);
+                return Result.Opened;
+            }
+            if (File.Exists(value))
+            {
+                // Un archivo abre una app/pestaña de ventana NO identificable de antemano: no podemos
+                // garantizar foco ni monitor, así que no lo intentamos (sería humo). Abrir y listo.
                 Process.Start(new ProcessStartInfo(value) { UseShellExecute = true });
-                // Sólo carpetas: la ventana del Explorer es identificable (CabinetWClass + nombre de
-                // la carpeta), así que le forzamos el foreground. La ventana la crea explorer.exe (ya
-                // vivo), NO nosotros, y encima venimos de un hotkey global → el anti-robo de foco de
-                // Windows la dejaba en segundo plano. Sin esto, abrir la carpeta y disparar Win+`
-                // acto seguido leía el Escritorio (el foreground real) en vez de esta carpeta.
-                // Un archivo o URL abren una app/pestaña de ventana NO identificable de antemano:
-                // ahí no podemos garantizar el foco, así que no lo intentamos (sería humo).
-                if (Directory.Exists(value))
-                    FocusFolderWhenReady(value);
                 return Result.Opened;
             }
             return Result.NotFound;
@@ -57,22 +60,70 @@ public static class PathOpener
     }
 
     /// <summary>
-    /// Trae al frente la ventana de Explorer recién abierta para <paramref name="dir"/>. La
-    /// identifica por clase (<c>CabinetWClass</c>) + título (el nombre de la carpeta) + escritorio
-    /// virtual actual. El filtro por desk evita agarrar otra carpeta del MISMO nombre abierta en OTRO
-    /// escritorio: traerla al frente nos saltaría de desk. El desk actual lo resolvemos por la capa
-    /// alta (<see cref="Shell.Desktops"/>); si todavía no está inyectada, no filtramos por desk.
+    /// Abre la CARPETA <paramref name="dir"/> trayéndola al monitor donde está el usuario
+    /// (<paramref name="targetMonitor"/>), sin catapultarlo a otra pantalla. Las ventanas de Explorer
+    /// son identificables (clase <c>CabinetWClass</c> + título = nombre de la carpeta), filtradas al
+    /// escritorio virtual actual para no agarrar una carpeta homónima de OTRO desk.
+    ///
+    /// La regla (decidida con el usuario):
+    ///   1. Si esa carpeta YA está abierta en MI monitor → sólo la traigo al frente. Cubre el
+    ///      "estaba atrás y no venía al frente" SIN duplicar ventanas.
+    ///   2. Si sólo existe en OTRO monitor (mismo desk virtual) o no existe → abro una NUEVA con
+    ///      <c>explorer /n</c> (fuerza ventana nueva en vez de REACTIVAR la que vive en otra pantalla,
+    ///      que era justo el "salto de monitor" no deseado) y, cuando aparece, la muevo a MI monitor y
+    ///      le doy foco. El foco viene a vos, no vos al foco.
+    ///
+    /// Por qué forzamos el foreground: la ventana la crea explorer.exe (ya vivo), NO nosotros, y
+    /// venimos de un hotkey global → el anti-robo de foco de Windows la dejaría atrás.
     /// </summary>
-    private static void FocusFolderWhenReady(string dir)
+    private static void OpenFolderHere(string dir, IntPtr targetMonitor)
     {
         string leaf = Path.GetFileName(dir.TrimEnd('\\', '/', ' '));
-        if (leaf == "") return; // raíz de unidad (ej. C:\): el título no es un nombre de carpeta → no arriesgamos
-
         int desk = Shell.Desktops?.Current ?? -1;
-        WindowFocuser.FocusWhenReady(hwnd =>
-            WindowMethods.ClassOf(hwnd) == "CabinetWClass"
-            && WindowMethods.TextOf(hwnd).Equals(leaf, StringComparison.OrdinalIgnoreCase)
-            && (desk < 0 || VirtualDesktopAccessor.GetWindowDesktopNumber(hwnd) == desk));
+
+        // Raíz de unidad (ej. C:\): el título no es un nombre de carpeta identificable; y sin monitor
+        // objetivo no hay a dónde traerla. En ambos casos caemos al comportamiento simple: abrir.
+        if (leaf == "" || targetMonitor == IntPtr.Zero)
+        {
+            Process.Start(new ProcessStartInfo(dir) { UseShellExecute = true });
+            return;
+        }
+
+        // OJO (cazado con el log): Windows 11 NO titula la ventana de Explorer con el nombre pelado de
+        // la carpeta — le agrega el sufijo localizado " - Explorador de archivos" (" - File Explorer").
+        // El match exacto del legacy fallaba SIEMPRE acá. Aceptamos el título pelado (Win10/configs sin
+        // sufijo) O que EMPIECE con "{leaf} - " (Win11). El separador " - " evita falsos positivos con
+        // carpetas de nombre similar, y es agnóstico al idioma del sufijo.
+        bool TitleMatches(string t) =>
+            t.Equals(leaf, StringComparison.OrdinalIgnoreCase)
+            || t.StartsWith(leaf + " - ", StringComparison.OrdinalIgnoreCase);
+
+        bool IsThisFolder(IntPtr h) =>
+            WindowMethods.ClassOf(h) == "CabinetWClass"
+            && TitleMatches(WindowMethods.TextOf(h))
+            && (desk < 0 || VirtualDesktopAccessor.GetWindowDesktopNumber(h) == desk);
+
+        var existing = WindowMethods.FindAllVisible(IsThisFolder);
+
+        // 1) ¿Ya hay una de esta carpeta en MI monitor? → traerla al frente y chau (no duplicamos).
+        foreach (var h in existing)
+            if (WindowMethods.MonitorOf(h) == targetMonitor)
+            {
+                WindowMethods.ForceForeground(h, preserveMaximized: true);
+                return;
+            }
+
+        // 2) No hay ninguna en mi monitor (sólo en otro, o ninguna) → abrir una NUEVA y traerla acá.
+        //    explorer /n fuerza ventana nueva; sin /n, Explorer reactivaría la del otro monitor → salto.
+        var seen = new HashSet<IntPtr>(existing);
+        Process.Start("explorer.exe", $"/n,\"{dir}\"");
+        WindowFocuser.FocusWhenReady(
+            match: h => IsThisFolder(h) && !seen.Contains(h), // la NUEVA, no las que ya estaban
+            onReady: h =>
+            {
+                WindowMethods.MoveToMonitor(h, targetMonitor); // a mi pantalla...
+                WindowMethods.ForceForeground(h, preserveMaximized: true); // ...y al frente
+            });
     }
 
     /// <summary>

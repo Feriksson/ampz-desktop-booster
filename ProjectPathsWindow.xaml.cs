@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
 using AmpzDesktopBooster.Desktops;
+using AmpzDesktopBooster.Interop;
 using AmpzDesktopBooster.Persistence;
 using AmpzDesktopBooster.Services;
 
@@ -206,7 +208,12 @@ public partial class ProjectPathsWindow : Window
 
     private void OpenValue(string value, bool claude)
     {
-        var result = claude ? PathOpener.OpenInClaude(value) : PathOpener.Open(value);
+        // El monitor de ESTA ventana (la que el usuario está mirando) es "mi pantalla": la carpeta
+        // debe aparecer acá, no saltar a otro monitor donde quedó abierta antes. Se captura ANTES del
+        // Close() del caller, con la ventana aún viva, y viaja como valor (no dependemos de que siga
+        // abierta cuando el foco diferido se resuelva).
+        IntPtr monitor = WindowMethods.MonitorOf(new WindowInteropHelper(this).Handle);
+        var result = claude ? PathOpener.OpenInClaude(value) : PathOpener.Open(value, monitor);
         if (result == PathOpener.Result.NotFound)
             MessageBox.Show(
                 claude ? "Sólo se puede abrir un directorio en Claude CLI." : $"No existe o no es válido:\n{value}",

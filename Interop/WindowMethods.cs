@@ -159,6 +159,23 @@ internal static partial class WindowMethods
         return found;
     }
 
+    /// <summary>
+    /// TODAS las ventanas visibles que cumplen <paramref name="match"/> (lista vacía si ninguna).
+    /// Variante de <see cref="FindVisible"/> que NO corta en la primera: la usa el Paths Manager para
+    /// censar las ventanas de una carpeta YA abiertas ANTES de abrir otra, y así distinguir después la
+    /// NUEVA de las que ya estaban (la diferencia de conjuntos).
+    /// </summary>
+    public static List<IntPtr> FindAllVisible(Func<IntPtr, bool> match)
+    {
+        var found = new List<IntPtr>();
+        EnumWindows((hwnd, _) =>
+        {
+            if (IsWindowVisible(hwnd) && match(hwnd)) found.Add(hwnd);
+            return true; // seguir enumerando siempre
+        }, IntPtr.Zero);
+        return found;
+    }
+
     /// <summary>Texto de una ventana cualquiera (título) — vacío si no se pudo leer.</summary>
     public static string TextOf(IntPtr hWnd)
     {

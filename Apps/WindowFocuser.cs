@@ -33,8 +33,13 @@ public static class WindowFocuser
     /// <param name="preserveMaximized">No tocarle el tamaño a la ventana (solo des-minimizar si vino iconizada).</param>
     /// <param name="retries">Reintentos antes de largar (25 × 120ms ≈ 3s por defecto).</param>
     /// <param name="intervalMs">Período entre reintentos, en milisegundos.</param>
+    /// <param name="onReady">
+    /// Qué hacer con la ventana cuando aparece. Si es null → el default: traerla al frente con
+    /// <see cref="WindowMethods.ForceForeground"/>. Se sobre-escribe cuando además hay que reubicarla
+    /// (ej. moverla a otro monitor ANTES de darle foco — el caso "abrir la carpeta en mi pantalla").
+    /// </param>
     public static void FocusWhenReady(Func<IntPtr, bool> match, bool preserveMaximized = true,
-                                      int retries = 25, int intervalMs = 120)
+                                      int retries = 25, int intervalMs = 120, Action<IntPtr>? onReady = null)
     {
         int attempts = 0;
         var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(intervalMs) };
@@ -44,7 +49,8 @@ public static class WindowFocuser
             if (w != IntPtr.Zero)
             {
                 timer.Stop();
-                WindowMethods.ForceForeground(w, preserveMaximized);
+                if (onReady is not null) onReady(w);
+                else WindowMethods.ForceForeground(w, preserveMaximized);
             }
             else if (++attempts >= retries)
             {
