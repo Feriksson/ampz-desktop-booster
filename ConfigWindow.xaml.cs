@@ -1,10 +1,12 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Interop;
 using AmpzDesktopBooster.Persistence;
 using AmpzDesktopBooster.Services;
+using AmpzDesktopBooster.Services.Tasks;
 
 namespace AmpzDesktopBooster;
 
@@ -21,6 +23,10 @@ public partial class ConfigWindow : Window
     private readonly RestrictionStore _restrictions;
     private readonly PinStore _pins;
     private readonly Action _onApplied;
+
+    // Config del proveedor de tareas. La pestaña Tareas la maneja por su cuenta (Load/Save) — NO
+    // pasa por el constructor ni por App.OnStartup, para no tocar el arranque core (hooks sensibles).
+    private readonly TasksSettings _tasks;
 
     public ConfigWindow(DesktopConfig config, Apps.AppsConfig apps, DesktopService desktops,
         RestrictionStore restrictions, PinStore pins, Action onApplied)
@@ -77,6 +83,13 @@ public partial class ConfigWindow : Window
         // ── Pestaña General ──
         DataPathText.Text = AppPaths.DataDir;
         ResetAllBtn.Click += (_, _) => ResetAll();
+
+        // ── Pestaña Tareas ──
+        _tasks = TasksSettings.Load();
+        InitTasksTab();
+        TaskProviderCombo.SelectionChanged += (_, _) => UpdateTaskPanels();
+        TaskTestBtn.Click += async (_, _) => await TestTaskConnection();
+        TaskSaveBtn.Click += (_, _) => SaveTasksSettings();
     }
 
     // ── Pestaña Anclajes ───────────────────────────────────────────────────────
@@ -412,5 +425,122 @@ public partial class ConfigWindow : Window
             DesktopBootstrapper.Ensure(_config, _desktops);
         RefreshList();
         _onApplied();
+    }
+
+    // ── Pestaña Tareas ─────────────────────────────────────────────────────────
+    // El proveedor de tareas (Vikunja/JIRA) se configura acá. Mismo patrón provider+settings que
+    // Usage. La pestaña carga/guarda su propio TasksSettings; el fetch real lo hace el ITaskProvider
+    // que arma TasksService según la selección — la UI no sabe de HTTP ni de Vikunja.
+
+    /// <summary>Una opción del combo de proveedor: el id estable + la etiqueta linda.</summary>
+    private sealed record ProviderChoice(string Id, string Label)
+    {
+        public override string ToString() => Label;
+    }
+
+    /// <summary>Llena el combo, selecciona el provider activo y vuelca las credenciales en los campos.</summary>
+    private void InitTasksTab()
+    {
+        TaskProviderCombo.Items.Add(new ProviderChoice("none", "Ninguno (desactivado)"));
+        TaskProviderCombo.Items.Add(new ProviderChoice("vikunja", "Vikunja"));
+        TaskProviderCombo.Items.Add(new ProviderChoice("jira", "JIRA (en preparación)"));
+
+        VkUrlBox.Text = _tasks.Vikunja.BaseUrl;
+        VkUserBox.Text = _tasks.Vikunja.Username;
+        VkTokenBox.Text = _tasks.Vikunja.Token;
+
+        JiraUrlBox.Text = _tasks.Jira.BaseUrl;
+        JiraEmailBox.Text = _tasks.Jira.Email;
+        JiraTokenBox.Text = _tasks.Jira.Token;
+
+        SelectProvider(_tasks.Provider);
+        UpdateTaskPanels();
+    }
+
+    private void SelectProvider(string id)
+    {
+        foreach (var item in TaskProviderCombo.Items)
+            if (item is ProviderChoice pc && pc.Id == id) { TaskProviderCombo.SelectedItem = item; return; }
+        if (TaskProviderCombo.Items.Count > 0) TaskProviderCombo.SelectedIndex = 0;
+    }
+
+    private string SelectedProviderId => (TaskProviderCombo.SelectedItem as ProviderChoice)?.Id ?? "none";
+
+    /// <summary>Muestra el panel de credenciales del provider elegido y oculta el otro.</summary>
+    private void UpdateTaskPanels()
+    {
+        string id = SelectedProviderId;
+        VikunjaPanel.Visibility = id == "vikunja" ? Visibility.Visible : Visibility.Collapsed;
+        JiraPanel.Visibility = id == "jira" ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>Vuelca los campos al settings y persiste. NO valida credenciales (eso es Probar conexión).</summary>
+    private void SaveTasksSettings()
+    {
+        _tasks.Provider = SelectedProviderId;
+        _tasks.Vikunja.BaseUrl = VkUrlBox.Text.Trim();
+        _tasks.Vikunja.Username = VkUserBox.Text.Trim();
+        _tasks.Vikunja.Token = VkTokenBox.Text.Trim();
+        _tasks.Jira.BaseUrl = JiraUrlBox.Text.Trim();
+        _tasks.Jira.Email = JiraEmailBox.Text.Trim();
+        _tasks.Jira.Token = JiraTokenBox.Text.Trim();
+        _tasks.Save();
+
+        TaskTestStatus.Foreground = (System.Windows.Media.Brush)FindResource("FgMuted");
+        TaskTestStatus.Text = "Guardado en tasks.json.";
+    }
+
+    /// <summary>
+    /// Prueba la conexión con los valores ACTUALES de los campos (sin necesidad de guardar antes).
+    /// Usa el provider real: para Vikunja trae las tareas y reporta cuántas; JIRA aún es stub.
+    /// </summary>
+    private async Task TestTaskConnection()
+    {
+        var probe = new TasksSettings
+        {
+            Provider = SelectedProviderId,
+            Vikunja = new VikunjaSettings
+            {
+                BaseUrl = VkUrlBox.Text.Trim(),
+                Username = VkUserBox.Text.Trim(),
+                Token = VkTokenBox.Text.Trim(),
+            },
+            Jira = new JiraSettings
+            {
+                BaseUrl = JiraUrlBox.Text.Trim(),
+                Email = JiraEmailBox.Text.Trim(),
+                Token = JiraTokenBox.Text.Trim(),
+            },
+        };
+
+        var provider = TasksService.CreateProvider(probe);
+        if (provider is null)
+        {
+            TaskTestStatus.Foreground = (System.Windows.Media.Brush)FindResource("FgMuted");
+            TaskTestStatus.Text = "Elegí un proveedor (Vikunja o JIRA) para probar.";
+            return;
+        }
+
+        TaskTestBtn.IsEnabled = false;
+        TaskTestStatus.Foreground = (System.Windows.Media.Brush)FindResource("FgMuted");
+        TaskTestStatus.Text = "Probando…";
+        try
+        {
+            var result = await provider.GetOpenTasksAsync();
+            if (result.Ok)
+            {
+                TaskTestStatus.Foreground = (System.Windows.Media.Brush)FindResource("Accent");
+                TaskTestStatus.Text = $"✓ Conectado. Tareas abiertas tuyas: {result.Items.Count}.";
+            }
+            else
+            {
+                TaskTestStatus.Foreground = (System.Windows.Media.Brush)FindResource("Danger");
+                TaskTestStatus.Text = "✗ " + result.Error;
+            }
+        }
+        finally
+        {
+            TaskTestBtn.IsEnabled = true;
+        }
     }
 }

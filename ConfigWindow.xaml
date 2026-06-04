@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Ampz Desktop Booster — Configuración"
-        Width="640" Height="560"
+        Width="686" Height="560"
         WindowStartupLocation="CenterScreen"
         Background="#1E1E1E" UseLayoutRounding="True"
         FontFamily="Segoe UI">
@@ -14,17 +14,130 @@
         <SolidColorBrush x:Key="Accent"  Color="#4FC3F7" />
         <SolidColorBrush x:Key="Danger"  Color="#E5534B" />
 
+        <!-- TextBlock global -->
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource Fg}" />
         </Style>
+
+        <!-- CheckBox global -->
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource Fg}" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- Button: dark rounded con hover/press/disabled -->
         <Style TargetType="Button">
-            <Setter Property="Padding" Value="10,4" />
-            <Setter Property="Margin" Value="0,0,6,0" />
-            <Setter Property="MinWidth" Value="80" />
+            <Setter Property="Padding"          Value="10,5" />
+            <Setter Property="Margin"           Value="0,0,6,0" />
+            <Setter Property="MinWidth"         Value="80" />
+            <Setter Property="Foreground"       Value="{StaticResource Fg}" />
+            <Setter Property="Background"       Value="#2D2D2D" />
+            <Setter Property="BorderBrush"      Value="#484848" />
+            <Setter Property="BorderThickness"  Value="1" />
+            <Setter Property="Cursor"           Value="Hand" />
+            <Setter Property="FontSize"         Value="12" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background"   Value="#3C3C3C" />
+                                <Setter TargetName="bd" Property="BorderBrush"  Value="#606060" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#222222" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.38" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ListBoxItem: hover + selección en acento -->
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="{StaticResource Fg}" />
+            <Setter Property="Padding"    Value="8,5" />
+            <Setter Property="Margin"     Value="2,1" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="bd" Background="Transparent"
+                                CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#282828" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#1A3A4A" />
+                                <Setter Property="Foreground" Value="{StaticResource Accent}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- TabControl: sin borde, fondo neutro -->
+        <Style TargetType="TabControl">
+            <Setter Property="Background"       Value="#1E1E1E" />
+            <Setter Property="BorderThickness"  Value="0" />
+            <Setter Property="Padding"          Value="0" />
+        </Style>
+
+        <!-- TabItem: underline accent en pestaña activa -->
+        <Style TargetType="TabItem">
+            <Setter Property="Foreground" Value="{StaticResource FgMuted}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding"    Value="14,9" />
+            <Setter Property="FontSize"   Value="12" />
+            <Setter Property="Cursor"     Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="bd" Background="Transparent"
+                                BorderThickness="0,0,0,2" BorderBrush="Transparent"
+                                Padding="{TemplateBinding Padding}" Margin="0,0,2,0">
+                            <ContentPresenter x:Name="cp"
+                                              ContentSource="Header"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              TextBlock.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="cp" Property="TextBlock.Foreground"
+                                        Value="{StaticResource Fg}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush"
+                                        Value="{StaticResource Accent}" />
+                                <Setter TargetName="cp" Property="TextBlock.Foreground"
+                                        Value="{StaticResource Fg}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Window.Resources>
 
-    <TabControl x:Name="Tabs" Background="#1E1E1E" BorderThickness="0" Margin="8">
+    <TabControl x:Name="Tabs" Background="#1E1E1E" BorderThickness="0" Margin="8" HorizontalContentAlignment="Center" UseLayoutRounding="False">
 
         <!-- ===== Pestaña DESKTOPS ===== -->
         <TabItem Header="Desktops">
@@ -158,7 +271,7 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Escritorio:" VerticalAlignment="Center" Margin="0,0,8,0" />
                     <ComboBox Grid.Column="1" x:Name="ProtDeskCombo" Background="#2A2A2A"
-                              Foreground="#10222A" BorderBrush="#444" />
+                              Foreground="{StaticResource Fg}" BorderBrush="#444" />
                     <CheckBox Grid.Column="2" x:Name="ProtectedChk" Content="Protegido"
                               Foreground="{StaticResource Fg}" VerticalAlignment="Center" Margin="14,0,0,0" />
                 </Grid>
@@ -278,7 +391,7 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="A:" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <ComboBox Grid.Column="1" x:Name="PinDeskCombo" Background="#2A2A2A"
-                                      Foreground="#10222A" BorderBrush="#444" />
+                                      Foreground="{StaticResource Fg}" BorderBrush="#444" />
                         </Grid>
                         <Border Grid.Row="1" Background="{StaticResource Panel}" CornerRadius="4" Padding="2">
                             <ListBox x:Name="PinRunningBox" Background="Transparent" BorderThickness="0"
@@ -305,6 +418,113 @@
                              VerticalContentAlignment="Center" ToolTip="Nombre del proceso, ej: brave.exe — se ancla al escritorio elegido arriba" />
                     <Button Grid.Column="2" x:Name="PinAddManualBtn" Content="Anclar" Margin="6,0,0,0" />
                 </Grid>
+            </Grid>
+        </TabItem>
+
+        <!-- ===== Pestaña TAREAS ===== -->
+        <TabItem Header="Tareas">
+            <Grid Margin="14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="Proveedor de tareas" />
+                <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,10"
+                           Text="Conectá tu gestor de tareas para traer tus tareas abiertas (y, más adelante, mostrar en qué ticket estás trabajando al setear un proyecto). Hoy: Vikunja (funcional) y JIRA (en preparación)." />
+
+                <!-- Selector de proveedor -->
+                <Grid Grid.Row="2" Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="260" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Proveedor:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <ComboBox Grid.Column="1" x:Name="TaskProviderCombo" Background="#2A2A2A"
+                              Foreground="{StaticResource Fg}" BorderBrush="#444" />
+                </Grid>
+
+                <!-- Paneles de credenciales (uno visible por vez según el proveedor) -->
+                <StackPanel Grid.Row="3">
+
+                    <!-- Vikunja -->
+                    <Border x:Name="VikunjaPanel" Background="{StaticResource Panel}" CornerRadius="4"
+                            Padding="12" Margin="0,0,0,8">
+                        <StackPanel>
+                            <TextBlock Text="Vikunja" FontWeight="SemiBold" Margin="0,0,0,8" />
+
+                            <TextBlock Text="URL de la instancia (sin / final)"
+                                       Foreground="{StaticResource FgMuted}" FontSize="11" Margin="0,0,0,2" />
+                            <TextBox x:Name="VkUrlBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
+                                     BorderBrush="#444" Padding="6,4" Margin="0,0,0,8"
+                                     VerticalContentAlignment="Center"
+                                     ToolTip="Ej: https://projects.blaster.com.ar" />
+
+                            <TextBlock Text="Usuario (login)" Foreground="{StaticResource FgMuted}"
+                                       FontSize="11" Margin="0,0,0,2" />
+                            <TextBox x:Name="VkUserBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
+                                     BorderBrush="#444" Padding="6,4" Margin="0,0,0,8"
+                                     VerticalContentAlignment="Center"
+                                     ToolTip="Tu nombre de usuario en Vikunja — necesario para filtrar solo tus tareas" />
+
+                            <TextBlock Text="API token (tk_...)" Foreground="{StaticResource FgMuted}"
+                                       FontSize="11" Margin="0,0,0,2" />
+                            <TextBox x:Name="VkTokenBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
+                                     BorderBrush="#444" Padding="6,4" VerticalContentAlignment="Center"
+                                     ToolTip="Vikunja → Settings → API Tokens" />
+
+                            <TextBlock Foreground="{StaticResource FgMuted}" FontSize="11" FontStyle="Italic"
+                                       TextWrapping="Wrap" Margin="0,8,0,0"
+                                       Text="El token se guarda en texto plano en %APPDATA%\AmpzDesktopBooster\tasks.json. No lo compartas." />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- JIRA -->
+                    <Border x:Name="JiraPanel" Background="{StaticResource Panel}" CornerRadius="4"
+                            Padding="12" Margin="0,0,0,8" Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock Text="JIRA  (en preparación)" FontWeight="SemiBold" Margin="0,0,0,8" />
+
+                            <TextBlock Text="URL (https://tuorg.atlassian.net)"
+                                       Foreground="{StaticResource FgMuted}" FontSize="11" Margin="0,0,0,2" />
+                            <TextBox x:Name="JiraUrlBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
+                                     BorderBrush="#444" Padding="6,4" Margin="0,0,0,8"
+                                     VerticalContentAlignment="Center" />
+
+                            <TextBlock Text="Email" Foreground="{StaticResource FgMuted}"
+                                       FontSize="11" Margin="0,0,0,2" />
+                            <TextBox x:Name="JiraEmailBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
+                                     BorderBrush="#444" Padding="6,4" Margin="0,0,0,8"
+                                     VerticalContentAlignment="Center" />
+
+                            <TextBlock Text="API token" Foreground="{StaticResource FgMuted}"
+                                       FontSize="11" Margin="0,0,0,2" />
+                            <TextBox x:Name="JiraTokenBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
+                                     BorderBrush="#444" Padding="6,4" VerticalContentAlignment="Center" />
+
+                            <TextBlock Foreground="{StaticResource FgMuted}" FontSize="11" FontStyle="Italic"
+                                       TextWrapping="Wrap" Margin="0,8,0,0"
+                                       Text="El adapter de JIRA todavía no hace fetch — podés guardar las credenciales, pero 'Probar conexión' avisará que está en preparación." />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Estado de la prueba -->
+                <TextBlock Grid.Row="4" x:Name="TaskTestStatus" Foreground="{StaticResource FgMuted}"
+                           FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0" />
+
+                <!-- Acciones -->
+                <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                    <Button x:Name="TaskTestBtn" Content="Probar conexión" MinWidth="140" Padding="10,4" Margin="0,0,6,0" />
+                    <Button x:Name="TaskSaveBtn" Content="Guardar" MinWidth="100" Padding="10,4"
+                            Background="{StaticResource Accent}" Foreground="#10222A" FontWeight="SemiBold" />
+                </StackPanel>
             </Grid>
         </TabItem>
 
