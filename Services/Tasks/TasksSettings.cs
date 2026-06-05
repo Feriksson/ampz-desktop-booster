@@ -18,11 +18,12 @@ namespace AmpzDesktopBooster.Services.Tasks;
 /// </summary>
 public sealed class TasksSettings
 {
-    /// <summary>Id del provider activo: "none" (default), "vikunja" o "jira".</summary>
+    /// <summary>Id del provider activo: "none" (default), "vikunja", "jira" o "trello".</summary>
     public string Provider { get; set; } = "none";
 
     public VikunjaSettings Vikunja { get; set; } = new();
     public JiraSettings Jira { get; set; } = new();
+    public TrelloSettings Trello { get; set; } = new();
 
     // ---- Persistencia (idéntico patrón a UsageSettings) ----
 
@@ -80,5 +81,19 @@ public sealed class JiraSettings
 {
     public string BaseUrl { get; set; } = "";
     public string Email { get; set; } = "";
+    public string Token { get; set; } = "";
+}
+
+/// <summary>
+/// Credenciales de Trello. La API REST usa autenticación por query-string: ApiKey + Token.
+/// - ApiKey: se obtiene creando un Power-Up en https://trello.com/power-ups/admin (campo "API key").
+/// - Token: se genera a partir de la API key (link "Token" al lado de la key) y autoriza al usuario.
+/// No hace falta username: el endpoint GET /1/members/me/cards usa el miembro dueño del token, así que
+/// "lo mío" ya queda filtrado por la propia credencial (a diferencia de Vikunja, donde el token tk_ no
+/// resuelve el usuario y hay que pasarlo aparte). BaseUrl es fijo (https://api.trello.com), no se expone.
+/// </summary>
+public sealed class TrelloSettings
+{
+    public string ApiKey { get; set; } = "";
     public string Token { get; set; } = "";
 }

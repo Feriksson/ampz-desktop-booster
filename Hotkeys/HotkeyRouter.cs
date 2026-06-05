@@ -313,7 +313,7 @@ public sealed class HotkeyRouter
         if (provider is null)
         {
             Toasts.Info("Tareas: integración apagada",
-                "Activá Vikunja o JIRA en Configuración → Tareas.");
+                "Activá Vikunja, JIRA o Trello en Configuración → Tareas.");
             return;
         }
 

@@ -444,6 +444,7 @@ public partial class ConfigWindow : Window
         TaskProviderCombo.Items.Add(new ProviderChoice("none", "Ninguno (desactivado)"));
         TaskProviderCombo.Items.Add(new ProviderChoice("vikunja", "Vikunja"));
         TaskProviderCombo.Items.Add(new ProviderChoice("jira", "JIRA (en preparación)"));
+        TaskProviderCombo.Items.Add(new ProviderChoice("trello", "Trello"));
 
         VkUrlBox.Text = _tasks.Vikunja.BaseUrl;
         VkUserBox.Text = _tasks.Vikunja.Username;
@@ -452,6 +453,9 @@ public partial class ConfigWindow : Window
         JiraUrlBox.Text = _tasks.Jira.BaseUrl;
         JiraEmailBox.Text = _tasks.Jira.Email;
         JiraTokenBox.Text = _tasks.Jira.Token;
+
+        TrelloKeyBox.Text = _tasks.Trello.ApiKey;
+        TrelloTokenBox.Text = _tasks.Trello.Token;
 
         SelectProvider(_tasks.Provider);
         UpdateTaskPanels();
@@ -472,6 +476,7 @@ public partial class ConfigWindow : Window
         string id = SelectedProviderId;
         VikunjaPanel.Visibility = id == "vikunja" ? Visibility.Visible : Visibility.Collapsed;
         JiraPanel.Visibility = id == "jira" ? Visibility.Visible : Visibility.Collapsed;
+        TrelloPanel.Visibility = id == "trello" ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>Vuelca los campos al settings y persiste. NO valida credenciales (eso es Probar conexión).</summary>
@@ -484,6 +489,8 @@ public partial class ConfigWindow : Window
         _tasks.Jira.BaseUrl = JiraUrlBox.Text.Trim();
         _tasks.Jira.Email = JiraEmailBox.Text.Trim();
         _tasks.Jira.Token = JiraTokenBox.Text.Trim();
+        _tasks.Trello.ApiKey = TrelloKeyBox.Text.Trim();
+        _tasks.Trello.Token = TrelloTokenBox.Text.Trim();
         _tasks.Save();
 
         TaskTestStatus.Foreground = (System.Windows.Media.Brush)FindResource("FgMuted");
@@ -510,6 +517,11 @@ public partial class ConfigWindow : Window
                 BaseUrl = JiraUrlBox.Text.Trim(),
                 Email = JiraEmailBox.Text.Trim(),
                 Token = JiraTokenBox.Text.Trim(),
+            },
+            Trello = new TrelloSettings
+            {
+                ApiKey = TrelloKeyBox.Text.Trim(),
+                Token = TrelloTokenBox.Text.Trim(),
             },
         };
 

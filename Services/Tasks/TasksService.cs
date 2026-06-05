@@ -15,6 +15,7 @@ public static class TasksService
     {
         "vikunja" => new VikunjaTaskProvider(settings.Vikunja),
         "jira"    => new JiraTaskProvider(settings.Jira),
+        "trello"  => new TrelloTaskProvider(settings.Trello),
         _         => null, // "none" o id desconocido → integración apagada
     };
 }

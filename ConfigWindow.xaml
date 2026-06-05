@@ -513,6 +513,31 @@
                                        Text="El adapter de JIRA todavía no hace fetch — podés guardar las credenciales, pero 'Probar conexión' avisará que está en preparación." />
                         </StackPanel>
                     </Border>
+
+                    <!-- Trello -->
+                    <Border x:Name="TrelloPanel" Background="{StaticResource Panel}" CornerRadius="4"
+                            Padding="12" Margin="0,0,0,8" Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock Text="Trello" FontWeight="SemiBold" Margin="0,0,0,8" />
+
+                            <TextBlock Text="API key" Foreground="{StaticResource FgMuted}"
+                                       FontSize="11" Margin="0,0,0,2" />
+                            <TextBox x:Name="TrelloKeyBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
+                                     BorderBrush="#444" Padding="6,4" Margin="0,0,0,8"
+                                     VerticalContentAlignment="Center"
+                                     ToolTip="Creá un Power-Up en https://trello.com/power-ups/admin → campo 'API key'" />
+
+                            <TextBlock Text="Token" Foreground="{StaticResource FgMuted}"
+                                       FontSize="11" Margin="0,0,0,2" />
+                            <TextBox x:Name="TrelloTokenBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
+                                     BorderBrush="#444" Padding="6,4" VerticalContentAlignment="Center"
+                                     ToolTip="Generá el token desde el link 'Token' al lado de tu API key" />
+
+                            <TextBlock Foreground="{StaticResource FgMuted}" FontSize="11" FontStyle="Italic"
+                                       TextWrapping="Wrap" Margin="0,8,0,0"
+                                       Text="Trae tus tarjetas asignadas de todos los tableros. La key y el token se guardan en texto plano en %APPDATA%\AmpzDesktopBooster\tasks.json. No los compartas." />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <!-- Estado de la prueba -->
