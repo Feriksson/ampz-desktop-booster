@@ -35,6 +35,14 @@ public partial class TaskDetailWindow : Window
         ProjectText.Text = string.IsNullOrEmpty(task.Project) ? "" : task.Project;
         TitleText.Text = task.Title;
 
+        // Body / descripción: si no viene (Trello sin desc, Vikunja sin description) el panel entero
+        // se Colapsa para no dejar una caja vacía.
+        if (!string.IsNullOrWhiteSpace(task.Description))
+        {
+            BodyText.Text = task.Description;
+            BodyPanel.Visibility = Visibility.Visible;
+        }
+
         // "Abrir tarea" sólo tiene sentido si la tarea trae URL.
         OpenBtn.IsEnabled = !string.IsNullOrWhiteSpace(task.Url);
 

@@ -15,9 +15,14 @@ public sealed class JiraTaskProvider : ITaskProvider
     public string Id => "jira";
     public string DisplayName => "JIRA";
 
+    private readonly TaskAccount _account;
     private readonly JiraSettings _settings;
 
-    public JiraTaskProvider(JiraSettings settings) => _settings = settings;
+    public JiraTaskProvider(TaskAccount account, JiraSettings settings)
+    {
+        _account = account;
+        _settings = settings;
+    }
 
     public Task<TaskFetchResult> GetOpenTasksAsync(CancellationToken ct = default)
         => Task.FromResult(TaskFetchResult.Failed(Id,

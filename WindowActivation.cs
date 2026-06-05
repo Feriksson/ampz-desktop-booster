@@ -50,12 +50,24 @@ internal static class WindowActivation
     /// Deactivated crudo cerraría la ventana al instante de abrirla. Esperar pasado ese techo evita
     /// el cierre-en-la-cara. 700ms es imperceptible: el usuario está leyendo/tipeando, no clickeando
     /// afuera en el primer instante. Corre en el hilo de UI (estas ventanas se abren ahí).
+    ///
+    /// ⚠ Al armarse, FORZAMOS Activate() si WPF aún no marcó IsActive. Bug cazado: cuando la ventana
+    /// se abre desde un click en la BarWindow (AppBar sin activación) — vs un hotkey global —, el
+    /// flujo de WM_ACTIVATE se descoordina y WPF NO marca IsActive nunca. Sin IsActive=true, el
+    /// evento Deactivated NO dispara → clicks afuera no cierran. Sólo después de clickear ON la
+    /// ventana se sincronizaba. Forzar Activate al armar tickea WPF y los Deactivated posteriores
+    /// disparan normales.
     /// </summary>
     public static void CloseOnDeactivate(this Window window)
     {
         bool armed = false;
         var arm = new DispatcherTimer { Interval = System.TimeSpan.FromMilliseconds(700) };
-        arm.Tick += (_, _) => { arm.Stop(); armed = true; };
+        arm.Tick += (_, _) =>
+        {
+            arm.Stop();
+            armed = true;
+            if (!window.IsActive) window.Activate(); // ver doc: caso AppBar-click
+        };
 
         window.Loaded += (_, _) => arm.Start();
         window.Deactivated += (_, _) => { if (armed) window.Close(); };

@@ -1,12 +1,60 @@
 <Window x:Class="AmpzDesktopBooster.TaskPickerWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:AmpzDesktopBooster"
         Title="Elegir tarea"
-        Width="520" SizeToContent="Height"
+        Width="910" SizeToContent="Height"
         WindowStyle="None" ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="False" Topmost="True"
         Background="#1E1E1E" UseLayoutRounding="True">
+
+    <Window.Resources>
+        <!-- Convierte string vacío → Collapsed (sin esto, los campos opcionales dejarían huecos
+             visuales con su Margin/Padding). -->
+        <local:EmptyStringToCollapsedConverter x:Key="EmptyToCollapsed" />
+
+        <!-- Template de fila: tabla de 4 columnas. Las columnas Auto (Account, Identifier, Project)
+             usan SharedSizeGroup para sincronizar sus anchos ENTRE FILAS — sin esto cada fila se
+             auto-dimensiona por su cuenta y el título termina arrancando en X distinto en cada una.
+             Combinado con Grid.IsSharedSizeScope="True" en la ListBox, da efecto de TABLA real.
+             Jerarquía visual por color:
+               · [Account] e Identifier en gris apagado (metadata)
+               · Title blanco (lo importante)
+               · (Stage) en gris medio itálica (la columna del workflow)
+               · Project/Board en acento celeste (el contenedor) -->
+        <DataTemplate x:Key="RowTemplate">
+            <!-- Padding lateral del Grid: la fila respira respecto del borde de la ListBox (sin esto
+                 el Project queda PEGADO al margen derecho y el Account al izquierdo). -->
+            <Grid Margin="6,4,12,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="ColAccount" />
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="ColId" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="ColProject" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="{Binding AccountChip}"
+                           Foreground="#7A7A82" Margin="0,0,22,0"
+                           Visibility="{Binding AccountChip, Converter={StaticResource EmptyToCollapsed}}" />
+
+                <TextBlock Grid.Column="1" Text="{Binding IdLabel}"
+                           Foreground="#9A9A9A" Margin="0,0,18,0"
+                           Visibility="{Binding IdLabel, Converter={StaticResource EmptyToCollapsed}}" />
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,24,0">
+                    <TextBlock Text="{Binding Title}" Foreground="#E6E6EA" />
+                    <TextBlock Text="{Binding StageInParens}"
+                               Foreground="#6E6E78" FontStyle="Italic" Margin="10,0,0,0"
+                               Visibility="{Binding StageInParens, Converter={StaticResource EmptyToCollapsed}}" />
+                </StackPanel>
+
+                <TextBlock Grid.Column="3" Text="{Binding ProjectName}"
+                           Foreground="#4FC3F7"
+                           Visibility="{Binding ProjectName, Converter={StaticResource EmptyToCollapsed}}" />
+            </Grid>
+        </DataTemplate>
+    </Window.Resources>
 
     <Border BorderBrush="#33FFFFFF" BorderThickness="1" Padding="16">
         <StackPanel>
@@ -19,10 +67,26 @@
                      Background="#2A2A2A" Foreground="#F2F2F2" BorderBrush="#444"
                      Padding="6,4" Margin="0,0,0,8" />
 
-            <ListBox x:Name="TaskList" Height="280"
-                     FontFamily="Segoe UI" FontSize="13"
-                     Background="#161616" Foreground="#E6E6EA" BorderBrush="#333"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+            <!-- Grid contenedor: la ListBox y el overlay de loading coexisten en la misma celda.
+                 El overlay se Colapsa cuando termina la carga (ver TaskPickerWindow.SetItems). -->
+            <Grid Height="320">
+                <ListBox x:Name="TaskList"
+                         FontFamily="Segoe UI" FontSize="13"
+                         Background="#161616" Foreground="#E6E6EA" BorderBrush="#333"
+                         ItemTemplate="{StaticResource RowTemplate}"
+                         Grid.IsSharedSizeScope="True"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         HorizontalContentAlignment="Stretch" />
+
+                <Border x:Name="LoadingOverlay" Background="#161616" BorderBrush="#333" BorderThickness="1">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock x:Name="LoadingText" Text="Cargando tareas…"
+                                   Foreground="#9A9A9A" FontSize="13" HorizontalAlignment="Center" />
+                        <TextBlock x:Name="LoadingHint" Text="(consultando todas las cuentas en paralelo)"
+                                   Foreground="#6E6E78" FontSize="11" Margin="0,4,0,0" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+            </Grid>
 
             <TextBlock Foreground="#6E6E78" FontFamily="Segoe UI" FontSize="10" Margin="0,8,0,0"
                        Text="Enter: anclar (fila / único resultado) · Esc: cerrar" />

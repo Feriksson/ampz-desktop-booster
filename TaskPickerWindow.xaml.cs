@@ -8,34 +8,44 @@ using AmpzDesktopBooster.Services.Tasks;
 namespace AmpzDesktopBooster;
 
 /// <summary>
-/// Picker de tareas (Win+NumLock): lista las tareas ABIERTAS que trajo el provider, con filtro en
-/// vivo. Enter / doble-click ancla la tarea al desk actual. Calcado del DeskPickerWindow — mismo
-/// look, mismo manejo de teclas (Enter confirma fila o único resultado, Esc cierra).
+/// Picker de tareas (Win+NumLock): lista las tareas ABIERTAS que devolvió el aggregator, con filtro
+/// en vivo. Enter / doble-click ancla la tarea al desk actual.
 ///
-/// La ventana NO sabe de HTTP ni de providers: recibe las tareas ya traídas y devuelve la elegida
-/// por callback. Separación de capas — el router orquesta el fetch, la ventana sólo muestra/elige.
+/// ABRE INSTANTE + LOADER: el picker NO espera al fetch para mostrarse. Se construye con cabecera y
+/// loader visible, el llamador (HotkeyRouter) lo muestra de inmediato y después dispara el fetch en
+/// background; cuando termina, llama a SetItems / SetError vía Dispatcher. La razón: con varias
+/// cuentas + Vikunja haciendo N fetches anidados, la espera previa al picker se sentía como freeze.
+///
+/// La ventana NO sabe de HTTP ni de providers: recibe items o un error ya armados y devuelve la
+/// elegida por callback. Separación de capas — el router orquesta el fetch, la ventana sólo muestra.
 /// </summary>
 public partial class TaskPickerWindow : Window
 {
-    /// <summary>Una fila del picker. ToString define lo que muestra el ListBox.</summary>
+    /// <summary>
+    /// Una fila del picker. Expone trozos PRE-FORMATEADOS que el DataTemplate (TaskPickerWindow.xaml)
+    /// pinta en colores distintos. Por qué no un solo ToString: con todo en un string se pierde la
+    /// jerarquía visual (título vs metadata vs columna vs board, todo gris). Separar por TextBlock
+    /// permite color por trozo y que los vacíos se Colapsen vía EmptyStringToCollapsedConverter sin
+    /// dejar huecos.
+    /// </summary>
     private sealed record Row(TaskItem Task)
     {
-        public override string ToString() =>
-            string.IsNullOrEmpty(Task.Identifier) ? Task.Title : $"{Task.Identifier}   —   {Task.Title}";
+        public string AccountChip   => string.IsNullOrEmpty(Task.AccountName) ? "" : $"[{Task.AccountName}]";
+        public string IdLabel       => string.IsNullOrEmpty(Task.Identifier)  ? "" : $"{Task.Identifier}  —";
+        public string Title         => Task.Title;
+        public string StageInParens => string.IsNullOrEmpty(Task.Stage)   ? "" : $"({Task.Stage})";
+        public string ProjectName   => Task.Project ?? "";
     }
 
     private readonly Action<TaskItem> _onPick;
-    private readonly List<Row> _all;
+    private readonly List<Row> _all = new();
 
-    public TaskPickerWindow(IReadOnlyList<TaskItem> tasks, string deskName, Action<TaskItem> onPick)
+    public TaskPickerWindow(string deskName, Action<TaskItem> onPick)
     {
         InitializeComponent();
 
         _onPick = onPick;
-        _all = tasks.Select(t => new Row(t)).ToList();
-
         SubHeaderText.Text = deskName;
-        RefreshList();
 
         FilterBox.TextChanged += (_, _) => RefreshList();
         FilterBox.PreviewKeyDown += OnFilterKeyDown;
@@ -49,6 +59,29 @@ public partial class TaskPickerWindow : Window
         Loaded += (_, _) => FilterBox.Focus();
     }
 
+    /// <summary>Inyecta las tareas ya traídas. Oculta el loader y arma la lista filtrable.</summary>
+    public void SetItems(IReadOnlyList<TaskItem> tasks)
+    {
+        _all.Clear();
+        foreach (var t in tasks) _all.Add(new Row(t));
+        LoadingOverlay.Visibility = Visibility.Collapsed;
+        RefreshList();
+    }
+
+    /// <summary>Reemplaza el loader por un mensaje de error. La lista queda vacía.</summary>
+    public void SetError(string message)
+    {
+        LoadingText.Text = message;
+        LoadingHint.Text = "Cerrá y volvé a intentar, o revisá Config → Tareas.";
+    }
+
+    /// <summary>Loader con mensaje custom (ej. "Sin tareas abiertas").</summary>
+    public void SetEmpty(string title, string hint)
+    {
+        LoadingText.Text = title;
+        LoadingHint.Text = hint;
+    }
+
     private void RefreshList()
     {
         string filter = FilterBox.Text.Trim();
@@ -57,7 +90,10 @@ public partial class TaskPickerWindow : Window
         {
             if (filter == ""
                 || r.Task.Title.Contains(filter, StringComparison.OrdinalIgnoreCase)
-                || r.Task.Identifier.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                || r.Task.Identifier.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                || r.Task.AccountName.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                || (r.Task.Project ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)
+                || (r.Task.Stage   ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase))
                 TaskList.Items.Add(r);
         }
     }

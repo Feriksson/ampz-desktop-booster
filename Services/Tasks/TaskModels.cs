@@ -8,6 +8,11 @@ namespace AmpzDesktopBooster.Services.Tasks;
 /// la UI la muestra sin saber de dónde vino. Identifier es el código corto y lindo para mostrar
 /// (ej. "VKJ-123" en JIRA, o el identifier de Vikunja); si el provider no lo trae, queda "".
 /// Mismo espíritu que UsageGauge: un record inmutable que cruza a la UI.
+///
+/// AccountId / AccountName etiquetan la CUENTA origen (ver TaskAccount). Por qué embebido y no
+/// resuelto por lookup: TaskItem viaja a la UI y al TaskSessionStore como snapshot inmutable; tener
+/// que cruzarlo contra la lista de cuentas en cada render acopla la UI a la config y se rompe si la
+/// cuenta se borra (el widget se quedaría sin nombre). Más simple: lo guardamos al traerla.
 /// </summary>
 public sealed record TaskItem(
     string Id,
@@ -17,7 +22,11 @@ public sealed record TaskItem(
     DateTimeOffset? DueDate,
     int Priority,
     string? Project,
-    string? Url);
+    string? Url,
+    string AccountId = "",
+    string AccountName = "",
+    string? Stage = null,
+    string? Description = null);
 
 /// <summary>
 /// Resultado de pedirle las tareas a un provider. Mismo contrato que UsageSnapshot: NUNCA se tira,

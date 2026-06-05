@@ -296,63 +296,114 @@ public sealed class HotkeyRouter
     /// tareas) + abrir ventana → diferimos al Dispatcher, igual que el resto de los hotkeys.
     /// </summary>
     private void OnTasksRequested() =>
-        Application.Current.Dispatcher.BeginInvoke(async () => await ShowTaskPicker());
+        Application.Current.Dispatcher.BeginInvoke(() => ShowTaskPicker());
 
     /// <summary>
-    /// Trae las tareas abiertas del provider activo y abre el picker. "Solo si la integración está
-    /// activa Y funcional": si Provider="none" (o id desconocido) → CreateProvider devuelve null →
-    /// avisamos por toast y salimos; si el provider falla o no trae nada → toast y salimos. La tarea
-    /// elegida se ancla al desk ACTUAL (sesión efímera) y el widget aparece.
+    /// Abre el picker INSTANTÁNEAMENTE (con loader) y dispara el fetch en background. Cuando el
+    /// fetch termina, popula la lista vía Dispatcher (UI thread). Razón: con N cuentas activas y
+    /// Vikunja haciendo fetches anidados, esperar al fetch ANTES de mostrar la ventana se sentía
+    /// como freeze de la app (Win+NumLock no respondía visualmente por 1-3 seg).
     ///
-    /// Cargamos TasksSettings fresco en cada invocación (es un json chico): así toma al instante
-    /// cualquier cambio hecho en Config → Tareas sin reiniciar la app.
+    /// Aislamiento por cuenta: una cuenta que falla NO bloquea las demás; se acumula su error y se
+    /// reporta por toast al final, pero el picker muestra lo que sí vino.
     /// </summary>
-    private async System.Threading.Tasks.Task ShowTaskPicker()
+    private void ShowTaskPicker()
     {
-        var provider = TasksService.CreateProvider(TasksSettings.Load());
-        if (provider is null)
-        {
-            Toasts.Info("Tareas: integración apagada",
-                "Activá Vikunja, JIRA o Trello en Configuración → Tareas.");
-            return;
-        }
-
-        var result = await provider.GetOpenTasksAsync();
-        if (!result.Ok)
-        {
-            Toasts.Error("No se pudieron traer las tareas", result.Error ?? "");
-            return;
-        }
-        if (result.Items.Count == 0)
-        {
-            Toasts.Info("Sin tareas abiertas", "No hay tareas para pickear ahora mismo.");
-            return;
-        }
-
         int idx = _desktops.Current;
-        var w = new TaskPickerWindow(result.Items, _desktops.GetName(idx), picked =>
+        var w = new TaskPickerWindow(_desktops.GetName(idx), picked =>
         {
             _taskSession.SetDeskTask(idx, picked);
-            _refreshTaskWidget(); // el widget aparece con la tarea recién anclada
+            _refreshTaskWidget();
         });
-        w.ShowFocused();
+        w.ShowFocused(); // YA aparece — con su loader
+
+        // Fetch en background; cuando termina, marshaleamos al UI thread para popular.
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try
+            {
+                var settings = TasksSettings.Load();
+                var results = await TasksService.FetchAllAsync(settings);
+                _ = Application.Current.Dispatcher.BeginInvoke(() => OnFetchCompleted(w, results));
+            }
+            catch (Exception ex)
+            {
+                _ = Application.Current.Dispatcher.BeginInvoke(() =>
+                {
+                    if (w.IsLoaded) w.SetError("Falló el fetch: " + ex.Message);
+                });
+            }
+        });
     }
 
+    private void OnFetchCompleted(TaskPickerWindow w, System.Collections.Generic.IReadOnlyList<AccountFetchResult> results)
+    {
+        // Si el usuario cerró el picker mientras fetcheaba, salimos sin tocar nada (la ventana ya no existe).
+        if (!w.IsLoaded) return;
+
+        if (results.Count == 0)
+        {
+            w.SetEmpty("Sin cuentas activas",
+                "Agregá una cuenta de Vikunja, JIRA o Trello en Configuración → Tareas.");
+            return;
+        }
+
+        var allItems = new System.Collections.Generic.List<TaskItem>();
+        var failed = new System.Collections.Generic.List<string>();
+        foreach (var r in results)
+        {
+            if (r.Result.Ok)
+                allItems.AddRange(r.Result.Items);
+            else
+                failed.Add($"{r.Account.DisplayName}: {r.Result.Error}");
+        }
+
+        if (failed.Count > 0)
+            Toasts.Error($"Algunas cuentas fallaron ({failed.Count})", string.Join("\n", failed));
+
+        if (allItems.Count == 0)
+        {
+            w.SetEmpty(
+                failed.Count == 0 ? "Sin tareas abiertas" : "Ninguna cuenta trajo tareas",
+                failed.Count == 0 ? "No hay tareas para pickear ahora mismo." : "Revisá las cuentas que fallaron.");
+            return;
+        }
+
+        w.SetItems(allItems);
+    }
+
+    // Ventana de detalle actualmente abierta (o null). Sirve para que un 2do click en el widget
+    // TOGGLE (cierre) en vez de abrir una nueva encima. CloseOnDeactivate por sí solo no alcanza
+    // porque la BarWindow no roba foco al clickearla (es AppBar sin activación) → la detail no se
+    // desactiva → no se autocierra.
+    private TaskDetailWindow? _openTaskDetail;
+
     /// <summary>
-    /// Click en el widget de tarea → mini-panel de detalle. Si el desk no tiene tarea activa (no
-    /// debería: el widget está oculto sin tarea) no hacemos nada. "Elegir otra" reabre el picker;
-    /// "Desanclar" la saca de la sesión y oculta el widget.
+    /// Click en el widget de tarea → toggle del mini-panel de detalle. Si ya está abierto, lo
+    /// cierra. Si no, lo abre. Si el desk no tiene tarea activa (no debería: el widget está oculto
+    /// sin tarea) no hacemos nada. "Elegir otra" reabre el picker; "Desanclar" la saca de la sesión.
     /// </summary>
     public void ShowTaskDetail()
     {
+        // Toggle: si hay una abierta y aún cargada, cerrar y salir.
+        if (_openTaskDetail is { IsLoaded: true } existing)
+        {
+            existing.Close();
+            _openTaskDetail = null;
+            return;
+        }
+
         int idx = _desktops.Current;
         var task = _taskSession.GetDeskTask(idx);
         if (task is null)
             return;
 
         var w = new TaskDetailWindow(task,
-            onPickAnother: () => Application.Current.Dispatcher.BeginInvoke(async () => await ShowTaskPicker()),
+            onPickAnother: () => Application.Current.Dispatcher.BeginInvoke(() => ShowTaskPicker()),
             onUnpin: () => { _taskSession.RemoveDeskTask(idx); _refreshTaskWidget(); });
+        _openTaskDetail = w;
+        // Cuando se cierra (por Esc, botón, CloseOnDeactivate, lo que sea), liberamos la referencia.
+        w.Closed += (_, _) => { if (ReferenceEquals(_openTaskDetail, w)) _openTaskDetail = null; };
         w.ShowFocused();
     }
 

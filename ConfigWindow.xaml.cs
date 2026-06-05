@@ -85,11 +85,48 @@ public partial class ConfigWindow : Window
         ResetAllBtn.Click += (_, _) => ResetAll();
 
         // ── Pestaña Tareas ──
+        // OJO orden: cableamos handlers ANTES de InitTasksTab. Si init seteara SelectedIndex con el
+        // handler aún sin enganchar, OnAccountSelectionChanged NUNCA corre → _currentAccount queda
+        // null → Quitar/Probar no responden hasta que el usuario fuerza una selección manual o
+        // agrega una cuenta nueva (AddAccount sí setea _currentAccount a mano). Bug visto en vivo.
         _tasks = TasksSettings.Load();
-        InitTasksTab();
-        TaskProviderCombo.SelectionChanged += (_, _) => UpdateTaskPanels();
-        TaskTestBtn.Click += async (_, _) => await TestTaskConnection();
+        AccountsList.SelectionChanged += (_, _) => OnAccountSelectionChanged();
+        AccountAddBtn.Click += (_, _) => AddAccount();
+        AccountRemoveBtn.Click += (_, _) => RemoveSelectedAccount();
+        AcctKindCombo.SelectionChanged += (_, _) => OnKindChanged();
+        // CRÍTICO: RefreshAccountsList sólo va si el cambio vino del usuario (no de RefreshFields).
+        // Si no, RefreshFields → SetText → TextChanged → RefreshAccountsList → Items.Clear →
+        // SelectionChanged → RefreshFields → recursión infinita (la app exploto exactamente por esto).
+        AcctNameBox.TextChanged += (_, _) =>
+        {
+            if (_currentAccount == null || _loadingFields) return;
+            _currentAccount.DisplayName = AcctNameBox.Text;
+            RefreshAccountsList(preserveSelection: true);
+        };
+        AcctEnabledChk.Checked += (_, _) =>
+        {
+            if (_currentAccount == null || _loadingFields) return;
+            _currentAccount.Enabled = true;
+            RefreshAccountsList(preserveSelection: true);
+        };
+        AcctEnabledChk.Unchecked += (_, _) =>
+        {
+            if (_currentAccount == null || _loadingFields) return;
+            _currentAccount.Enabled = false;
+            RefreshAccountsList(preserveSelection: true);
+        };
+        VkUrlBox.TextChanged     += (_, _) => { if (_currentAccount?.Vikunja != null && !_loadingFields) _currentAccount.Vikunja.BaseUrl  = VkUrlBox.Text; };
+        VkUserBox.TextChanged    += (_, _) => { if (_currentAccount?.Vikunja != null && !_loadingFields) _currentAccount.Vikunja.Username = VkUserBox.Text; };
+        VkTokenBox.TextChanged   += (_, _) => { if (_currentAccount?.Vikunja != null && !_loadingFields) _currentAccount.Vikunja.Token    = VkTokenBox.Text; };
+        JiraUrlBox.TextChanged   += (_, _) => { if (_currentAccount?.Jira    != null && !_loadingFields) _currentAccount.Jira.BaseUrl     = JiraUrlBox.Text; };
+        JiraEmailBox.TextChanged += (_, _) => { if (_currentAccount?.Jira    != null && !_loadingFields) _currentAccount.Jira.Email       = JiraEmailBox.Text; };
+        JiraTokenBox.TextChanged += (_, _) => { if (_currentAccount?.Jira    != null && !_loadingFields) _currentAccount.Jira.Token       = JiraTokenBox.Text; };
+        TrelloKeyBox.TextChanged          += (_, _) => { if (_currentAccount?.Trello != null && !_loadingFields) _currentAccount.Trello.ApiKey          = TrelloKeyBox.Text; };
+        TrelloTokenBox.TextChanged        += (_, _) => { if (_currentAccount?.Trello != null && !_loadingFields) _currentAccount.Trello.Token           = TrelloTokenBox.Text; };
+        TrelloIgnoredListsBox.TextChanged += (_, _) => { if (_currentAccount?.Trello != null && !_loadingFields) _currentAccount.Trello.IgnoredListsRaw = TrelloIgnoredListsBox.Text; };
+        TaskTestBtn.Click += async (_, _) => await TestSelectedAccount();
         TaskSaveBtn.Click += (_, _) => SaveTasksSettings();
+        InitTasksTab(); // ahora sí: con todos los handlers ya cableados, SelectedIndex=0 dispara la selección
     }
 
     // ── Pestaña Anclajes ───────────────────────────────────────────────────────
@@ -428,121 +465,268 @@ public partial class ConfigWindow : Window
     }
 
     // ── Pestaña Tareas ─────────────────────────────────────────────────────────
-    // El proveedor de tareas (Vikunja/JIRA) se configura acá. Mismo patrón provider+settings que
-    // Usage. La pestaña carga/guarda su propio TasksSettings; el fetch real lo hace el ITaskProvider
-    // que arma TasksService según la selección — la UI no sabe de HTTP ni de Vikunja.
+    // Multi-cuenta: la pestaña edita una LISTA de TaskAccount. La izquierda muestra las cuentas
+    // (Add/Quitar), la derecha edita la seleccionada. El binding es directo sobre el modelo:
+    // cada keystroke muta _currentAccount → no hay "Aplicar". El botón Guardar sólo persiste a disco.
 
-    /// <summary>Una opción del combo de proveedor: el id estable + la etiqueta linda.</summary>
-    private sealed record ProviderChoice(string Id, string Label)
+    /// <summary>Opción del combo de Kind: id estable + etiqueta para mostrar.</summary>
+    private sealed record KindChoice(string Id, string Label)
     {
         public override string ToString() => Label;
     }
 
-    /// <summary>Llena el combo, selecciona el provider activo y vuelca las credenciales en los campos.</summary>
+    /// <summary>Una fila de la ListBox de cuentas. Marca el estado Enabled para que sea obvio.</summary>
+    private sealed record AccountRow(TaskAccount Account)
+    {
+        public override string ToString()
+        {
+            string nm = string.IsNullOrWhiteSpace(Account.DisplayName) ? "(sin nombre)" : Account.DisplayName;
+            return Account.Enabled ? nm : $"{nm}   · apagada";
+        }
+    }
+
+    // La cuenta actualmente seleccionada en la ListBox; los TextChanged escriben en ESTA referencia.
+    private TaskAccount? _currentAccount;
+    // Flag para distinguir "el usuario está tipeando" de "estoy refrescando los campos desde el modelo":
+    // sin esto, RefreshFields() dispararía TextChanged y se haría lío con _currentAccount.
+    private bool _loadingFields;
+
+    /// <summary>Llena el combo de Kind y la lista de cuentas a partir de _tasks.</summary>
     private void InitTasksTab()
     {
-        TaskProviderCombo.Items.Add(new ProviderChoice("none", "Ninguno (desactivado)"));
-        TaskProviderCombo.Items.Add(new ProviderChoice("vikunja", "Vikunja"));
-        TaskProviderCombo.Items.Add(new ProviderChoice("jira", "JIRA (en preparación)"));
-        TaskProviderCombo.Items.Add(new ProviderChoice("trello", "Trello"));
+        AcctKindCombo.Items.Add(new KindChoice("vikunja", "Vikunja"));
+        AcctKindCombo.Items.Add(new KindChoice("jira",    "JIRA (en preparación)"));
+        AcctKindCombo.Items.Add(new KindChoice("trello",  "Trello"));
 
-        VkUrlBox.Text = _tasks.Vikunja.BaseUrl;
-        VkUserBox.Text = _tasks.Vikunja.Username;
-        VkTokenBox.Text = _tasks.Vikunja.Token;
-
-        JiraUrlBox.Text = _tasks.Jira.BaseUrl;
-        JiraEmailBox.Text = _tasks.Jira.Email;
-        JiraTokenBox.Text = _tasks.Jira.Token;
-
-        TrelloKeyBox.Text = _tasks.Trello.ApiKey;
-        TrelloTokenBox.Text = _tasks.Trello.Token;
-
-        SelectProvider(_tasks.Provider);
-        UpdateTaskPanels();
-    }
-
-    private void SelectProvider(string id)
-    {
-        foreach (var item in TaskProviderCombo.Items)
-            if (item is ProviderChoice pc && pc.Id == id) { TaskProviderCombo.SelectedItem = item; return; }
-        if (TaskProviderCombo.Items.Count > 0) TaskProviderCombo.SelectedIndex = 0;
-    }
-
-    private string SelectedProviderId => (TaskProviderCombo.SelectedItem as ProviderChoice)?.Id ?? "none";
-
-    /// <summary>Muestra el panel de credenciales del provider elegido y oculta el otro.</summary>
-    private void UpdateTaskPanels()
-    {
-        string id = SelectedProviderId;
-        VikunjaPanel.Visibility = id == "vikunja" ? Visibility.Visible : Visibility.Collapsed;
-        JiraPanel.Visibility = id == "jira" ? Visibility.Visible : Visibility.Collapsed;
-        TrelloPanel.Visibility = id == "trello" ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    /// <summary>Vuelca los campos al settings y persiste. NO valida credenciales (eso es Probar conexión).</summary>
-    private void SaveTasksSettings()
-    {
-        _tasks.Provider = SelectedProviderId;
-        _tasks.Vikunja.BaseUrl = VkUrlBox.Text.Trim();
-        _tasks.Vikunja.Username = VkUserBox.Text.Trim();
-        _tasks.Vikunja.Token = VkTokenBox.Text.Trim();
-        _tasks.Jira.BaseUrl = JiraUrlBox.Text.Trim();
-        _tasks.Jira.Email = JiraEmailBox.Text.Trim();
-        _tasks.Jira.Token = JiraTokenBox.Text.Trim();
-        _tasks.Trello.ApiKey = TrelloKeyBox.Text.Trim();
-        _tasks.Trello.Token = TrelloTokenBox.Text.Trim();
-        _tasks.Save();
-
-        TaskTestStatus.Foreground = (System.Windows.Media.Brush)FindResource("FgMuted");
-        TaskTestStatus.Text = "Guardado en tasks.json.";
+        RefreshAccountsList(preserveSelection: false);
+        if (AccountsList.Items.Count > 0)
+            AccountsList.SelectedIndex = 0;
+        else
+            UpdateEditorVisibility(); // sin cuentas → editor oculto
     }
 
     /// <summary>
-    /// Prueba la conexión con los valores ACTUALES de los campos (sin necesidad de guardar antes).
-    /// Usa el provider real: para Vikunja trae las tareas y reporta cuántas; JIRA aún es stub.
+    /// Redibuja la lista de cuentas. SUPRIME OnAccountSelectionChanged durante el rebuild — sin esto,
+    /// el Clear+Add dispara SelectionChanged dos veces (a null y a la cuenta preservada), cada una
+    /// llama a RefreshFields que reasigna AcctNameBox.Text al MISMO valor, y WPF resetea el caret en
+    /// medio de la edición del usuario.
     /// </summary>
-    private async Task TestTaskConnection()
+    private void RefreshAccountsList(bool preserveSelection)
     {
-        var probe = new TasksSettings
+        bool prev = _loadingFields;
+        _loadingFields = true;
+        try
         {
-            Provider = SelectedProviderId,
-            Vikunja = new VikunjaSettings
+            TaskAccount? selected = preserveSelection ? _currentAccount : null;
+            AccountsList.Items.Clear();
+            foreach (var a in _tasks.Accounts)
+                AccountsList.Items.Add(new AccountRow(a));
+            if (selected != null)
             {
-                BaseUrl = VkUrlBox.Text.Trim(),
-                Username = VkUserBox.Text.Trim(),
-                Token = VkTokenBox.Text.Trim(),
-            },
-            Jira = new JiraSettings
-            {
-                BaseUrl = JiraUrlBox.Text.Trim(),
-                Email = JiraEmailBox.Text.Trim(),
-                Token = JiraTokenBox.Text.Trim(),
-            },
-            Trello = new TrelloSettings
-            {
-                ApiKey = TrelloKeyBox.Text.Trim(),
-                Token = TrelloTokenBox.Text.Trim(),
-            },
-        };
+                for (int i = 0; i < AccountsList.Items.Count; i++)
+                {
+                    if (AccountsList.Items[i] is AccountRow r && ReferenceEquals(r.Account, selected))
+                    {
+                        AccountsList.SelectedIndex = i;
+                        return;
+                    }
+                }
+            }
+        }
+        finally { _loadingFields = prev; }
+    }
 
-        var provider = TasksService.CreateProvider(probe);
+    private void OnAccountSelectionChanged()
+    {
+        // Las SelectionChanged disparadas por rebuilds internos NO son cambios reales — las ignoramos.
+        if (_loadingFields) return;
+        _currentAccount = (AccountsList.SelectedItem as AccountRow)?.Account;
+        RefreshFields();
+        UpdateEditorVisibility();
+    }
+
+    /// <summary>
+    /// Vuelca _currentAccount a los TextBoxes con _loadingFields=true para no auto-dispararse.
+    ///
+    /// Los TextBox van por SetIfDifferent: asignar .Text = mismo-valor IGUAL dispara TextChanged en
+    /// WPF y reposiciona el caret al inicio → la edición del usuario se ve "saltada" en pleno tipeo
+    /// cuando este RefreshFields corre desde un RefreshAccountsList encadenado al propio TextChanged.
+    /// El IsChecked del CheckBox no necesita guard: WPF NO refire Checked/Unchecked si el valor
+    /// asignado es el actual.
+    /// </summary>
+    private void RefreshFields()
+    {
+        bool prev = _loadingFields;
+        _loadingFields = true;
+        try
+        {
+            if (_currentAccount is null)
+            {
+                SetIfDifferent(AcctNameBox, "");
+                AcctEnabledChk.IsChecked = false;
+                SetIfDifferent(VkUrlBox, ""); SetIfDifferent(VkUserBox, ""); SetIfDifferent(VkTokenBox, "");
+                SetIfDifferent(JiraUrlBox, ""); SetIfDifferent(JiraEmailBox, ""); SetIfDifferent(JiraTokenBox, "");
+                SetIfDifferent(TrelloKeyBox, ""); SetIfDifferent(TrelloTokenBox, ""); SetIfDifferent(TrelloIgnoredListsBox, "");
+                return;
+            }
+
+            SetIfDifferent(AcctNameBox, _currentAccount.DisplayName);
+            AcctEnabledChk.IsChecked = _currentAccount.Enabled;
+            SelectKindCombo(_currentAccount.Kind);
+
+            // Aseguramos que el sub-objeto del Kind exista — si la cuenta nació recién, falta.
+            EnsureCredentialsBlock(_currentAccount);
+
+            SetIfDifferent(VkUrlBox,   _currentAccount.Vikunja?.BaseUrl  ?? "");
+            SetIfDifferent(VkUserBox,  _currentAccount.Vikunja?.Username ?? "");
+            SetIfDifferent(VkTokenBox, _currentAccount.Vikunja?.Token    ?? "");
+
+            SetIfDifferent(JiraUrlBox,   _currentAccount.Jira?.BaseUrl ?? "");
+            SetIfDifferent(JiraEmailBox, _currentAccount.Jira?.Email   ?? "");
+            SetIfDifferent(JiraTokenBox, _currentAccount.Jira?.Token   ?? "");
+
+            SetIfDifferent(TrelloKeyBox,          _currentAccount.Trello?.ApiKey          ?? "");
+            SetIfDifferent(TrelloTokenBox,        _currentAccount.Trello?.Token           ?? "");
+            SetIfDifferent(TrelloIgnoredListsBox, _currentAccount.Trello?.IgnoredListsRaw ?? "");
+        }
+        finally { _loadingFields = prev; }
+    }
+
+    private static void SetIfDifferent(System.Windows.Controls.TextBox tb, string value)
+    {
+        if (tb.Text != value) tb.Text = value;
+    }
+
+    private void SelectKindCombo(string kind)
+    {
+        foreach (var item in AcctKindCombo.Items)
+            if (item is KindChoice kc && kc.Id == kind) { AcctKindCombo.SelectedItem = item; return; }
+        if (AcctKindCombo.Items.Count > 0) AcctKindCombo.SelectedIndex = 0;
+    }
+
+    /// <summary>El Kind cambió desde la UI — actualiza la cuenta y muestra el panel que toca.</summary>
+    private void OnKindChanged()
+    {
+        if (_loadingFields || _currentAccount is null) { UpdateEditorVisibility(); return; }
+        if (AcctKindCombo.SelectedItem is KindChoice kc && _currentAccount.Kind != kc.Id)
+        {
+            _currentAccount.Kind = kc.Id;
+            EnsureCredentialsBlock(_currentAccount);
+            // refrescamos los textboxes del nuevo Kind (los del anterior quedan con su valor — no se borran)
+            RefreshFields();
+        }
+        UpdateEditorVisibility();
+    }
+
+    /// <summary>Materializa el sub-objeto de credenciales del Kind activo si está null.</summary>
+    private static void EnsureCredentialsBlock(TaskAccount a)
+    {
+        switch (a.Kind)
+        {
+            case "vikunja": a.Vikunja ??= new VikunjaSettings(); break;
+            case "jira":    a.Jira    ??= new JiraSettings();    break;
+            case "trello":  a.Trello  ??= new TrelloSettings();  break;
+        }
+    }
+
+    /// <summary>Muestra el panel del Kind seleccionado; oculta el editor entero si no hay cuenta.</summary>
+    private void UpdateEditorVisibility()
+    {
+        bool hasAccount = _currentAccount != null;
+        AccountEditorPanel.Visibility = hasAccount ? Visibility.Visible : Visibility.Collapsed;
+        AccountRemoveBtn.IsEnabled = hasAccount;
+        TaskTestBtn.IsEnabled = hasAccount;
+
+        string kind = (AcctKindCombo.SelectedItem as KindChoice)?.Id ?? "";
+        VikunjaPanel.Visibility = kind == "vikunja" ? Visibility.Visible : Visibility.Collapsed;
+        JiraPanel.Visibility    = kind == "jira"    ? Visibility.Visible : Visibility.Collapsed;
+        TrelloPanel.Visibility  = kind == "trello"  ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void AddAccount()
+    {
+        var a = new TaskAccount
+        {
+            Kind = "vikunja",
+            DisplayName = "Cuenta nueva",
+            Enabled = true,
+            Vikunja = new VikunjaSettings(),
+        };
+        _tasks.Accounts.Add(a);
+        _currentAccount = a;
+        RefreshAccountsList(preserveSelection: true); // suprime SelectionChanged → sincronizamos editor a mano
+        RefreshFields();
+        UpdateEditorVisibility();
+        AcctNameBox.Focus();
+        AcctNameBox.SelectAll();
+    }
+
+    private void RemoveSelectedAccount()
+    {
+        if (_currentAccount is null) return;
+        _tasks.Accounts.Remove(_currentAccount);
+        _currentAccount = _tasks.Accounts.Count > 0 ? _tasks.Accounts[0] : null;
+        RefreshAccountsList(preserveSelection: true); // suprime SelectionChanged → sincronizamos editor a mano
+        RefreshFields();
+        UpdateEditorVisibility();
+    }
+
+    /// <summary>Persiste tasks.json. NO valida credenciales — eso es Probar cuenta.</summary>
+    private void SaveTasksSettings()
+    {
+        // Pasamos los strings por Trim antes de guardar: los TextChanged ya copiaron los valores tal
+        // cual; el trim final evita persistir espacios en blanco que rompen el adapter.
+        foreach (var a in _tasks.Accounts)
+        {
+            a.DisplayName = a.DisplayName.Trim();
+            if (a.Vikunja != null)
+            {
+                a.Vikunja.BaseUrl = a.Vikunja.BaseUrl.Trim();
+                a.Vikunja.Username = a.Vikunja.Username.Trim();
+                a.Vikunja.Token = a.Vikunja.Token.Trim();
+            }
+            if (a.Jira != null)
+            {
+                a.Jira.BaseUrl = a.Jira.BaseUrl.Trim();
+                a.Jira.Email = a.Jira.Email.Trim();
+                a.Jira.Token = a.Jira.Token.Trim();
+            }
+            if (a.Trello != null)
+            {
+                a.Trello.ApiKey = a.Trello.ApiKey.Trim();
+                a.Trello.Token = a.Trello.Token.Trim();
+            }
+        }
+        _tasks.Save();
+
+        TaskTestStatus.Foreground = (System.Windows.Media.Brush)FindResource("FgMuted");
+        TaskTestStatus.Text = $"Guardado en tasks.json. {_tasks.Accounts.Count} cuenta(s).";
+        RefreshAccountsList(preserveSelection: true); // los DisplayName trimeados se ven en la lista
+    }
+
+    /// <summary>Prueba SOLO la cuenta seleccionada con los valores actuales del editor.</summary>
+    private async Task TestSelectedAccount()
+    {
+        if (_currentAccount is null) return;
+
+        var provider = TasksService.CreateProvider(_currentAccount);
         if (provider is null)
         {
             TaskTestStatus.Foreground = (System.Windows.Media.Brush)FindResource("FgMuted");
-            TaskTestStatus.Text = "Elegí un proveedor (Vikunja o JIRA) para probar.";
+            TaskTestStatus.Text = "Esta cuenta no tiene credenciales del tipo elegido.";
             return;
         }
 
         TaskTestBtn.IsEnabled = false;
         TaskTestStatus.Foreground = (System.Windows.Media.Brush)FindResource("FgMuted");
-        TaskTestStatus.Text = "Probando…";
+        TaskTestStatus.Text = $"Probando '{_currentAccount.DisplayName}'…";
         try
         {
             var result = await provider.GetOpenTasksAsync();
             if (result.Ok)
             {
                 TaskTestStatus.Foreground = (System.Windows.Media.Brush)FindResource("Accent");
-                TaskTestStatus.Text = $"✓ Conectado. Tareas abiertas tuyas: {result.Items.Count}.";
+                TaskTestStatus.Text = $"✓ Conectado a '{_currentAccount.DisplayName}'. Tareas abiertas: {result.Items.Count}.";
             }
             else
             {
