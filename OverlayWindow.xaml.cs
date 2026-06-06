@@ -73,8 +73,14 @@ public partial class OverlayWindow : Window
         BuildDots(count, index, desktops);
 
         // Posicionar centrado horizontal, un poco por encima del centro vertical.
-        UpdateLayout();
-        Left = (SystemParameters.PrimaryScreenWidth - ActualWidth) / 2;
+        // OJO: NO usar ActualWidth acá. La primera vez que se llama a ShowOverlay tras el
+        // arranque, la ventana nunca pasó por un layout pass real (el HWND se creó con
+        // EnsureHandle sin mostrar) → ActualWidth viene 0/stale y el cálculo
+        // (screenWidth - 0) / 2 deja la card corrida a la derecha. A partir del segundo
+        // cambio ActualWidth ya es correcto y centra bien. Forzamos un Measure y usamos
+        // DesiredSize, que está disponible sin necesidad de que la ventana esté visible.
+        Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        Left = (SystemParameters.PrimaryScreenWidth - DesiredSize.Width) / 2;
         Top = SystemParameters.PrimaryScreenHeight / 2 - 220;
 
         Visibility = Visibility.Visible;
