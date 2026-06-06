@@ -50,11 +50,6 @@ public sealed class HotkeyService : IDisposable
     /// hacer en su lugar (minimizar todo menos la barra).</summary>
     public event Action? ShowDesktopRequested;
 
-    /// <summary>Win + NumLock: traer la lista de tareas abiertas para pickear una. El NumLock SIEMPRE
-    /// se traga (no togglea); con Win apretada, además, dispara esto. El caller decide (picker de
-    /// tareas si la integración está activa).</summary>
-    public event Action? TasksRequested;
-
     public void Start()
     {
         _hook.KeyEvent += OnKeyEvent;
@@ -90,18 +85,17 @@ public sealed class HotkeyService : IDisposable
 
     private void OnKeyEvent(object? sender, KeyboardHookEventArgs e)
     {
-        // NumLock SIEMPRE suprimido (el wildcard *NumLock del .ahk): si Windows nunca lo procesa,
-        // nunca togglea → queda clavado en OFF, sin polling.
+        // NumLock SIEMPRE suprimido cuando llega PELADO. Funciona limpio así. NO intentamos
+        // protegerlo con modificadores apretados: ahí Windows toggea por un path por debajo del
+        // WH_KEYBOARD_LL (input stack del kernel) que no se puede neutralizar de forma confiable
+        // — ni con un counter-tap inyectado, ni desactivando los hotkeys de accesibilidad
+        // (StickyKeys/ToggleKeys/MouseKeys, probado y descartado con instrumentación a archivo).
+        // Por eso el picker de tareas se movió de `Win+NumLock` a `Win+NumpadInsert` (= NumpadKey.D0
+        // por scancode 0x52): la decodificación por scancode es a prueba de NumLock, y dejamos de
+        // pelear una guerra imposible. Si el usuario hace Shift/Alt+NumLock por accidente, NumLock
+        // togglea como en cualquier otra app de Windows — es el comportamiento estándar y aceptado.
         if (e.VirtualKey == VK_NUMLOCK)
         {
-            // Win + NumLock: además de tragarlo, dispara el picker de tareas. Sólo en el DOWN (el up
-            // también es VK_NUMLOCK y caería acá). Marcamos el combo consumido para enmascarar el
-            // Win-up — si no, el NumLock suprimido deja el Win "tap solo" y abre el menú Inicio.
-            if (e.IsDown && _winDown)
-            {
-                _winComboConsumed = true;
-                TasksRequested?.Invoke();
-            }
             e.Suppress = true;
             return;
         }

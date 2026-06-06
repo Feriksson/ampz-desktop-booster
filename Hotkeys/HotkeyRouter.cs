@@ -63,7 +63,6 @@ public sealed class HotkeyRouter
         _refreshTaskWidget = refreshTaskWidget;
         hotkeys.HotkeyFired += OnHotkeyFired;
         hotkeys.WinFunctionKey += OnWinFunctionKey;
-        hotkeys.TasksRequested += OnTasksRequested;
     }
 
     private void OnWinFunctionKey(int vk, bool shift)
@@ -220,6 +219,7 @@ public sealed class HotkeyRouter
             case NumpadKey.Multiply: ShowProjectPaths();      return;
             case NumpadKey.Divide:   ShowProjectNotes();      return;
             case NumpadKey.Decimal:  ShowSendWindowPicker();  return; // Win+NumpadDel
+            case NumpadKey.D0:       ShowTaskPicker();        return; // Win+NumpadInsert (scancode 0x52)
         }
 
         // ── Navegación por nombre ──
@@ -289,20 +289,16 @@ public sealed class HotkeyRouter
         w.ShowFocused();
     }
 
-    // ── Tareas (Win+NumLock pickear · click en el widget abre el detalle) ────────
-
-    /// <summary>
-    /// Win+NumLock: el callback del hook no se puede bloquear y vamos a hacer I/O de red (fetch de
-    /// tareas) + abrir ventana → diferimos al Dispatcher, igual que el resto de los hotkeys.
-    /// </summary>
-    private void OnTasksRequested() =>
-        Application.Current.Dispatcher.BeginInvoke(() => ShowTaskPicker());
+    // ── Tareas (Win+NumpadInsert pickear · click en el widget abre el detalle) ────────
+    // NOTA: el atajo MIGRÓ de Win+NumLock a Win+NumpadInsert (=NumpadKey.D0, scancode 0x52). Razón:
+    // Shift/Alt+NumLock togglea NumLock por un path por debajo de WH_KEYBOARD_LL que no podemos
+    // neutralizar. El NumpadInsert se decodifica por scancode → a prueba de NumLock → sin pelea.
 
     /// <summary>
     /// Abre el picker INSTANTÁNEAMENTE (con loader) y dispara el fetch en background. Cuando el
     /// fetch termina, popula la lista vía Dispatcher (UI thread). Razón: con N cuentas activas y
     /// Vikunja haciendo fetches anidados, esperar al fetch ANTES de mostrar la ventana se sentía
-    /// como freeze de la app (Win+NumLock no respondía visualmente por 1-3 seg).
+    /// como freeze de la app (Win+NumpadInsert no respondía visualmente por 1-3 seg).
     ///
     /// Aislamiento por cuenta: una cuenta que falla NO bloquea las demás; se acumula su error y se
     /// reporta por toast al final, pero el picker muestra lo que sí vino.

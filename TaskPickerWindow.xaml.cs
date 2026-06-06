@@ -8,7 +8,7 @@ using AmpzDesktopBooster.Services.Tasks;
 namespace AmpzDesktopBooster;
 
 /// <summary>
-/// Picker de tareas (Win+NumLock): lista las tareas ABIERTAS que devolvió el aggregator, con filtro
+/// Picker de tareas (Win+NumpadInsert): lista las tareas ABIERTAS que devolvió el aggregator, con filtro
 /// en vivo. Enter / doble-click ancla la tarea al desk actual.
 ///
 /// ABRE INSTANTE + LOADER: el picker NO espera al fetch para mostrarse. Se construye con cabecera y

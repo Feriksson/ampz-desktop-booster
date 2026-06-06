@@ -13,7 +13,7 @@ namespace AmpzDesktopBooster.Services.Tasks;
 /// cuentas, una falla NO debe tumbar al resto — el aggregator junta lo que sí pudo y reporta las que
 /// fallaron por separado, así el llamador (HotkeyRouter / ConfigWindow) decide qué hacer.
 ///
-/// Por ahora NO hay polling: el fetch arranca por demanda (Win+NumLock o "Probar conexión"). El
+/// Por ahora NO hay polling: el fetch arranca por demanda (Win+NumpadInsert o "Probar conexión"). El
 /// cableado al arranque core (polling + feedback al "setear proyecto") llega en una tanda futura.
 /// </summary>
 public static class TasksService

@@ -7,7 +7,7 @@ namespace AmpzDesktopBooster.Services.Tasks;
 /// que <see cref="AmpzDesktopBooster.Desktops.ProjectStore"/>._session: vive en memoria, se pierde
 /// al cerrar la app y NUNCA se rellena al arrancar (ver la tarea de ayer sin confirmar confundiría
 /// igual que ver el proyecto de ayer). El widget de la barra arranca SIEMPRE oculto y sólo aparece
-/// después de que el usuario pickea una tarea con Win+NumLock.
+/// después de que el usuario pickea una tarea con Win+NumpadInsert.
 ///
 /// Por qué por-desk y no global: el usuario lo eligió así — cada DESK puede estar atado a una tarea
 /// distinta, igual que cada DESK +N tiene su proyecto. El widget cambia con el desk activo (lo
