@@ -28,6 +28,25 @@ internal static partial class WindowMethods
     [DllImport("user32.dll")]
     private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
 
+    /// <summary>
+    /// HWNDs de TODAS las ventanas top-level "reales" (visibles, no child, no tool, etc.) que
+    /// pertenecen a un proceso con el nombre dado (ej. "Code.exe"). Incluye ventanas de otros
+    /// virtual desktops (no filtramos cloaked). Lo usa el watchdog post-spawn para detectar la
+    /// ventana NUEVA recién creada y aplicarle un estado (ej. maximizar).
+    /// </summary>
+    public static List<IntPtr> VisibleTopLevelOf(string exeName)
+    {
+        var list = new List<IntPtr>();
+        EnumWindows((hwnd, _) =>
+        {
+            if (!IsRealTopLevel(hwnd)) return true;
+            if (string.Equals(ProcessNameOf(hwnd), exeName, StringComparison.OrdinalIgnoreCase))
+                list.Add(hwnd);
+            return true;
+        }, IntPtr.Zero);
+        return list;
+    }
+
     /// <summary>Nombre del proceso dueño del hwnd (ej. "brave.exe"), o "" si no se pudo.</summary>
     public static string ProcessNameOf(IntPtr hWnd)
     {

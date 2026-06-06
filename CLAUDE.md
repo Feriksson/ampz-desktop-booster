@@ -330,6 +330,40 @@ geometría).
 **Regla transversal (otra vez)**: la Causa 2 parecía ser "el gesto empuja el z-order" (teoría linda) y
 era NUESTRO propio `ABN_FULLSCREENAPP` mal interpretado. Solo el log lo reveló. Instrumentá, no teorices.
 
+### ⚠ Spawneo de Electron apps (VS Code) — env vars heredadas CONTAMINAN al child
+
+Si esta app es spawneada desde un proceso DESCENDIENTE de VS Code (el shell del agente Claude Code,
+terminal integrado, debugger F5 lanzado desde VS Code, etc.), HEREDA env vars que VS Code inyecta en
+TODOS sus child processes. Las críticas, confirmadas con instrumentación en `LaunchApp.cs`:
+
+- `ELECTRON_RUN_AS_NODE=1` → convierte a Code.exe en intérprete Node.js sin UI. **Esta es la asesina**.
+- `VSCODE_IPC_HOOK=\\.\pipe\<uuid>-main-sock` → apunta al pipe interno del VS Code PADRE → handshake roto.
+- `VSCODE_PID`, `VSCODE_NLS_CONFIG`, `VSCODE_ESM_ENTRYPOINT`, `VSCODE_CRASH_REPORTER_PROCESS_TYPE`,
+  `VSCODE_CODE_CACHE_PATH`, `VSCODE_CWD`, `VSCODE_L10N_BUNDLE_LOCATION`, etc. (11 en total).
+
+Síntoma: `Process.Start` devuelve PID válido, el stub Code.exe sale con **exit code 9**, no aparece
+ninguna ventana, no queda nada en Task Manager. Manual desde cmd y el shortcut del Start Menu funcionan
+porque su parent es `explorer.exe` → env limpia.
+
+- **Fix obligatorio en CUALQUIER spawn de Electron app**: antes de `Process.Start`, iterar
+  `ProcessStartInfo.Environment.Keys` y eliminar TODA key que empiece con `VSCODE_` o `ELECTRON_`
+  (case-insensitive). Sumar `UseShellExecute=false` y `WorkingDirectory` en el home del user
+  (`Environment.SpecialFolder.UserProfile`), NO en `bin\Debug` donde vive el exe. Replica el env
+  "limpio" del shortcut del Start Menu.
+- **Aplica a TODA app Electron** que agregues a "Abrir con" en el futuro (Discord, Slack, Postman,
+  Obsidian, GitHub Desktop, etc.) — todas mueren igual con el env contaminado de VS Code.
+
+**Teorías descartadas (NO repetir, las probamos las cuatro y todas fallaron)**:
+1. Named pipe IPC stale del main zombie → se intentó matar procesos Code.exe vivos sin ventana. No
+   ayudó: el problema NO eran los procesos, era el env.
+2. Job Object del padre matando grandchildren → se intentó `cmd /c start ""` para forzar
+   `CREATE_BREAKAWAY_FROM_JOB`. Sigue fallando porque el `cmd` también hereda el env.
+3. MIC/integrity level mismatch → el manifest no eleva, ambos procesos corren a Medium.
+4. Falta de console parent para el stub → Code.exe es GUI, no necesita console.
+
+Solo el log mostró el env contaminado de un saque. Confirmación de la regla transversal: **bugs de
+spawn que no tiran excepción → log a archivo + patrón observado, NUNCA teoría**.
+
 ---
 
 ## Convenciones del repo

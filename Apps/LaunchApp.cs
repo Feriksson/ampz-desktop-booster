@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using AmpzDesktopBooster.Interop;
 
 namespace AmpzDesktopBooster.Apps;
 
@@ -26,9 +27,45 @@ public static class AppCatalog
         if (code is not null)
             list.Add(new("Visual Studio Code", paths =>
             {
-                // VSCode abre múltiples carpetas en una sola ventana.
-                var args = string.Join(" ", paths.Select(p => Quote(p)));
-                Start(code, args);
+                // BUG cazado con instrumentación a archivo (ampz-abrircon.log, 2026-06-06):
+                //
+                // Si AmpzDesktopBooster es spawneado desde un proceso hijo de VS Code (el shell
+                // del extension Claude Code, o cualquier terminal integrado), HEREDA env vars
+                // que VS Code inyecta en sus child processes. Las críticas:
+                //   - ELECTRON_RUN_AS_NODE=1       → vuelve a Code.exe un intérprete Node SIN UI
+                //   - VSCODE_IPC_HOOK=\\.\pipe\... → apunta al pipe interno del VS Code padre
+                //   - VSCODE_PID, VSCODE_NLS_CONFIG, VSCODE_ESM_ENTRYPOINT, etc.
+                //
+                // Cuando spawneamos Code.exe con ese env contaminado, Code.exe arranca en modo
+                // Node, NO crea ventana, exit code 9, sin rastro en Task Manager (al menos sin
+                // ventana visible). Manual desde cmd y desde el shortcut del Start Menu funciona
+                // porque su env está limpia (parent = explorer.exe).
+                //
+                // Fix: limpiar TODAS las VSCODE_* y ELECTRON_* del env del child antes del spawn,
+                // replicando la env "limpia" del shortcut. Sumamos -n para forzar ventana nueva
+                // y WorkingDirectory en el home del user (no en bin\Debug donde vive este exe).
+                var args = "-n " + string.Join(" ", paths.Select(p => Quote(p)));
+                var psi = new System.Diagnostics.ProcessStartInfo(code)
+                {
+                    Arguments = args,
+                    UseShellExecute = false,
+                    WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                };
+                foreach (var k in psi.Environment.Keys.ToList())
+                {
+                    if (k.StartsWith("VSCODE_", StringComparison.OrdinalIgnoreCase) ||
+                        k.StartsWith("ELECTRON_", StringComparison.OrdinalIgnoreCase))
+                    {
+                        psi.Environment.Remove(k);
+                    }
+                }
+
+                // Snapshot de HWNDs antes del spawn → el watchdog maximiza la(s) NUEVA(s) que
+                // aparezcan. VS Code no tiene flag --maximize en CLI; la única vía limpia es
+                // dispararle SW_SHOWMAXIMIZED desde afuera apenas se renderiza la ventana.
+                var beforeHwnds = new HashSet<IntPtr>(WindowMethods.VisibleTopLevelOf("Code.exe"));
+                System.Diagnostics.Process.Start(psi);
+                MaximizeNewCodeWindows(beforeHwnds);
             }));
 
         // ── Claude CLI (shell preferido directo, NO wt) ──
@@ -77,6 +114,32 @@ public static class AppCatalog
         }
 
         return list;
+    }
+
+    /// <summary>
+    /// Polea por hasta ~5s buscando HWNDs de Code.exe que NO estuvieran antes del spawn — los
+    /// maximiza apenas aparecen y corta. Necesario porque VS Code no tiene flag --maximize: el
+    /// `window.newWindowDimensions` del settings.json puede estar en "default" o "inherit", y
+    /// queremos el comportamiento independientemente del setting del user. El polling vive en
+    /// thread del pool (no UI), ShowWindow se llama vía P/Invoke así que no requiere Dispatcher.
+    /// </summary>
+    private static void MaximizeNewCodeWindows(HashSet<IntPtr> before)
+    {
+        System.Threading.Tasks.Task.Run(async () =>
+        {
+            var sw = Stopwatch.StartNew();
+            while (sw.Elapsed < TimeSpan.FromSeconds(5))
+            {
+                await System.Threading.Tasks.Task.Delay(200);
+                var current = WindowMethods.VisibleTopLevelOf("Code.exe");
+                var newOnes = current.Where(h => !before.Contains(h)).ToList();
+                if (newOnes.Count > 0)
+                {
+                    foreach (var h in newOnes) WindowMethods.Maximize(h);
+                    return;
+                }
+            }
+        });
     }
 
     private static string Quote(string s) => $"\"{s}\"";
