@@ -67,6 +67,42 @@
             </Style.Triggers>
         </Style>
 
+        <!-- Botones del footer. SIN style propio, WPF usa el default (gris claro) y el foco se
+             dibuja como un puntito punteado negro casi invisible sobre fondo oscuro → no se ve
+             cuál tiene el foco. Replicamos el patrón de AbrirConWindow: IsKeyboardFocused cambia
+             borde a celeste + fondo, y FocusVisualStyle vacío mata el rectángulo punteado. -->
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="#2A2A2A" />
+            <Setter Property="Foreground" Value="#F2F2F2" />
+            <Setter Property="BorderBrush" Value="#444" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2D4A57" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#4FC3F7" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#34505C" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#4FC3F7" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#3A6070" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Headers del GridView: también vienen claros por default -->
         <Style TargetType="GridViewColumnHeader">
             <Setter Property="Background" Value="#262626" />
@@ -120,7 +156,10 @@
                 <Button x:Name="EditBtn"       Content="✎ Renombrar" MinWidth="100" Margin="0,0,6,0" Padding="10,4" />
                 <Button x:Name="DefaultBtn"    Content="⭐ Predeterminado" MinWidth="140" Margin="0,0,6,0" Padding="10,4" />
                 <Button x:Name="DeleteBtn"     Content="Borrar" MinWidth="80" Margin="0,0,6,0" Padding="10,4" />
-                <Button x:Name="CloseBtn"      Content="Cerrar" MinWidth="80" HorizontalAlignment="Right" Padding="10,4" />
+                <!-- IsCancel=True: Esc dispara el Click de este botón sin importar qué control
+                     tenga el foco. Sin esto, al tabular a un botón el foco se va del FilterBox/
+                     PathList y los PreviewKeyDown de Esc no se ejecutan → Esc dejaba de cerrar. -->
+                <Button x:Name="CloseBtn"      Content="Cerrar" MinWidth="80" HorizontalAlignment="Right" Padding="10,4" IsCancel="True" />
             </StackPanel>
         </Grid>
     </Border>
