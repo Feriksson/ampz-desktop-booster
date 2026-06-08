@@ -17,12 +17,14 @@ public partial class ToastWindow : Window
 {
     private const double TopMargin = 20;
 
-    public ToastWindow(string title, string detail, Color accent)
+    public ToastWindow(string title, string detail, Color accent, string extra = "")
     {
         InitializeComponent();
         TitleText.Text = title;
         DetailText.Text = detail;
         DetailText.Visibility = string.IsNullOrEmpty(detail) ? Visibility.Collapsed : Visibility.Visible;
+        ExtraText.Text = extra;
+        ExtraText.Visibility = string.IsNullOrEmpty(extra) ? Visibility.Collapsed : Visibility.Visible;
         AccentBar.Background = new SolidColorBrush(accent);
 
         // Crear el HWND ya, para aplicar exstyles + pin antes de mostrar.
@@ -50,12 +52,16 @@ public partial class ToastWindow : Window
     /// <summary>Muestra el toast en (x, yTop) y arranca su ciclo de vida (visible → fade → cerrar).</summary>
     public void ShowAt(double centerX, double yTop, TimeSpan hold)
     {
+        // Mostramos PRIMERO (invisible) y recién DESPUÉS centramos. Con SizeToContent, antes de Show()
+        // ActualWidth todavía es 0 → "centrar" daba Left ≈ centerX y el toast aparecía corrido a la
+        // derecha. Con la ventana ya renderizada, ActualWidth es real → centra de verdad. Como Opacity
+        // arranca en 0, el reposicionamiento ocurre invisible: no se ve ningún salto.
+        Opacity = 0;
+        Show();
         UpdateLayout();
+
         Left = centerX - ActualWidth / 2;
         Top = yTop;
-        Opacity = 0;
-
-        Show();
 
         // Fade-in rápido.
         BeginAnimation(OpacityProperty, Fade(0, 1, 140));

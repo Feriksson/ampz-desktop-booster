@@ -154,4 +154,16 @@ public sealed class DesktopService
             VirtualDesktopAccessor.GoToDesktopNumber(index);
         return true;
     }
+
+    /// <summary>
+    /// Índice del desktop donde vive una ventana (-1 si la DLL no lo pudo resolver). Lo usa el
+    /// servicio de atención: dado el PID que reclama, encuentra su ventana y pregunta acá su desk.
+    /// Pasa por DesktopService a propósito — nadie más toca P/Invoke de desktops directo (la capa).
+    /// </summary>
+    public int GetWindowDesktop(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return -1;
+        int idx = VirtualDesktopAccessor.GetWindowDesktopNumber(hwnd);
+        return idx >= 0 && idx < Count ? idx : -1;
+    }
 }

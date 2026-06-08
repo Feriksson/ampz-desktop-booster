@@ -137,6 +137,18 @@
                     </Border>
                 </StackPanel>
 
+                <!-- Atención por desk: dots de color (uno por desk que RECLAMA tu atención). OCULTO
+                     cuando no hay nada pendiente (como el TaskWidget) → cero ruido el 99% del tiempo.
+                     Rojo = te necesita (pulsa), verde = tarea lista (fijo). El número adentro del dot
+                     es el desk; el color, la urgencia. Click en un dot → saltás a ese desk (y al entrar
+                     se limpia solo). El panel lo popula el code-behind (UpdateAttention). El separador
+                     vive DENTRO del widget → desaparece con él cuando colapsa. -->
+                <StackPanel x:Name="AttentionWidget" Orientation="Horizontal" VerticalAlignment="Center"
+                            Visibility="Collapsed">
+                    <Rectangle x:Name="AttentionSeparator" Width="1" Height="16" Fill="{StaticResource Separator}" Margin="14,0" />
+                    <StackPanel x:Name="AttentionDotsPanel" Orientation="Horizontal" VerticalAlignment="Center" />
+                </StackPanel>
+
                 <!-- Desktop actual: ancho FIJO (288) para que la barra NO se desplace al cambiar
                      de desktop. Adentro, dos modos sobre el mismo espacio (como el legacy):
                        · DUAL  → con proyecto: dot + nombre a la izquierda + proyecto a la derecha

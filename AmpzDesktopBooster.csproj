@@ -46,4 +46,10 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Audio del feedback de atención: NAudio da control de volumen REAL + amplificación (gain >1),
+         a diferencia de MediaPlayer (que no amplifica y reproduce flojo) y SoundPlayer (sin volumen). -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+
 </Project>

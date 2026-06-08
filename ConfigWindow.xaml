@@ -703,6 +703,101 @@
             </Grid>
         </TabItem>
 
+        <!-- ===== Pestaña ATENCIÓN ===== -->
+        <TabItem Header="Atención">
+            <Grid Margin="14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="Atención por escritorio" />
+                <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,12"
+                           Text="Avisos cuando un escritorio reclama tu atención (Claude y futuros integradores). El sonido lo reproduce la app: elegí el .wav por nivel y probalo. Los cambios se guardan al apretar Guardar." />
+
+                <!-- Toggle de la feature entera -->
+                <CheckBox Grid.Row="2" x:Name="AttnEnabledChk" Margin="0,0,0,4"
+                          Content="Sistema de atención activado (toast + widget + sonido)" />
+
+                <!-- Cuerpo: sonido -->
+                <StackPanel Grid.Row="3" Margin="0,8,0,0">
+
+                    <CheckBox x:Name="AttnSoundEnabledChk" Margin="0,0,0,14"
+                              Content="Sonido activado" />
+
+                    <!-- Te necesita -->
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="🔔  Te necesita" FontWeight="SemiBold" />
+                            <TextBlock Text="urgente — andá ya" Foreground="{StaticResource FgMuted}" FontSize="11" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" x:Name="AttnSoundUrgentCombo" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="AttnBrowseUrgentBtn" Content="📁" MinWidth="38" ToolTip="Elegir un .wav propio del disco" />
+                            <Button x:Name="AttnTestUrgentBtn" Content="▶ Probar" MinWidth="90" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Tarea lista -->
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="✅  Tarea lista" FontWeight="SemiBold" />
+                            <TextBlock Text="terminó — sin apuro" Foreground="{StaticResource FgMuted}" FontSize="11" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" x:Name="AttnSoundDoneCombo" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="AttnBrowseDoneBtn" Content="📁" MinWidth="38" ToolTip="Elegir un .wav propio del disco" />
+                            <Button x:Name="AttnTestDoneBtn" Content="▶ Probar" MinWidth="90" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Volumen -->
+                    <Grid Margin="0,0,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="48" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Volumen" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <Slider Grid.Column="1" x:Name="AttnVolumeSlider" Minimum="0" Maximum="100"
+                                VerticalAlignment="Center" TickFrequency="10" IsSnapToTickEnabled="False" />
+                        <TextBlock Grid.Column="2" x:Name="AttnVolumeText" Text="100%" VerticalAlignment="Center"
+                                   TextAlignment="Right" Foreground="{StaticResource FgMuted}" />
+                    </Grid>
+
+                    <!-- Gate de mismo desk: toast y sonido por SEPARADO -->
+                    <TextBlock Text="Cuando el aviso es de mi escritorio actual:" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <StackPanel Orientation="Horizontal" Margin="22,0,0,0">
+                        <CheckBox x:Name="AttnSameDeskToastChk" Content="Mostrar toast" Margin="0,0,28,0" />
+                        <CheckBox x:Name="AttnSameDeskSoundChk" Content="Reproducir sonido" />
+                    </StackPanel>
+                    <TextBlock Foreground="{StaticResource FgMuted}" FontSize="11" FontStyle="Italic"
+                               TextWrapping="Wrap" Margin="22,4,0,0"
+                               Text="Ya estás parado ahí: podés querer solo el sonido (sin toast), solo el toast, ambos o nada." />
+                </StackPanel>
+
+                <!-- Acciones -->
+                <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                    <Button x:Name="AttnSaveBtn" Content="Guardar" MinWidth="100" Padding="10,4"
+                            Background="{StaticResource Accent}" Foreground="#10222A" FontWeight="SemiBold" />
+                </StackPanel>
+            </Grid>
+        </TabItem>
+
         <!-- ===== Pestaña GENERAL ===== -->
         <TabItem Header="General">
             <Grid Margin="14">

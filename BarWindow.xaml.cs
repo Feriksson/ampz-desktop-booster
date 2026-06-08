@@ -1,12 +1,14 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Services;
+using AmpzDesktopBooster.Services.Attention;
 using AmpzDesktopBooster.Services.Usage;
 
 namespace AmpzDesktopBooster;
@@ -36,6 +38,9 @@ public partial class BarWindow : Window
 
     /// <summary>Click en el widget de tarea activa → abrir el detalle. Lo setea App (lo rutea al router).</summary>
     public Action? OnTaskWidgetClicked { get; set; }
+
+    /// <summary>Click en un dot de atención → saltar a ESE desk. Lo setea App (lo rutea a DesktopService.GoTo).</summary>
+    public Action<int>? OnAttentionDeskClicked { get; set; }
 
     /// <summary>
     /// App lo setea con HotkeyService.ReinstallHook. Lo reenviamos al AppBar: cuando la barra cambia
@@ -424,6 +429,109 @@ public partial class BarWindow : Window
         TaskIdText.Visibility = string.IsNullOrEmpty(task.Identifier) ? Visibility.Collapsed : Visibility.Visible;
         TaskTitleText.Text = task.Title;
         TaskWidget.Visibility = Visibility.Visible;
+    }
+
+    // ───────────────────────── Atención por desk (dots) ─────────────────────────
+
+    // Rojo coral = te necesita (urgente); verde = tarea lista. Mismos acentos que los toasts.
+    private static readonly Color AttnUrgent = Color.FromRgb(0xE5, 0x63, 0x5A);
+    private static readonly Color AttnDone   = Color.FromRgb(0x44, 0xDD, 0x88);
+
+    /// <summary>
+    /// Repinta los dots de atención. Cada item = un desk que reclama. Lista vacía → oculta el widget
+    /// entero (estado normal). Lo llama App suscrito a AttentionService.Changed: alta cuando llega un
+    /// aviso de OTRO desk, baja cuando entrás a ese desk (ClearDesk). Regeneramos todo de cero — son
+    /// poquitos dots y así no arrastramos animaciones viejas.
+    /// </summary>
+    public void UpdateAttention(IReadOnlyList<(int Index, string DeskName, bool Urgent, string Project)> items)
+    {
+        AttentionDotsPanel.Children.Clear();
+
+        if (items.Count == 0)
+        {
+            AttentionWidget.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        foreach (var it in items)
+            AttentionDotsPanel.Children.Add(BuildAttentionDot(it.Index, it.DeskName, it.Urgent, it.Project));
+
+        AttentionWidget.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>
+    /// Una pill chica y elegante: dot de color (la urgencia) + número del desk bien chico al lado,
+    /// sobre un fondo sutil. El dot pulsa si es urgente. Click en la pill → saltás a ese desk.
+    /// </summary>
+    private UIElement BuildAttentionDot(int deskIndex, string deskName, bool urgent, string project)
+    {
+        var color = urgent ? AttnUrgent : AttnDone;
+
+        var dot = new Ellipse
+        {
+            Width = 6,
+            Height = 6,
+            Fill = new SolidColorBrush(color),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 5, 0),
+        };
+
+        var label = new TextBlock
+        {
+            Text = ShortDeskLabel(deskName),
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 10,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xD2, 0xD2, 0xD2)),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var content = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        content.Children.Add(dot);
+        content.Children.Add(label);
+
+        var pill = new Border
+        {
+            CornerRadius = new CornerRadius(9),
+            Background = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF)),
+            Padding = new Thickness(7, 1, 8, 2),
+            Margin = new Thickness(4, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            ToolTip = AttentionTip(deskName, urgent, project),
+            Child = content,
+        };
+
+        // Click → saltar a ese desk. Al ENTRAR, el ClearDesk dispara Changed → la pill desaparece sola.
+        pill.MouseLeftButtonUp += (_, _) => OnAttentionDeskClicked?.Invoke(deskIndex);
+
+        // 'te necesita' PULSA suave (solo el dot, sutil) para tirarte del ojo; 'tarea lista' queda quieto.
+        if (urgent)
+        {
+            var pulse = new DoubleAnimation(1.0, 0.3, new Duration(TimeSpan.FromMilliseconds(720)))
+            {
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+            };
+            dot.BeginAnimation(OpacityProperty, pulse);
+        }
+
+        return pill;
+    }
+
+    /// <summary>"DESK +3" → "3"; los nombrados (MAIN/MAILS/MISCS) → su inicial. El tooltip da el nombre completo.</summary>
+    private static string ShortDeskLabel(string name)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(name, @"\+\s*(\d+)");
+        if (m.Success) return m.Groups[1].Value;
+        return name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+    }
+
+    /// <summary>Tooltip del dot: qué pasa en ese desk + el proyecto (si tiene), en su línea.</summary>
+    private static string AttentionTip(string deskName, bool urgent, string project)
+    {
+        string head = urgent ? $"{deskName} te necesita" : $"{deskName}: tarea lista";
+        return string.IsNullOrEmpty(project) ? head : $"{head}\n{project}";
     }
 
     // Alt+F4 / "Cerrar" del menú de sistema llegan como WM_SYSCOMMAND con wParam = SC_CLOSE.

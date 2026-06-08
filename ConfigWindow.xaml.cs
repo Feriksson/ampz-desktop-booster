@@ -1,11 +1,14 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Interop;
 using AmpzDesktopBooster.Persistence;
 using AmpzDesktopBooster.Services;
+using AmpzDesktopBooster.Services.Attention;
 using AmpzDesktopBooster.Services.Tasks;
 
 namespace AmpzDesktopBooster;
@@ -127,6 +130,100 @@ public partial class ConfigWindow : Window
         TaskTestBtn.Click += async (_, _) => await TestSelectedAccount();
         TaskSaveBtn.Click += (_, _) => SaveTasksSettings();
         InitTasksTab(); // ahora sí: con todos los handlers ya cableados, SelectedIndex=0 dispara la selección
+
+        // ── Pestaña Atención ──
+        InitAttentionTab();
+    }
+
+    // ── Pestaña Atención ────────────────────────────────────────────────────────
+    // Config propia (Load/Save acá dentro), igual que Tareas: NO toca el arranque core (hooks
+    // sensibles). El AttentionService relee attention.json en cada señal, así que "Guardar" impacta
+    // al instante, sin reiniciar la app.
+
+    private void InitAttentionTab()
+    {
+        // Combos con los .wav del sistema (listas independientes — no compartir ItemsSource entre dos).
+        AttnSoundUrgentCombo.ItemsSource = AttentionSettings.AvailableSounds();
+        AttnSoundDoneCombo.ItemsSource = AttentionSettings.AvailableSounds();
+
+        var s = AttentionSettings.Load();
+        AttnEnabledChk.IsChecked = s.Enabled;
+        AttnSoundEnabledChk.IsChecked = s.SoundEnabled;
+        AttnSameDeskToastChk.IsChecked = s.ToastOnSameDesk;
+        AttnSameDeskSoundChk.IsChecked = s.SoundOnSameDesk;
+        AttnVolumeSlider.Value = s.Volume;
+        AttnVolumeText.Text = $"{s.Volume}%";
+        SelectSound(AttnSoundUrgentCombo, s.SoundActionNeeded);
+        SelectSound(AttnSoundDoneCombo, s.SoundCompleted);
+
+        AttnVolumeSlider.ValueChanged += (_, _) => AttnVolumeText.Text = $"{(int)AttnVolumeSlider.Value}%";
+        AttnTestUrgentBtn.Click += (_, _) => AttentionSound.Play(SelectedSound(AttnSoundUrgentCombo), (int)AttnVolumeSlider.Value);
+        AttnTestDoneBtn.Click += (_, _) => AttentionSound.Play(SelectedSound(AttnSoundDoneCombo), (int)AttnVolumeSlider.Value);
+        AttnBrowseUrgentBtn.Click += (_, _) => BrowseCustomWav(AttnSoundUrgentCombo);
+        AttnBrowseDoneBtn.Click += (_, _) => BrowseCustomWav(AttnSoundDoneCombo);
+        AttnSaveBtn.Click += (_, _) => SaveAttention();
+    }
+
+    /// <summary>
+    /// Abre un selector de archivo .wav y agrega el elegido al combo como item seleccionado (con su
+    /// path completo). Así el usuario usa SU sonido, no solo los del sistema. AttentionSound.Play
+    /// distingue path-completo de nombre-del-sistema solo, así que persistir el path alcanza.
+    /// </summary>
+    private static void BrowseCustomWav(ComboBox combo)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Elegí un sonido (.wav)",
+            Filter = "Audio WAV (*.wav)|*.wav",
+            CheckFileExists = true,
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        var items = (combo.ItemsSource as IEnumerable<string>)?.ToList() ?? new List<string>();
+        if (!items.Contains(dlg.FileName, StringComparer.OrdinalIgnoreCase))
+            items.Add(dlg.FileName);
+        combo.ItemsSource = items;
+        combo.SelectedItem = items.First(x => string.Equals(x, dlg.FileName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Selecciona en el combo el sonido guardado. Si es un wav PROPIO (path completo) que no está en
+    /// la lista del sistema pero existe en disco, lo agrega y lo selecciona. Si no existe nada, cae a
+    /// "(Ninguno)".
+    /// </summary>
+    private static void SelectSound(ComboBox combo, string wav)
+    {
+        var items = (combo.ItemsSource as IEnumerable<string>)?.ToList() ?? new List<string>();
+        var match = items.FirstOrDefault(x => string.Equals(x, wav, StringComparison.OrdinalIgnoreCase));
+
+        if (match is null && !string.IsNullOrEmpty(wav) && wav != AttentionSettings.NoneSound
+            && System.IO.File.Exists(wav))
+        {
+            // wav propio (path completo) guardado de antes → lo reincorporamos al combo.
+            items.Add(wav);
+            combo.ItemsSource = items;
+            match = wav;
+        }
+
+        if (match is not null) combo.SelectedItem = match;
+        else combo.SelectedIndex = 0; // "(Ninguno)"
+    }
+
+    private static string SelectedSound(ComboBox combo) =>
+        combo.SelectedItem as string ?? AttentionSettings.NoneSound;
+
+    private void SaveAttention()
+    {
+        new AttentionSettings
+        {
+            Enabled = AttnEnabledChk.IsChecked == true,
+            SoundEnabled = AttnSoundEnabledChk.IsChecked == true,
+            ToastOnSameDesk = AttnSameDeskToastChk.IsChecked == true,
+            SoundOnSameDesk = AttnSameDeskSoundChk.IsChecked == true,
+            Volume = (int)AttnVolumeSlider.Value,
+            SoundActionNeeded = SelectedSound(AttnSoundUrgentCombo),
+            SoundCompleted = SelectedSound(AttnSoundDoneCombo),
+        }.Save();
     }
 
     // ── Pestaña Anclajes ───────────────────────────────────────────────────────

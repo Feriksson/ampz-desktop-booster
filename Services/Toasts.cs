@@ -47,19 +47,19 @@ public static class Toasts
     public static void Whitelisted(string proc, string deskName) =>
         Show(Kind.Protect, $"Permitida en  {deskName}", proc);
 
-    public static void Info(string title, string detail = "") => Show(Kind.Info, title, detail);
+    public static void Info(string title, string detail = "", string extra = "") => Show(Kind.Info, title, detail, extra);
     public static void Error(string title, string detail = "") => Show(Kind.Error, title, detail);
 
-    private static void Show(Kind kind, string title, string detail)
+    private static void Show(Kind kind, string title, string detail, string extra = "")
     {
         var app = Application.Current;
         if (app is null) return;
-        app.Dispatcher.BeginInvoke(() => ShowOnUi(kind, title, detail));
+        app.Dispatcher.BeginInvoke(() => ShowOnUi(kind, title, detail, extra));
     }
 
-    private static void ShowOnUi(Kind kind, string title, string detail)
+    private static void ShowOnUi(Kind kind, string title, string detail, string extra = "")
     {
-        var toast = new ToastWindow(title, detail, AccentFor(kind));
+        var toast = new ToastWindow(title, detail, AccentFor(kind), extra);
         toast.Closed += (_, _) => { Live.Remove(toast); Restack(); };
         Live.Add(toast);
 

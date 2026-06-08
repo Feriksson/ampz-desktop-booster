@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
@@ -24,6 +25,8 @@ public partial class App : Application
     private DesktopChangeListener? _vdListener;
     private WindowGovernor? _governor;
     private UsageService? _usage;
+    private Services.Attention.AttentionService? _attention;
+    private Services.Attention.AttentionPipeServer? _attentionPipe;
     private DispatcherTimer? _overlayDebounce;
     private int _pendingOverlayIdx = -1;
 
@@ -96,6 +99,15 @@ public partial class App : Application
         _usage = new UsageService();
         _usage.Start();
 
+        // Atención por desk: un integrador externo (hoy los hooks de Claude, mañana lo que sea) postea
+        // al Named Pipe que algo en SU proceso reclama tu atención. El servicio resuelve el desk por el
+        // PID y mantiene el estado (futuro widget); por ahora dispara un Toast. Se construye en UI
+        // (capturamos el Dispatcher para marshalear las señales) y vive en el core, como UsageService.
+        _attention = new Services.Attention.AttentionService(desktops);
+        _attentionPipe = new Services.Attention.AttentionPipeServer();
+        _attentionPipe.Received += sig => _attention.OnSignal(sig);
+        _attentionPipe.Start();
+
         // La barra: AppBar real + tray + widget de desktop a la derecha.
         var bar = new BarWindow();
         bar.OpenConfig = () => ShowConfig(desktops, restrictions, pins, () =>
@@ -123,6 +135,23 @@ public partial class App : Application
 
         // Click en el widget de tarea → el detalle (lo orquesta el router, que tiene la sesión).
         bar.OnTaskWidgetClicked = () => _router.ShowTaskDetail();
+
+        // Widget de atención (dots por desk que reclama). App es el TRADUCTOR: convierte el estado del
+        // servicio (Pending: desk→nivel) en lo que la barra pinta (idx + nombre + urgencia + proyecto).
+        // El servicio no conoce la UI; la barra no conoce el dominio. Click en un dot → saltás al desk.
+        bar.OnAttentionDeskClicked = idx => desktops.GoTo(idx);
+        _attention.Changed += () =>
+        {
+            var items = _attention.Pending
+                .OrderBy(kv => kv.Key)
+                .Select(kv => (
+                    Index: kv.Key,
+                    DeskName: desktops.GetName(kv.Key),
+                    Urgent: kv.Value == Services.Attention.AttentionLevel.ActionNeeded,
+                    Project: desktops.GetProject(kv.Key)))
+                .ToList();
+            bar.UpdateAttention(items);
+        };
 
         // Watchdog del hook: cuando la barra cambia su z-order (ocultarse/reaparecer en pantalla
         // completa), Windows corta la entrega de teclas al hook global hasta el próximo cambio de
@@ -194,6 +223,7 @@ public partial class App : Application
             _overlayDebounce!.Stop();
             _overlayDebounce.Start();
             _governor!.OnDesktopEntered(idx); // aplicar restricciones del desk entrante
+            _attention?.ClearDesk(idx);       // "lo viste, listo": apaga el aviso de atención de este desk
         };
 
         _hotkeys.Start();
@@ -258,6 +288,7 @@ public partial class App : Application
         _vdListener?.Dispose();
         _hotkeys?.Dispose();
         _usage?.Dispose();
+        _attentionPipe?.Dispose();
         _instanceMutex?.ReleaseMutex();
         _instanceMutex?.Dispose();
         base.OnExit(e);
