@@ -21,7 +21,7 @@
 
             <TextBlock x:Name="EmptyHint" Foreground="#6E6E78" FontSize="11" Margin="0,6,0,0"
                        TextWrapping="Wrap"
-                       Text="No hay escritorios protegidos. Activá uno con Win+F8."
+                       Text="No hay escritorios protegidos. Activá uno desde Configuración → Protecciones."
                        Visibility="Collapsed" />
 
             <TextBlock Foreground="#6E6E78" FontSize="10" Margin="0,8,0,0"

@@ -35,6 +35,9 @@ public static class Toasts
     public static void MovedByRestriction(string what, string fromDesk, string toDesk) =>
         Show(Kind.Move, $"{fromDesk}  →  {toDesk}  (no permitida)", what);
 
+    public static void SendBlockedByRestriction(string proc, string deskName) =>
+        Show(Kind.Protect, $"🔒  {deskName} está protegido", $"{proc} no está permitida ahí");
+
     public static void ProtectionOn(string deskName) =>
         Show(Kind.Protect, "🔒  Escritorio protegido", deskName);
 

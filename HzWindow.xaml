@@ -24,7 +24,8 @@
         <StackPanel>
             <TextBlock x:Name="CurrentText" Foreground="#9A9A9A" FontSize="12" Margin="0,0,0,10" />
             <StackPanel x:Name="RatesPanel" />
-            <TextBlock Foreground="#6E6E78" FontSize="10" Margin="0,4,0,0" Text="Esc: cancelar" />
+            <TextBlock Foreground="#6E6E78" FontSize="10" Margin="0,4,0,0"
+                       Text="Win+F12: ciclar · soltar Win: aplicar · clic: aplicar directo · Esc: cancelar" />
         </StackPanel>
     </Border>
 </Window>

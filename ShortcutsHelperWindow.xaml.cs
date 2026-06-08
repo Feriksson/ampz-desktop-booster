@@ -80,8 +80,6 @@ public partial class ShortcutsHelperWindow : Window
         ("Win + F3",              "Variables de entorno"),
         ("Win + F5",              "Docker — contenedores"),
         ("Win + F6",              "Anclar / desanclar la ventana activa"),
-        ("Win + F7",              "Pin Manager"),
-        ("Win + F8",              "Restricciones de desktops"),
         ("Win + F9",              "Permitir la app activa en el desk (whitelist)"),
         ("Win + F12",             "Cambiar frecuencia de refresco (Hz)"),
         ("", ""),

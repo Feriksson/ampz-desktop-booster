@@ -42,10 +42,14 @@ public sealed class HotkeyRouter
     private ProjectNotesWindow? _notesWindow;
     // Shortcuts Helper abierto (instancia única — re-press de Win+/ la cierra).
     private ShortcutsHelperWindow? _shortcutsWindow;
+    // Picker de Hz abierto (Win+F12). Instancia única: re-press cicla; soltar Win aplica.
+    private HzWindow? _hzWindow;
 
     // Virtual-keys de las F que ruteamos (F1..F12 = 0x70..0x7B; backtick = 0xC0; barra /? = 0xBF).
-    private const int VK_F2 = 0x71, VK_F3 = 0x72, VK_F5 = 0x74, VK_F6 = 0x75, VK_F7 = 0x76,
-                      VK_F8 = 0x77, VK_F9 = 0x78, VK_F11 = 0x7A, VK_F12 = 0x7B,
+    // F7 (Pin Manager) y F8 (Restricciones) SE QUITARON: eran popups de gestión compleja que hoy
+    // viven mejor en la Config (pestañas Anclajes y Protecciones). Esas teclas quedan libres.
+    private const int VK_F2 = 0x71, VK_F3 = 0x72, VK_F5 = 0x74, VK_F6 = 0x75,
+                      VK_F9 = 0x78, VK_F11 = 0x7A, VK_F12 = 0x7B,
                       VK_OEM_3 = 0xC0, VK_OEM_2 = 0xBF;
 
     public HotkeyRouter(HotkeyService hotkeys, DesktopService desktops, ProjectStore projects,
@@ -63,6 +67,18 @@ public sealed class HotkeyRouter
         _refreshTaskWidget = refreshTaskWidget;
         hotkeys.HotkeyFired += OnHotkeyFired;
         hotkeys.WinFunctionKey += OnWinFunctionKey;
+        hotkeys.WinReleased += OnWinReleased;
+    }
+
+    /// <summary>
+    /// Se soltó la Win. Si el picker de Hz está abierto, aplica la opción seleccionada (flujo
+    /// Alt+Tab: mantener Win, ciclar con F12, soltar para aplicar). Diferido al Dispatcher porque
+    /// corre dentro del callback del hook, que no se puede bloquear.
+    /// </summary>
+    private void OnWinReleased()
+    {
+        if (_hzWindow is null) return; // nada que aplicar → no agendamos trabajo de UI en cada tap de Win
+        Application.Current.Dispatcher.BeginInvoke(() => _hzWindow?.ApplySelected());
     }
 
     private void OnWinFunctionKey(int vk, bool shift)
@@ -75,18 +91,16 @@ public sealed class HotkeyRouter
                 case VK_F3:    new EnvVarsWindow().ShowFocused();       break;
                 case VK_F5:    new DockerWindow().ShowFocused();        break;
                 case VK_F6:    TogglePinCurrent();                      break;
-                case VK_F7:    ShowPinManager();                        break;
-                case VK_F8:    ShowDeskRestrictions();                  break;
                 case VK_F9:    ShowWhitelistPicker();                   break;
                 case VK_F11:   QuickActions.OpenDownloads(_desktops);   break;
-                case VK_F12:   new HzWindow().ShowFocused();            break;
+                case VK_F12:   ShowOrCycleHz();                         break;
                 case VK_OEM_3: QuickActions.OpenTerminalInExplorerPath(); break;
                 case VK_OEM_2: ToggleShortcutsHelper();                 break;
             }
         });
     }
 
-    // ── Pins (Win+F6 toggle, Win+F7 manager) ────────────────────────────────────
+    // ── Pins (Win+F6 toggle; la gestión completa vive en Config → Anclajes) ──────
 
     private void TogglePinCurrent()
     {
@@ -125,19 +139,7 @@ public sealed class HotkeyRouter
         }
     }
 
-    private void ShowPinManager()
-    {
-        var w = new PinManagerWindow(_pins);
-        w.ShowFocused();
-    }
-
-    // ── Restricciones (Win+F8 proteger, Win+F9 permitir app) ─────────────────────
-
-    private void ShowDeskRestrictions()
-    {
-        var w = new DeskRestrictionsWindow(_restrictions, _desktops);
-        w.ShowFocused();
-    }
+    // ── Restricciones (Win+F9 permitir app; proteger/whitelist viven en Config → Protecciones) ──
 
     private void ShowWhitelistPicker()
     {
@@ -162,6 +164,23 @@ public sealed class HotkeyRouter
         string title = WindowMethods.GetActiveWindowTitle();
         var w = new SendWindowPickerWindow(_desktops, hwnd, title);
         w.ShowFocused();
+    }
+
+    /// <summary>
+    /// Win+F12: picker de Hz estilo Alt+Tab. Primera pulsación abre el diálogo con la selección ya
+    /// puesta en la frecuencia SIGUIENTE a la actual; re-presionar (sin soltar Win) cicla entre las
+    /// opciones. El "aplicar al soltar Win" lo dispara OnWinReleased. Instancia única.
+    /// </summary>
+    private void ShowOrCycleHz()
+    {
+        if (_hzWindow is not null)
+        {
+            _hzWindow.CycleNext();
+            return;
+        }
+        _hzWindow = new HzWindow();
+        _hzWindow.Closed += (_, _) => _hzWindow = null;
+        _hzWindow.ShowFocused();
     }
 
     private void ShowAbrirCon()
@@ -228,9 +247,44 @@ public sealed class HotkeyRouter
             return;
 
         if (e.Shift)
+        {
+            // Guard de protección: si el desk destino está restringido y la app activa no está en su
+            // whitelist, NEGAMOS el envío y avisamos por toast. Sin esto, el WindowGovernor rebotaría
+            // la ventana a MAIN al entrar igual — pero rebotar DESPUÉS (verla saltar y volver) es
+            // confuso; mejor prevenir de entrada y explicar el motivo.
+            if (!CanSendForegroundTo(target, out string proc, out string deskName))
+            {
+                Toasts.SendBlockedByRestriction(proc, deskName);
+                return;
+            }
             _desktops.SendForegroundWindowToByName(target, follow: true);
+        }
         else
             _desktops.GoToByName(target);
+    }
+
+    /// <summary>
+    /// ¿Se puede mandar la ventana activa al desk con ese fragmento de nombre? Resuelve el desk real,
+    /// y si está PROTEGIDO chequea la whitelist. Las exentas (sistema + la propia app) y las
+    /// whitelisteadas pasan; mismo criterio que WindowGovernor. true = se puede enviar; si devuelve
+    /// false, <paramref name="proc"/> y <paramref name="deskName"/> traen el motivo para el toast.
+    /// </summary>
+    private bool CanSendForegroundTo(string targetFragment, out string proc, out string deskName)
+    {
+        proc = ""; deskName = "";
+
+        int idx = _desktops.FindByNameFragment(targetFragment);
+        if (idx < 0) return true; // no existe → que SendForegroundWindowToByName devuelva false solo
+
+        deskName = _desktops.GetName(idx);
+        if (!_restrictions.IsRestricted(deskName)) return true; // desk libre → sin restricción
+
+        IntPtr hwnd = WindowMethods.GetForegroundWindow();
+        if (hwnd == IntPtr.Zero) return true; // sin ventana real, no hay nada que negar
+        proc = WindowMethods.ProcessNameOf(hwnd);
+
+        // Exentas y whitelisteadas pasan; cualquier otra cosa se niega.
+        return proc == "" || _restrictions.IsExempt(proc) || _restrictions.IsWhitelisted(deskName, proc);
     }
 
     private void ShowProjectSetter()

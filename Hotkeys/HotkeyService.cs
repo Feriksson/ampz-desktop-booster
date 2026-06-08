@@ -50,6 +50,13 @@ public sealed class HotkeyService : IDisposable
     /// hacer en su lugar (minimizar todo menos la barra).</summary>
     public event Action? ShowDesktopRequested;
 
+    /// <summary>
+    /// La tecla Win se SOLTÓ (fin de un "hold"). Observador PASIVO: se dispara DESPUÉS de que el
+    /// masking del Win-up ya corrió, sin alterarlo en nada. Lo usa el picker de Hz (Win+F12) para
+    /// aplicar la opción seleccionada al soltar, estilo Alt+Tab. Se dispara en cada release real.
+    /// </summary>
+    public event Action? WinReleased;
+
     public void Start()
     {
         _hook.KeyEvent += OnKeyEvent;
@@ -129,6 +136,9 @@ public sealed class HotkeyService : IDisposable
                 if (WindowMethods.SendMaskedWinUp((ushort)e.VirtualKey))
                     e.Suppress = true;
             }
+            // Aviso PASIVO de "se soltó la Win", DESPUÉS de todo el masking de arriba (no lo altera).
+            // El handler debe ser no-bloqueante (difiere al Dispatcher); corre dentro del callback.
+            WinReleased?.Invoke();
             return;
         }
         if (e.VirtualKey is VK_SHIFT or VK_LSHIFT or VK_RSHIFT)
