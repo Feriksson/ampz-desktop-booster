@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Threading;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Hotkeys;
+using AmpzDesktopBooster.Services.Browser;
 using AmpzDesktopBooster.Services.Tasks;
 using AmpzDesktopBooster.Services.Usage;
 
@@ -27,6 +28,7 @@ public partial class App : Application
     private UsageService? _usage;
     private Services.Attention.AttentionService? _attention;
     private Services.Attention.AttentionPipeServer? _attentionPipe;
+    private BrowserPipeServer? _browserPipe;
     private DispatcherTimer? _overlayDebounce;
     private int _pendingOverlayIdx = -1;
 
@@ -48,15 +50,31 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // Single-instance: si ya hay una corriendo, avisamos y salimos SIN montar hooks ni UI.
+        // ¿Nos lanzaron con una URL? (Windows hace esto cuando somos el navegador elegido y clickeás
+        // un link.) La detectamos ANTES del mutex: define cómo se comporta la segunda instancia.
+        string? urlArg = TryGetUrlArg(e.Args);
+
+        // Single-instance: si ya hay una corriendo, NO montamos otra app.
         _instanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out bool isNew);
         if (!isNew)
         {
-            MessageBox.Show(
-                "Ampz Desktop Booster ya está corriendo.",
-                "Ampz Desktop Booster",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            if (urlArg is not null)
+            {
+                // Shim de navegador: le pasamos la URL a la instancia primaria (que la abrirá en SU
+                // desk = el del usuario) y salimos EN SILENCIO. Si el pipe no responde, la abrimos
+                // nosotros antes de morir para no perder el link.
+                if (!BrowserPipeServer.SendUrl(urlArg))
+                    BrowserShim.OpenInBrave(urlArg, BrowserSettings.Load().RealBrowserPath);
+            }
+            else
+            {
+                // Arranque manual con la app ya corriendo → el aviso de siempre.
+                MessageBox.Show(
+                    "Ampz Desktop Booster ya está corriendo.",
+                    "Ampz Desktop Booster",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
             _instanceMutex.Dispose();
             _instanceMutex = null;
             Shutdown();
@@ -107,6 +125,21 @@ public partial class App : Application
         _attentionPipe = new Services.Attention.AttentionPipeServer();
         _attentionPipe.Received += sig => _attention.OnSignal(sig);
         _attentionPipe.Start();
+
+        // Shim de navegador: la instancia primaria escucha las URLs que le pasan las secundarias
+        // (lanzadas por Windows al clickear un link) y las abre en el navegador real con --new-window,
+        // en ESTE proceso → la ventana nace en el escritorio actual del usuario, sin catapulteo.
+        // Releemos browser.json en cada URL (esporádicas) para tomar el path que el usuario tenga.
+        _browserPipe = new BrowserPipeServer();
+        _browserPipe.UrlReceived += url => BrowserShim.OpenInBrave(url, BrowserSettings.Load().RealBrowserPath);
+        _browserPipe.Start();
+
+        // Auto-cura del registro: si el shim está activado, re-registramos en CADA arranque. Así el
+        // `command` del registro apunta SIEMPRE al exe actual — si la app se movió o se reinstaló, el
+        // path viejo quedaría roto (handler huérfano, justo el fantasma que dejaba el AHK legacy). No
+        // toca el default del SO (no se puede); solo mantiene sana nuestra entrada de candidato.
+        if (BrowserSettings.Load().Enabled)
+            BrowserShim.Register();
 
         // La barra: AppBar real + tray + widget de desktop a la derecha.
         var bar = new BarWindow();
@@ -234,7 +267,20 @@ public partial class App : Application
         int current = desktops.Current;
         bar.UpdateDesk(desktops.GetName(current), desktops.GetProject(current));
         bar.UpdateDeskTask(taskSession.GetDeskTask(current));
+
+        // Caso "app cerrada + click en link": Windows nos lanzó CON la URL y somos la primaria.
+        // Ya está todo montado → la abrimos en el navegador real, en el desk actual.
+        if (urlArg is not null)
+            BrowserShim.OpenInBrave(urlArg, BrowserSettings.Load().RealBrowserPath);
     }
+
+    /// <summary>
+    /// Primera arg que sea una URL http/https (lo que Windows nos pasa al ser el navegador elegido).
+    /// null si no vino ninguna (arranque normal). Reusa <see cref="UrlHelper.IsUrl"/> para el criterio.
+    /// </summary>
+    private static string? TryGetUrlArg(string[] args) =>
+        args.FirstOrDefault(a => UrlHelper.IsUrl(a) &&
+            a.StartsWith("http", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Abre la ventana de configuración (instancia única — si ya está, la trae al frente).</summary>
     private void ShowConfig(DesktopService desktops, RestrictionStore restrictions, PinStore pins, Action onApplied)
@@ -289,6 +335,7 @@ public partial class App : Application
         _hotkeys?.Dispose();
         _usage?.Dispose();
         _attentionPipe?.Dispose();
+        _browserPipe?.Dispose();
         _instanceMutex?.ReleaseMutex();
         _instanceMutex?.Dispose();
         base.OnExit(e);

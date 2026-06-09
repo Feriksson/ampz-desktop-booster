@@ -10,8 +10,11 @@ namespace AmpzDesktopBooster.Desktops;
 /// Abre una variable (path o URL) o la manda a Claude CLI. Centraliza las acciones del
 /// Paths Manager (Win+Numpad*) para no repetir lógica en la ventana.
 ///
-/// NOTA: el legacy ruteaba las URLs por el "browser shim" (para abrirlas en el monitor/desktop
-/// actual). Ese shim se porta en la Fase 5; por ahora abrimos con el handler default del SO.
+/// Las URLs van por el "browser shim" (<see cref="Services.Browser.BrowserShim.OpenInBrave"/>): el
+/// legacy AHK las abría así para que cayeran en el desktop actual y NO en la ventana del navegador
+/// que vive en otro desk (que te catapulta). Esto cierra la "Fase 5" pendiente: abrimos con
+/// --new-window en el navegador real, no con el handler default del SO. Además evita el rebote
+/// recursivo Ampz→Windows→Ampz cuando la app es el navegador elegido.
 /// </summary>
 public static class PathOpener
 {
@@ -34,7 +37,10 @@ public static class PathOpener
             if (UrlHelper.IsUrl(value))
             {
                 var url = UrlHelper.Normalize(value);
-                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+                // Shim de navegador: --new-window en el navegador real → la pestaña abre en MI desk,
+                // sin reusar la ventana del navegador que vive en otro escritorio (eso catapultaba).
+                var browser = Services.Browser.BrowserSettings.Load();
+                Services.Browser.BrowserShim.OpenInBrave(url, browser.RealBrowserPath);
                 return Result.Opened;
             }
 

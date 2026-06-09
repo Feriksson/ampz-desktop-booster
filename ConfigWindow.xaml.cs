@@ -9,6 +9,7 @@ using AmpzDesktopBooster.Interop;
 using AmpzDesktopBooster.Persistence;
 using AmpzDesktopBooster.Services;
 using AmpzDesktopBooster.Services.Attention;
+using AmpzDesktopBooster.Services.Browser;
 using AmpzDesktopBooster.Services.Tasks;
 
 namespace AmpzDesktopBooster;
@@ -133,6 +134,91 @@ public partial class ConfigWindow : Window
 
         // ── Pestaña Atención ──
         InitAttentionTab();
+
+        // ── Pestaña Navegador ──
+        InitBrowserTab();
+    }
+
+    // ── Pestaña Navegador ───────────────────────────────────────────────────────
+    // Shim de navegador: registrar la app como navegador candidato del SO + reenviar links al
+    // navegador real con --new-window (abren en el desk actual, sin catapulteo). Config propia
+    // (browser.json), igual que Atención y Tareas: NO toca el arranque core. El registro en HKCU lo
+    // hace BrowserShim; acá solo cableamos los botones y reflejamos el estado real.
+
+    private void InitBrowserTab()
+    {
+        var s = BrowserSettings.Load();
+        BrowserEnabledChk.IsChecked = s.Enabled;
+        BrowserPathBox.Text = s.RealBrowserPath;
+
+        BrowserBrowseBtn.Click += (_, _) => BrowseRealBrowser();
+        BrowserOpenSettingsBtn.Click += (_, _) => BrowserShim.OpenWindowsDefaultApps();
+        BrowserSaveBtn.Click += (_, _) => SaveBrowser();
+
+        RefreshBrowserStatus();
+    }
+
+    /// <summary>Pinta el estado REAL: registrado como candidato, y si es el default elegido hoy.</summary>
+    private void RefreshBrowserStatus()
+    {
+        bool registered = BrowserShim.IsRegistered();
+        bool isDefault = BrowserShim.IsDefault();
+        string browser = BrowserSettings.Load().EffectiveBrowserPath();
+        string browserName = string.IsNullOrEmpty(browser) ? "ninguno detectado" : System.IO.Path.GetFileName(browser);
+
+        if (isDefault)
+        {
+            BrowserStatusText.Foreground = (System.Windows.Media.Brush)FindResource("Accent");
+            BrowserStatusText.Text = "✓ Ampz es tu navegador predeterminado. Los links abren en tu escritorio actual.";
+        }
+        else if (registered)
+        {
+            BrowserStatusText.Foreground = (System.Windows.Media.Brush)FindResource("Fg");
+            BrowserStatusText.Text = "Registrado como candidato, pero todavía NO sos el predeterminado. Elegí 'Ampz Desktop Booster' en Apps predeterminadas (botón de abajo).";
+        }
+        else
+        {
+            BrowserStatusText.Foreground = (System.Windows.Media.Brush)FindResource("FgMuted");
+            BrowserStatusText.Text = "Desactivado. Activá la casilla y guardá para registrarte como navegador.";
+        }
+        BrowserStatusHint.Text = $"Navegador real al que se reenvía: {browserName}.";
+    }
+
+    private void BrowseRealBrowser()
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Elegí el ejecutable del navegador",
+            Filter = "Ejecutables (*.exe)|*.exe",
+            CheckFileExists = true,
+        };
+        if (dlg.ShowDialog() == true)
+            BrowserPathBox.Text = dlg.FileName;
+    }
+
+    /// <summary>
+    /// Persiste browser.json y aplica el registro: si está activado → Register() (aparece en Apps
+    /// predeterminadas); si no → Unregister() (Windows vuelve a pedir navegador). Refresca el estado.
+    /// </summary>
+    private void SaveBrowser()
+    {
+        var s = new BrowserSettings
+        {
+            Enabled = BrowserEnabledChk.IsChecked == true,
+            RealBrowserPath = BrowserPathBox.Text.Trim(),
+        };
+        s.Save();
+
+        if (s.Enabled) BrowserShim.Register();
+        else BrowserShim.Unregister();
+
+        RefreshBrowserStatus();
+
+        if (s.Enabled && !BrowserShim.IsDefault())
+            MessageBox.Show(
+                "Listo. Ahora elegí 'Ampz Desktop Booster' como navegador para http y https en " +
+                "Configuración → Apps predeterminadas (te abro la ventana con el botón).",
+                "Navegador", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     // ── Pestaña Atención ────────────────────────────────────────────────────────

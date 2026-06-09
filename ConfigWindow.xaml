@@ -798,6 +798,68 @@
             </Grid>
         </TabItem>
 
+        <!-- ===== Pestaña NAVEGADOR ===== -->
+        <TabItem Header="Navegador">
+            <Grid Margin="14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="Links en el escritorio actual" />
+                <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,12"
+                           Text="Cuando hacés click en un link, Windows lo abre en la ventana del navegador que ya tenés en OTRO escritorio y te catapulta ahí. Con esto activado, la app se mete en el medio y abre el link en una ventana NUEVA en TU escritorio actual — sin moverte." />
+
+                <!-- Toggle de la feature -->
+                <CheckBox Grid.Row="2" x:Name="BrowserEnabledChk" Margin="0,0,0,4"
+                          Content="Abrir links en el escritorio actual (shim de navegador)" />
+
+                <StackPanel Grid.Row="3" Margin="0,8,0,0">
+
+                    <!-- Estado actual -->
+                    <Border Background="{StaticResource Panel}" CornerRadius="4" Padding="10,8" Margin="0,0,0,14">
+                        <StackPanel>
+                            <TextBlock x:Name="BrowserStatusText" Foreground="{StaticResource Fg}" FontSize="12"
+                                       TextWrapping="Wrap" />
+                            <TextBlock x:Name="BrowserStatusHint" Foreground="{StaticResource FgMuted}" FontSize="11"
+                                       FontStyle="Italic" TextWrapping="Wrap" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Navegador real -->
+                    <TextBlock Text="Navegador real (al que reenviamos los links)" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <TextBlock Foreground="{StaticResource FgMuted}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"
+                               Text="Vacío = se autodetecta Brave. Podés fijar otro navegador a mano (ej. chrome.exe / msedge.exe con ruta completa)." />
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" x:Name="BrowserPathBox" VerticalAlignment="Center"
+                                 FontFamily="Consolas" Margin="0,0,8,0" />
+                        <Button Grid.Column="1" x:Name="BrowserBrowseBtn" Content="📁  Elegir…" MinWidth="100" />
+                    </Grid>
+
+                    <!-- Paso manual del default -->
+                    <TextBlock Text="Paso obligatorio (una sola vez)" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <TextBlock Foreground="{StaticResource FgMuted}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"
+                               Text="Windows NO deja que una app se ponga como navegador por defecto sola (es por seguridad). Tenés que elegir 'Ampz Desktop Booster' a mano en Configuración → Apps predeterminadas, para http y https. Es un click, una vez." />
+                    <Button x:Name="BrowserOpenSettingsBtn" Content="Abrir Apps predeterminadas de Windows"
+                            HorizontalAlignment="Left" MinWidth="280" Padding="12,6" />
+                </StackPanel>
+
+                <!-- Acciones -->
+                <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                    <Button x:Name="BrowserSaveBtn" Content="Guardar" MinWidth="100" Padding="10,4"
+                            Background="{StaticResource Accent}" Foreground="#10222A" FontWeight="SemiBold" />
+                </StackPanel>
+            </Grid>
+        </TabItem>
+
         <!-- ===== Pestaña GENERAL ===== -->
         <TabItem Header="General">
             <Grid Margin="14">
