@@ -213,6 +213,7 @@ public partial class ConfigWindow : Window
         else BrowserShim.Unregister();
 
         RefreshBrowserStatus();
+        Toasts.Saved("Navegador");
 
         if (s.Enabled && !BrowserShim.IsDefault())
             MessageBox.Show(
@@ -310,6 +311,7 @@ public partial class ConfigWindow : Window
             SoundActionNeeded = SelectedSound(AttnSoundUrgentCombo),
             SoundCompleted = SelectedSound(AttnSoundDoneCombo),
         }.Save();
+        Toasts.Saved("Atención");
     }
 
     // ── Pestaña Anclajes ───────────────────────────────────────────────────────
@@ -645,6 +647,7 @@ public partial class ConfigWindow : Window
             DesktopBootstrapper.Ensure(_config, _desktops);
         RefreshList();
         _onApplied();
+        Toasts.Saved("Desktops");
     }
 
     // ── Pestaña Tareas ─────────────────────────────────────────────────────────
@@ -885,6 +888,7 @@ public partial class ConfigWindow : Window
         TaskTestStatus.Foreground = (System.Windows.Media.Brush)FindResource("FgMuted");
         TaskTestStatus.Text = $"Guardado en tasks.json. {_tasks.Accounts.Count} cuenta(s).";
         RefreshAccountsList(preserveSelection: true); // los DisplayName trimeados se ven en la lista
+        Toasts.Saved("Tareas");
     }
 
     /// <summary>Prueba SOLO la cuenta seleccionada con los valores actuales del editor.</summary>

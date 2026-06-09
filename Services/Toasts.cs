@@ -15,7 +15,7 @@ namespace AmpzDesktopBooster.Services;
 /// </summary>
 public static class Toasts
 {
-    public enum Kind { Pin, Move, Protect, Info, Error }
+    public enum Kind { Pin, Move, Protect, Info, Error, Success }
 
     private const double TopStart = 20;
     private const double Gap = 8;
@@ -49,6 +49,9 @@ public static class Toasts
 
     public static void Info(string title, string detail = "", string extra = "") => Show(Kind.Info, title, detail, extra);
     public static void Error(string title, string detail = "") => Show(Kind.Error, title, detail);
+
+    /// <summary>Confirmación de guardado en la ventana de Config. <paramref name="what"/> = qué se guardó.</summary>
+    public static void Saved(string what) => Show(Kind.Success, "✓  Configuración guardada", what);
 
     private static void Show(Kind kind, string title, string detail, string extra = "")
     {
@@ -93,6 +96,7 @@ public static class Toasts
     private static Color AccentFor(Kind kind) => kind switch
     {
         Kind.Pin     => Color.FromRgb(0x44, 0xDD, 0x88), // verde
+        Kind.Success => Color.FromRgb(0x44, 0xDD, 0x88), // verde (mismo acento de éxito)
         Kind.Move    => Color.FromRgb(0x66, 0xAA, 0xFF), // azul
         Kind.Protect => Color.FromRgb(0xFF, 0xB7, 0x4D), // ámbar
         Kind.Error   => Color.FromRgb(0xE5, 0x73, 0x57), // rojo
