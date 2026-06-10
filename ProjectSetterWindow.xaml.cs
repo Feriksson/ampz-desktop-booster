@@ -40,10 +40,22 @@ public partial class ProjectSetterWindow : Window
         FilterBox.PreviewKeyDown += OnFilterKeyDown;
         HistoryList.PreviewKeyDown += OnListKeyDown;
         HistoryList.MouseDoubleClick += (_, _) => Confirm();
-        RemoveBtn.Click += (_, _) => { _store.RemoveDeskProject(_deskIdx); _onChanged(); Close(); };
+        RemoveBtn.Click += (_, _) => ResetAndClose();
         CloseBtn.Click += (_, _) => Close();
 
         Loaded += (_, _) => { FilterBox.Focus(); FilterBox.SelectAll(); };
+    }
+
+    /// <summary>
+    /// Reset del desk: saca el proyecto de la sesión y cierra. Lo dispara tanto el botón "Quitar"
+    /// como el re-press del hotkey Win+NumpadEnter (instancia única en el router) — un solo camino,
+    /// sin duplicar lógica. No toca historial ni catálogo (eso es RemoveDeskProject, no DeleteFromHistory).
+    /// </summary>
+    public void ResetAndClose()
+    {
+        _store.RemoveDeskProject(_deskIdx);
+        _onChanged();
+        Close();
     }
 
     private void RefreshList()

@@ -44,6 +44,8 @@ public sealed class HotkeyRouter
     private ShortcutsHelperWindow? _shortcutsWindow;
     // Picker de Hz abierto (Win+F12). Instancia única: re-press cicla; soltar Win aplica.
     private HzWindow? _hzWindow;
+    // Setter de proyecto abierto (Win+NumpadEnter). Instancia única: re-press RESETEA el desk.
+    private ProjectSetterWindow? _setterWindow;
 
     // Virtual-keys de las F que ruteamos (F1..F12 = 0x70..0x7B; backtick = 0xC0; barra /? = 0xBF).
     // F7 (Pin Manager) y F8 (Restricciones) SE QUITARON: eran popups de gestión compleja que hoy
@@ -296,8 +298,18 @@ public sealed class HotkeyRouter
         if (!name.Contains("DESK +", StringComparison.OrdinalIgnoreCase))
             return;
 
-        var w = new ProjectSetterWindow(idx, name, _projects, _refreshCurrentDesk);
-        w.ShowFocused();
+        // Re-press con el setter abierto → RESET del desk: saca el proyecto y cierra. Mismo patrón de
+        // instancia única que Variables (Win+*) y Notas (Win+/): la 2da pulsación NO abre otra ventana,
+        // dispara la acción. Reusa el camino del botón "Quitar" (ResetAndClose) — un solo punto de verdad.
+        if (_setterWindow is not null)
+        {
+            _setterWindow.ResetAndClose();
+            return;
+        }
+
+        _setterWindow = new ProjectSetterWindow(idx, name, _projects, _refreshCurrentDesk);
+        _setterWindow.Closed += (_, _) => _setterWindow = null;
+        _setterWindow.ShowFocused();
     }
 
     private void ShowProjectPaths()
