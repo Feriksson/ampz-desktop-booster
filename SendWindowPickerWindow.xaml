@@ -9,6 +9,10 @@
         Background="#1E1E1E" UseLayoutRounding="True"
         FontFamily="Segoe UI">
 
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </Window.Resources>
+
     <Border BorderBrush="#33FFFFFF" BorderThickness="1" Padding="16">
         <StackPanel>
             <TextBlock x:Name="HeaderText" Foreground="#F2F2F2" FontSize="14" FontWeight="SemiBold"
@@ -21,7 +25,28 @@
 
             <ListBox x:Name="DeskList" Height="240" Background="#161616" Foreground="#E6E6EA"
                      BorderBrush="#333" FontSize="13"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Margin="0,2">
+                            <!-- 1ra línea: desk — proyecto -->
+                            <TextBlock Text="{Binding Line1}" />
+                            <!-- 2da línea: la tarea activa (se oculta si el desk no tiene). Mismo
+                                 lenguaje del widget de la barra: ícono + identifier celeste + título. -->
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0"
+                                        Visibility="{Binding HasTask, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="&#xE73A;" FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                           Foreground="#9A9A9A" VerticalAlignment="Center" Margin="0,0,5,0" />
+                                <TextBlock Text="{Binding TaskId}" Foreground="#4FC3F7" FontSize="11"
+                                           Margin="0,0,5,0" VerticalAlignment="Center"
+                                           Visibility="{Binding HasTaskId, Converter={StaticResource BoolToVis}}" />
+                                <TextBlock Text="{Binding TaskTitle}" Foreground="#C8C8CE" FontSize="11"
+                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
 
             <TextBlock Foreground="#6E6E78" FontSize="10" Margin="0,8,0,0"
                        Text="Enter: enviar · Esc: cancelar" />

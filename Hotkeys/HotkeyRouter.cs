@@ -164,7 +164,7 @@ public sealed class HotkeyRouter
         IntPtr hwnd = WindowMethods.GetForegroundWindow();
         if (hwnd == IntPtr.Zero) return;
         string title = WindowMethods.GetActiveWindowTitle();
-        var w = new SendWindowPickerWindow(_desktops, hwnd, title);
+        var w = new SendWindowPickerWindow(_desktops, _taskSession, hwnd, title);
         w.ShowFocused();
     }
 
