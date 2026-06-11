@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using AmpzDesktopBooster.Apps;
+using AmpzDesktopBooster.Services.Localization;
 
 namespace AmpzDesktopBooster;
 
@@ -52,43 +53,43 @@ public partial class ShortcutsHelperWindow : Window
     // ──────────────────────────── Columna izquierda (estática) ────────────────────────────
 
     /// <summary>Atajos GLOBALES del app — reflejan los bindings actuales (HotkeyRouter), no el legacy.</summary>
-    private static readonly (string key, string desc)[] GlobalShortcuts =
-    {
-        ("§NAVEGACIÓN DE ESCRITORIOS", ""),
-        ("Win + Numpad 7",        "Ir a MAIN"),
-        ("Win + Numpad 8",        "Ir a MAILS"),
-        ("Win + Numpad 9",        "Ir a MISCS"),
-        ("Win + Numpad 1..6",     "Ir a DESK +1 … +6"),
-        ("Win + Numpad + / −",    "Ciclar entre los DESK+ con proyecto"),
-        ("NumpadClear",           "DeskPicker — saltar a un proyecto de la sesión"),
+    private static (string key, string desc)[] GetGlobalShortcuts() =>
+    [
+        ($"§{Loc.T("Helper.SectionDesktops")}", ""),
+        ("Win + Numpad 7",        Loc.T("Helper.GoMain")),
+        ("Win + Numpad 8",        Loc.T("Helper.GoMails")),
+        ("Win + Numpad 9",        Loc.T("Helper.GoMiscs")),
+        ("Win + Numpad 1..6",     Loc.T("Helper.GoDeskN")),
+        ("Win + Numpad + / −",    Loc.T("Helper.CycleDeskWithProject")),
+        ("NumpadClear",           Loc.T("Helper.DeskPicker")),
         ("", ""),
-        ("§MOVER VENTANA + SEGUIRLA", ""),
-        ("Win + Shift + (nav)",   "Enviar la ventana activa al desk y seguirla"),
-        ("Win + NumpadDel",       "Picker — elegir desktop destino"),
+        ($"§{Loc.T("Helper.SectionMoveWindow")}", ""),
+        ("Win + Shift + (nav)",   Loc.T("Helper.SendAndFollow")),
+        ("Win + NumpadDel",       Loc.T("Helper.SendPicker")),
         ("", ""),
-        ("§PROYECTOS", ""),
-        ("Win + NumpadEnter",     "Setear proyecto del desk (sólo DESK +N)"),
-        ("Win + Numpad *",        "Variables/Paths del proyecto o global"),
-        ("Win + Numpad /",        "Notas del proyecto o global"),
+        ($"§{Loc.T("Helper.SectionProjects")}", ""),
+        ("Win + NumpadEnter",     Loc.T("Helper.SetProject")),
+        ("Win + Numpad *",        Loc.T("Helper.Variables")),
+        ("Win + Numpad /",        Loc.T("Helper.Notes")),
         ("", ""),
-        ("§EXPLORADOR & TERMINAL", ""),
-        ("Win + `",               "PowerShell en la carpeta del Explorer"),
-        ("Win + F2",              "Abrir con… (sobre lo seleccionado en Explorer)"),
-        ("Win + F11",             "Abrir Descargas (desktop-aware)"),
+        ($"§{Loc.T("Helper.SectionExplorer")}", ""),
+        ("Win + `",               Loc.T("Helper.Terminal")),
+        ("Win + F2",              Loc.T("Helper.OpenWith")),
+        ("Win + F11",             Loc.T("Helper.Downloads")),
         ("", ""),
-        ("§SISTEMA", ""),
-        ("Win + F3",              "Variables de entorno"),
-        ("Win + F5",              "Docker — contenedores"),
-        ("Win + F6",              "Anclar / desanclar la ventana activa"),
-        ("Win + F9",              "Permitir la app activa en el desk (whitelist)"),
-        ("Win + F12",             "Cambiar frecuencia de refresco (Hz)"),
+        ($"§{Loc.T("Helper.SectionSystem")}", ""),
+        ("Win + F3",              Loc.T("Helper.EnvVars")),
+        ("Win + F5",              Loc.T("Helper.Docker")),
+        ("Win + F6",              Loc.T("Helper.PinToggle")),
+        ("Win + F9",              Loc.T("Helper.Whitelist")),
+        ("Win + F12",             Loc.T("Helper.Hz")),
         ("", ""),
-        ("Win + /",               "Mostrar / cerrar este panel"),
-    };
+        ("Win + /",               Loc.T("Helper.TogglePanel")),
+    ];
 
     private void BuildLeftColumn()
     {
-        foreach (var (key, desc) in GlobalShortcuts)
+        foreach (var (key, desc) in GetGlobalShortcuts())
         {
             if (key == "" && desc == "")
                 AddSpacer(LeftColumn);
@@ -105,11 +106,11 @@ public partial class ShortcutsHelperWindow : Window
     {
         RightColumn.Children.Clear();
 
-        AddSectionHeader(RightColumn, "CHEATSHEET DE LA APP CON FOCO");
+        AddSectionHeader(RightColumn, Loc.T("Helper.FocusedAppSection"));
 
         // Encabezado: 📌 alias/proc + botón de alias.
         string alias = _store.GetAlias(_proc);
-        string label = _proc == "" ? "(ninguna)" : (alias != "" ? alias : _proc);
+        string label = _proc == "" ? Loc.T("Helper.NoApp") : (alias != "" ? alias : _proc);
 
         var headerRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
         headerRow.Children.Add(new TextBlock
@@ -119,26 +120,26 @@ public partial class ShortcutsHelperWindow : Window
         });
         if (_proc != "")
         {
-            var btnAlias = new Button { Content = "✎ Alias", Height = 26, Margin = new Thickness(10, 0, 0, 0), Padding = new Thickness(8, 0, 8, 0) };
+            var btnAlias = new Button { Content = Loc.T("Helper.AliasBtn"), Height = 26, Margin = new Thickness(10, 0, 0, 0), Padding = new Thickness(8, 0, 8, 0) };
             btnAlias.Click += (_, _) => OnEditAlias();
             headerRow.Children.Add(btnAlias);
         }
         RightColumn.Children.Add(headerRow);
 
         if (alias != "" && _proc != "")
-            RightColumn.Children.Add(new TextBlock { Text = "proceso: " + _proc, Foreground = Dim555, FontFamily = Mono, FontSize = 11, Margin = new Thickness(0, 2, 0, 0) });
+            RightColumn.Children.Add(new TextBlock { Text = Loc.T("Helper.ProcLabel") + _proc, Foreground = Dim555, FontFamily = Mono, FontSize = 11, Margin = new Thickness(0, 2, 0, 0) });
 
         if (_title != "")
         {
             var t = _title.Length > 90 ? _title[..87] + "…" : _title;
-            RightColumn.Children.Add(new TextBlock { Text = "título: " + t, Foreground = Dim777, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 2, 0, 0) });
+            RightColumn.Children.Add(new TextBlock { Text = Loc.T("Helper.TitleLabel") + t, Foreground = Dim777, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 2, 0, 0) });
         }
 
         RightColumn.Children.Add(new Border { Height = 1, Background = Sep252, Margin = new Thickness(0, 10, 0, 8) });
 
         if (_proc == "")
         {
-            AddEmptyHint("No hay app con foco al abrir el panel.");
+            AddEmptyHint(Loc.T("Helper.NoFocusedApp"));
             return;
         }
 
@@ -155,16 +156,16 @@ public partial class ShortcutsHelperWindow : Window
 
         if (items.Count == 0)
         {
-            AddEmptyHint("Sin shortcuts registrados para " + _proc);
-            AddEmptyHint("Tocá '➕ Agregar shortcut' para empezar.");
+            AddEmptyHint(string.Format(Loc.T("Helper.NoShortcutsForProc"), _proc));
+            AddEmptyHint(Loc.T("Helper.AddShortcutHint"));
         }
         else if (shown == 0)
         {
-            AddEmptyHint("Hay shortcuts, pero ninguno aplica al título actual.");
+            AddEmptyHint(Loc.T("Helper.NoShortcutsForTitle"));
         }
 
         // Botón de alta.
-        var btnAdd = new Button { Content = "➕  Agregar shortcut", Height = 32, Margin = new Thickness(0, 12, 0, 0), HorizontalContentAlignment = HorizontalAlignment.Center };
+        var btnAdd = new Button { Content = Loc.T("Helper.AddShortcutBtn"), Height = 32, Margin = new Thickness(0, 12, 0, 0), HorizontalContentAlignment = HorizontalAlignment.Center };
         btnAdd.Click += (_, _) => OnAddShortcut();
         RightColumn.Children.Add(btnAdd);
     }
@@ -191,7 +192,7 @@ public partial class ShortcutsHelperWindow : Window
 
         // Hint de title-scope, igual que el legacy ("↳ solo en títulos con 'X'").
         if (it.Title != "")
-            RightColumn.Children.Add(new TextBlock { Text = $"↳ solo en títulos con '{it.Title}'", Foreground = Blue57, FontStyle = FontStyles.Italic, FontSize = 11, Margin = new Thickness(6, 0, 0, 4) });
+            RightColumn.Children.Add(new TextBlock { Text = string.Format(Loc.T("Helper.TitleScope"), it.Title), Foreground = Blue57, FontStyle = FontStyles.Italic, FontSize = 11, Margin = new Thickness(6, 0, 0, 4) });
     }
 
     // ──────────────────────────── Handlers ────────────────────────────
@@ -214,8 +215,8 @@ public partial class ShortcutsHelperWindow : Window
 
     private void OnDeleteShortcut(AppShortcut it)
     {
-        var res = MessageBox.Show($"¿Eliminar este shortcut?\n\n{it.Key}  —  {it.Desc}",
-            "Confirmar", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        var res = MessageBox.Show(string.Format(Loc.T("Helper.DeleteConfirmMsg"), it.Key, it.Desc),
+            Loc.T("Helper.DeleteConfirmTitle"), MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (res == MessageBoxResult.Yes)
         {
             _store.Delete(_proc, it.Id);
@@ -226,8 +227,8 @@ public partial class ShortcutsHelperWindow : Window
     private void OnEditAlias()
     {
         // Reusamos PromptDialog (input de una línea). "" = volver a mostrar el process name.
-        var alias = PromptDialog.Show(this, "Alias · " + _proc,
-            "Alias para mostrar (vacío = process name original):", _store.GetAlias(_proc));
+        var alias = PromptDialog.Show(this, Loc.T("Helper.AliasDialogTitle") + _proc,
+            Loc.T("Helper.AliasDialogLabel"), _store.GetAlias(_proc));
         if (alias is null) return; // cancelado
         _store.SetAlias(_proc, alias);
         RenderRightColumn();

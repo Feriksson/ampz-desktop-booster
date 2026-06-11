@@ -1,7 +1,8 @@
 <Window x:Class="AmpzDesktopBooster.TaskDetailWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Tarea activa"
+        xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
+        Title="{loc:Translate TaskDetail.WindowTitle}"
         Width="460" SizeToContent="Height"
         WindowStyle="None" ResizeMode="NoResize"
         ShowInTaskbar="False" Topmost="True"
@@ -34,13 +35,13 @@
             </Border>
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button x:Name="UnpinBtn"  Content="Desanclar"  Width="92" Height="28" Margin="0,0,8,0" />
-                <Button x:Name="PickBtn"   Content="Elegir otra" Width="92" Height="28" Margin="0,0,8,0" />
-                <Button x:Name="OpenBtn"   Content="Abrir tarea" Width="100" Height="28" />
+                <Button x:Name="UnpinBtn"  Content="{loc:Translate TaskDetail.BtnUnpin}"     Width="92" Height="28" Margin="0,0,8,0" />
+                <Button x:Name="PickBtn"   Content="{loc:Translate TaskDetail.BtnPickAnother}" Width="92" Height="28" Margin="0,0,8,0" />
+                <Button x:Name="OpenBtn"   Content="{loc:Translate TaskDetail.BtnOpen}"        Width="100" Height="28" />
             </StackPanel>
 
             <TextBlock Foreground="#6E6E78" FontFamily="Segoe UI" FontSize="10" Margin="0,10,0,0"
-                       Text="Esc: cerrar" />
+                       Text="{loc:Translate TaskDetail.Hints}" />
         </StackPanel>
     </Border>
 </Window>

@@ -1,7 +1,8 @@
 <Window x:Class="AmpzDesktopBooster.ProjectNotesWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Notas"
+        xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
+        Title="{loc:Translate Notes.WindowTitle}"
         WindowStyle="None" ResizeMode="CanResize"
         WindowStartupLocation="Manual"
         ShowInTaskbar="False" Topmost="True"
@@ -55,7 +56,7 @@
             </DockPanel>
 
             <TextBlock Grid.Row="3" Foreground="#6E6E78" FontSize="10" Margin="0,8,0,0"
-                       Text="Ctrl+S: guardar · Esc: guardar y cerrar (auto-guarda si cambió)" />
+                       Text="{loc:Translate Notes.Hint}" />
         </Grid>
     </Border>
 </Window>

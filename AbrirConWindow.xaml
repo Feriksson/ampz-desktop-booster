@@ -1,7 +1,8 @@
 <Window x:Class="AmpzDesktopBooster.AbrirConWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Abrir con…"
+        xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
+        Title="{loc:Translate Key=OpenWith.Title}"
         Width="380" SizeToContent="Height"
         WindowStyle="None" ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
@@ -53,8 +54,8 @@
             <StackPanel x:Name="ButtonsPanel" />
             <TextBlock x:Name="EmptyHint" Foreground="#6E6E78" FontSize="11" TextWrapping="Wrap"
                        Visibility="Collapsed"
-                       Text="No se detectó ninguna app. Agregá una en Configuración → Aplicaciones." />
-            <TextBlock Foreground="#6E6E78" FontSize="10" Margin="0,8,0,0" Text="Esc: cancelar" />
+                       Text="{loc:Translate Key=OpenWith.EmptyHint}" />
+            <TextBlock Foreground="#6E6E78" FontSize="10" Margin="0,8,0,0" Text="{loc:Translate Key=OpenWith.Hint}" />
         </StackPanel>
     </Border>
 </Window>

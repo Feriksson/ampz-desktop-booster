@@ -1,7 +1,8 @@
 <Window x:Class="AmpzDesktopBooster.SendWindowPickerWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Enviar ventana a…"
+        xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
+        Title="{loc:Translate Key=SendPicker.Title}"
         Width="480" SizeToContent="Height"
         WindowStyle="None" ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
@@ -18,7 +19,7 @@
             <TextBlock x:Name="HeaderText" Foreground="#F2F2F2" FontSize="14" FontWeight="SemiBold"
                        Margin="0,0,0,2" />
             <TextBlock Foreground="#9A9A9A" FontSize="11" Margin="0,0,0,8"
-                       Text="Elegí el escritorio destino (Enter o doble clic). La ventana se mueve y te sigue." />
+                       Text="{loc:Translate Key=SendPicker.Subtitle}" />
 
             <TextBox x:Name="FilterBox" Background="#2A2A2A" Foreground="#F2F2F2"
                      BorderBrush="#444" Padding="6,4" FontSize="13" Margin="0,0,0,8" />
@@ -49,7 +50,7 @@
             </ListBox>
 
             <TextBlock Foreground="#6E6E78" FontSize="10" Margin="0,8,0,0"
-                       Text="Enter: enviar · Esc: cancelar" />
+                       Text="{loc:Translate Key=SendPicker.Hint}" />
         </StackPanel>
     </Border>
 </Window>

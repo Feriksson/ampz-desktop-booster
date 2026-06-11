@@ -1,7 +1,8 @@
 <Window x:Class="AmpzDesktopBooster.ProjectPathsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Variables"
+        xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
+        Title="{loc:Translate Paths.WindowTitle}"
         Width="980" Height="700"
         WindowStyle="None" ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
@@ -138,9 +139,9 @@
                           Foreground="#E6E6EA" FontSize="13">
                     <ListView.View>
                         <GridView>
-                            <GridViewColumn Header="Título" Width="250"
+                            <GridViewColumn Header="{loc:Translate Paths.ColTitle}" Width="250"
                                             DisplayMemberBinding="{Binding Display}" />
-                            <GridViewColumn Header="Path / URL" Width="660"
+                            <GridViewColumn Header="{loc:Translate Paths.ColPath}" Width="660"
                                             DisplayMemberBinding="{Binding Path}" />
                         </GridView>
                     </ListView.View>
@@ -149,17 +150,17 @@
 
             <TextBlock Grid.Row="4" Foreground="#6E6E78" FontSize="10" Margin="0,8,0,0"
                        TextWrapping="Wrap"
-                       Text="Enter / doble clic: abrir · Shift+Enter: abrir en Claude CLI · Ctrl+C: copiar path · F2: renombrar · F3 o ⭐: predeterminado · Supr: borrar · Esc: cerrar · las globales (gris) son de solo lectura" />
+                       Text="{loc:Translate Paths.Hints}" />
 
             <StackPanel Grid.Row="5" Orientation="Horizontal" Margin="0,10,0,0">
-                <Button x:Name="AddBtn"        Content="＋ Agregar" MinWidth="100" Margin="0,0,6,0" Padding="10,4" />
-                <Button x:Name="EditBtn"       Content="✎ Renombrar" MinWidth="100" Margin="0,0,6,0" Padding="10,4" />
-                <Button x:Name="DefaultBtn"    Content="⭐ Predeterminado" MinWidth="140" Margin="0,0,6,0" Padding="10,4" />
-                <Button x:Name="DeleteBtn"     Content="Borrar" MinWidth="80" Margin="0,0,6,0" Padding="10,4" />
+                <Button x:Name="AddBtn"        Content="{loc:Translate Paths.BtnAdd}" MinWidth="100" Margin="0,0,6,0" Padding="10,4" />
+                <Button x:Name="EditBtn"       Content="{loc:Translate Paths.BtnRename}" MinWidth="100" Margin="0,0,6,0" Padding="10,4" />
+                <Button x:Name="DefaultBtn"    Content="{loc:Translate Paths.BtnDefault}" MinWidth="140" Margin="0,0,6,0" Padding="10,4" />
+                <Button x:Name="DeleteBtn"     Content="{loc:Translate Paths.BtnDelete}" MinWidth="80" Margin="0,0,6,0" Padding="10,4" />
                 <!-- IsCancel=True: Esc dispara el Click de este botón sin importar qué control
                      tenga el foco. Sin esto, al tabular a un botón el foco se va del FilterBox/
                      PathList y los PreviewKeyDown de Esc no se ejecutan → Esc dejaba de cerrar. -->
-                <Button x:Name="CloseBtn"      Content="Cerrar" MinWidth="80" HorizontalAlignment="Right" Padding="10,4" IsCancel="True" />
+                <Button x:Name="CloseBtn"      Content="{loc:Translate Paths.BtnClose}" MinWidth="80" HorizontalAlignment="Right" Padding="10,4" IsCancel="True" />
             </StackPanel>
         </Grid>
     </Border>

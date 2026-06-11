@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Input;
+using AmpzDesktopBooster.Services.Localization;
 using AmpzDesktopBooster.Services.Tasks;
 
 namespace AmpzDesktopBooster;
@@ -72,7 +73,7 @@ public partial class TaskPickerWindow : Window
     public void SetError(string message)
     {
         LoadingText.Text = message;
-        LoadingHint.Text = "Cerrá y volvé a intentar, o revisá Config → Tareas.";
+        LoadingHint.Text = Loc.T("TaskPicker.ErrorHint");
     }
 
     /// <summary>Loader con mensaje custom (ej. "Sin tareas abiertas").</summary>

@@ -1,7 +1,8 @@
 <Window x:Class="AmpzDesktopBooster.ConfigWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Ampz Desktop Booster — Configuración"
+        xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
+        Title="{loc:Translate Config.WindowTitle}"
         Width="1029" Height="840"
         WindowStartupLocation="CenterScreen"
         Background="#1E1E1E" UseLayoutRounding="True"
@@ -238,7 +239,7 @@
     <TabControl x:Name="Tabs" Background="#1E1E1E" BorderThickness="0" Margin="8" HorizontalContentAlignment="Center" UseLayoutRounding="False">
 
         <!-- ===== Pestaña DESKTOPS ===== -->
-        <TabItem Header="Desktops">
+        <TabItem Header="{loc:Translate Config.DesktopsTab}">
             <Grid Margin="14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -250,10 +251,10 @@
                 </Grid.RowDefinitions>
 
                 <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold"
-                           Text="Escritorios gestionados" />
+                           Text="{loc:Translate Config.ManagedDesktops}" />
                 <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
                            TextWrapping="Wrap" Margin="0,4,0,10"
-                           Text="El orden define el índice del escritorio. La app crea los que falten (Win+Ctrl+D) y renombra los primeros N con estos nombres. Renombrar NO mueve ventanas." />
+                           Text="{loc:Translate Config.ManagedDesktopsHint}" />
 
                 <!-- Alta: textbox + Agregar -->
                 <Grid Grid.Row="1" Margin="0,0,0,0" VerticalAlignment="Bottom" Visibility="Collapsed" />
@@ -266,10 +267,10 @@
 
                 <!-- Reordenar / editar -->
                 <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8,0,0">
-                    <Button x:Name="UpBtn"     Content="↑ Subir" />
-                    <Button x:Name="DownBtn"   Content="↓ Bajar" />
-                    <Button x:Name="RenameBtn" Content="Renombrar" />
-                    <Button x:Name="RemoveBtn" Content="Quitar" />
+                    <Button x:Name="UpBtn"     Content="{loc:Translate Config.MoveUp}" />
+                    <Button x:Name="DownBtn"   Content="{loc:Translate Config.MoveDown}" />
+                    <Button x:Name="RenameBtn" Content="{loc:Translate Config.Rename}" />
+                    <Button x:Name="RemoveBtn" Content="{loc:Translate Config.Remove}" />
                 </StackPanel>
 
                 <!-- Alta nueva -->
@@ -277,17 +278,17 @@
                     <TextBox x:Name="NameBox" Width="320" Background="#2A2A2A"
                              Foreground="{StaticResource Fg}" BorderBrush="#444" Padding="6,4"
                              VerticalContentAlignment="Center" />
-                    <Button x:Name="AddBtn" Content="Agregar" Margin="6,0,0,0" />
+                    <Button x:Name="AddBtn" Content="{loc:Translate Config.Add}" Margin="6,0,0,0" />
                 </StackPanel>
 
                 <!-- Footer: autocreate + acciones -->
                 <Grid Grid.Row="5" Margin="0,14,0,0">
                     <CheckBox x:Name="AutoCreateChk" Foreground="{StaticResource Fg}"
                               VerticalAlignment="Center"
-                              Content="Crear escritorios faltantes al iniciar" />
+                              Content="{loc:Translate Config.AutoCreateDesktops}" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <Button x:Name="ApplyNowBtn" Content="Crear faltantes ahora" MinWidth="150" />
-                        <Button x:Name="SaveBtn" Content="Guardar" MinWidth="100"
+                        <Button x:Name="ApplyNowBtn" Content="{loc:Translate Config.CreateMissingNow}" MinWidth="150" />
+                        <Button x:Name="SaveBtn" Content="{loc:Translate Config.Save}" MinWidth="100"
                                 Background="{StaticResource Accent}" Foreground="#10222A" FontWeight="SemiBold" />
                     </StackPanel>
                 </Grid>
@@ -295,7 +296,7 @@
         </TabItem>
 
         <!-- ===== Pestaña APLICACIONES ===== -->
-        <TabItem Header="Aplicaciones">
+        <TabItem Header="{loc:Translate Config.AppsTab}">
             <Grid Margin="14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -306,10 +307,10 @@
                 </Grid.RowDefinitions>
 
                 <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold"
-                           Text="Apps para “Abrir con” (Win+F2)" />
+                           Text="{loc:Translate Config.AppsTitle}" />
                 <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
                            TextWrapping="Wrap" Margin="0,4,0,10"
-                           Text="VS Code, Warp, WSL, Claude/OpenCode CLI se detectan solas si están instaladas. Acá agregás las tuyas. En Argumentos, usá {path} donde va la carpeta (si lo omitís, se pasa la carpeta como argumento)." />
+                           Text="{loc:Translate Config.AppsHint}" />
 
                 <Border Grid.Row="2" Background="{StaticResource Panel}" CornerRadius="4" Padding="2">
                     <ListBox x:Name="AppsList" Background="Transparent" BorderThickness="0"
@@ -326,24 +327,24 @@
                     </Grid.ColumnDefinitions>
                     <TextBox Grid.Column="0" x:Name="AppNameBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
                              BorderBrush="#444" Padding="6,4" Margin="0,0,6,0" VerticalContentAlignment="Center"
-                             ToolTip="Nombre" />
+                             ToolTip="{loc:Translate Config.AppNameTooltip}" />
                     <TextBox Grid.Column="1" x:Name="AppExeBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
                              BorderBrush="#444" Padding="6,4" Margin="0,0,6,0" VerticalContentAlignment="Center"
-                             ToolTip="Ruta al ejecutable" />
+                             ToolTip="{loc:Translate Config.AppExeTooltip}" />
                     <TextBox Grid.Column="2" x:Name="AppArgsBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
                              BorderBrush="#444" Padding="6,4" VerticalContentAlignment="Center"
-                             ToolTip="Argumentos (opcional, {path})" />
+                             ToolTip="{loc:Translate Config.AppArgsTooltip}" />
                 </Grid>
 
                 <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,8,0,0" HorizontalAlignment="Right">
-                    <Button x:Name="AppAddBtn"    Content="Agregar" MinWidth="100" Padding="10,4" Margin="0,0,6,0" />
-                    <Button x:Name="AppRemoveBtn" Content="Quitar seleccionada" MinWidth="150" Padding="10,4" />
+                    <Button x:Name="AppAddBtn"    Content="{loc:Translate Config.Add}" MinWidth="100" Padding="10,4" Margin="0,0,6,0" />
+                    <Button x:Name="AppRemoveBtn" Content="{loc:Translate Config.RemoveSelected}" MinWidth="150" Padding="10,4" />
                 </StackPanel>
             </Grid>
         </TabItem>
 
         <!-- ===== Pestaña PROTECCIONES ===== -->
-        <TabItem Header="Protecciones">
+        <TabItem Header="{loc:Translate Config.ProtectionsTab}">
             <Grid Margin="14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -355,10 +356,10 @@
                 </Grid.RowDefinitions>
 
                 <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold"
-                           Text="Protección de escritorios" />
+                           Text="{loc:Translate Config.ProtectionsTitle}" />
                 <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
                            TextWrapping="Wrap" Margin="0,4,0,10"
-                           Text="Un escritorio protegido solo admite las apps de su lista; cualquier otra que aparezca ahí se manda a MAIN. Solo se pueden proteger los que NO son MAIN ni DESK+ (esos son de proyecto). Los cambios se guardan al instante y se aplican al entrar al escritorio." />
+                           Text="{loc:Translate Config.ProtectionsHint}" />
 
                 <!-- Selector de desk + toggle Protegido -->
                 <Grid Grid.Row="2" Margin="0,0,0,6">
@@ -367,16 +368,16 @@
                         <ColumnDefinition Width="240" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Escritorio:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBlock Grid.Column="0" Text="{loc:Translate Config.DesktopLabel}" VerticalAlignment="Center" Margin="0,0,8,0" />
                     <ComboBox Grid.Column="1" x:Name="ProtDeskCombo" Background="#2A2A2A"
                               Foreground="{StaticResource Fg}" BorderBrush="#444" />
-                    <CheckBox Grid.Column="2" x:Name="ProtectedChk" Content="Protegido"
+                    <CheckBox Grid.Column="2" x:Name="ProtectedChk" Content="{loc:Translate Config.Protected}"
                               Foreground="{StaticResource Fg}" VerticalAlignment="Center" Margin="14,0,0,0" />
                 </Grid>
 
                 <TextBlock Grid.Row="3" x:Name="ProtHint" Foreground="{StaticResource FgMuted}"
                            FontSize="11" FontStyle="Italic" Margin="0,0,0,8" Visibility="Collapsed"
-                           Text="Protegé el escritorio para administrar su lista de apps permitidas." />
+                           Text="{loc:Translate Config.ProtHint}" />
 
                 <!-- Dos columnas: permitidas | abiertas -->
                 <Grid Grid.Row="4">
@@ -392,7 +393,7 @@
                     </Grid.RowDefinitions>
 
                     <!-- Permitidas -->
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Apps permitidas"
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:Translate Config.AllowedApps}"
                                FontWeight="SemiBold" Margin="0,0,0,4" />
                     <Border Grid.Row="1" Grid.Column="0" Background="{StaticResource Panel}"
                             CornerRadius="4" Padding="2">
@@ -400,11 +401,11 @@
                                  Foreground="{StaticResource Fg}" FontSize="13"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
                     </Border>
-                    <Button Grid.Row="2" Grid.Column="0" x:Name="WlRemoveBtn" Content="Quitar"
+                    <Button Grid.Row="2" Grid.Column="0" x:Name="WlRemoveBtn" Content="{loc:Translate Config.Remove}"
                             Margin="0,6,0,0" HorizontalAlignment="Left" />
 
                     <!-- Abiertas -->
-                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Apps abiertas"
+                    <TextBlock Grid.Row="0" Grid.Column="2" Text="{loc:Translate Config.OpenApps}"
                                FontWeight="SemiBold" Margin="0,0,0,4" />
                     <Border Grid.Row="1" Grid.Column="2" Background="{StaticResource Panel}"
                             CornerRadius="4" Padding="2">
@@ -413,8 +414,8 @@
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
                     </Border>
                     <StackPanel Grid.Row="2" Grid.Column="2" Orientation="Horizontal" Margin="0,6,0,0">
-                        <Button x:Name="WlAddFromRunningBtn" Content="◀ Agregar" />
-                        <Button x:Name="RunningRefreshBtn" Content="↻ Refrescar" MinWidth="100" />
+                        <Button x:Name="WlAddFromRunningBtn" Content="{loc:Translate Config.AddFromRunning}" />
+                        <Button x:Name="RunningRefreshBtn" Content="{loc:Translate Config.Refresh}" MinWidth="100" />
                     </StackPanel>
                 </Grid>
 
@@ -425,17 +426,17 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Manual:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBlock Grid.Column="0" Text="{loc:Translate Config.ManualLabel}" VerticalAlignment="Center" Margin="0,0,8,0" />
                     <TextBox Grid.Column="1" x:Name="WlManualBox" Background="#2A2A2A"
                              Foreground="{StaticResource Fg}" BorderBrush="#444" Padding="6,4"
-                             VerticalContentAlignment="Center" ToolTip="Nombre del proceso, ej: brave.exe" />
-                    <Button Grid.Column="2" x:Name="WlAddManualBtn" Content="Agregar" Margin="6,0,0,0" />
+                             VerticalContentAlignment="Center" ToolTip="{loc:Translate Config.ProcessNameTooltip}" />
+                    <Button Grid.Column="2" x:Name="WlAddManualBtn" Content="{loc:Translate Config.Add}" Margin="6,0,0,0" />
                 </Grid>
             </Grid>
         </TabItem>
 
         <!-- ===== Pestaña ANCLAJES ===== -->
-        <TabItem Header="Anclajes">
+        <TabItem Header="{loc:Translate Config.PinsTab}">
             <Grid Margin="14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -444,10 +445,10 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="Apps ancladas" />
+                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="{loc:Translate Config.PinnedApps}" />
                 <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
                            TextWrapping="Wrap" Margin="0,4,0,10"
-                           Text="Una app anclada se mueve y maximiza en su escritorio cada vez que aparece en otro. El anclaje es por NOMBRE de escritorio, así que reordenarlos no lo rompe. Los cambios se guardan al instante." />
+                           Text="{loc:Translate Config.PinsHint}" />
 
                 <!-- Dos columnas: ancladas | anclar nueva -->
                 <Grid Grid.Row="2">
@@ -463,7 +464,7 @@
                     </Grid.RowDefinitions>
 
                     <!-- Izquierda: ancladas actuales -->
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Ancladas" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:Translate Config.Pinned}" FontWeight="SemiBold" Margin="0,0,0,4" />
                     <Border Grid.Row="1" Grid.Column="0" Background="{StaticResource Panel}"
                             CornerRadius="4" Padding="2">
                         <ListBox x:Name="PinnedBox" Background="Transparent" BorderThickness="0"
@@ -471,12 +472,12 @@
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
                     </Border>
                     <StackPanel Grid.Row="2" Grid.Column="0" Orientation="Horizontal" Margin="0,6,0,0">
-                        <Button x:Name="UnpinBtn" Content="Desanclar" />
-                        <Button x:Name="UnpinAllBtn" Content="Desanclar todo" MinWidth="120" />
+                        <Button x:Name="UnpinBtn" Content="{loc:Translate Config.Unpin}" />
+                        <Button x:Name="UnpinAllBtn" Content="{loc:Translate Config.UnpinAll}" MinWidth="120" />
                     </StackPanel>
 
                     <!-- Derecha: anclar una app -->
-                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Anclar una app" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <TextBlock Grid.Row="0" Grid.Column="2" Text="{loc:Translate Config.PinAnApp}" FontWeight="SemiBold" Margin="0,0,0,4" />
                     <Grid Grid.Row="1" Grid.Column="2">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -487,7 +488,7 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="A:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBlock Grid.Column="0" Text="{loc:Translate Config.PinTo}" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <ComboBox Grid.Column="1" x:Name="PinDeskCombo" Background="#2A2A2A"
                                       Foreground="{StaticResource Fg}" BorderBrush="#444" />
                         </Grid>
@@ -498,8 +499,8 @@
                         </Border>
                     </Grid>
                     <StackPanel Grid.Row="2" Grid.Column="2" Orientation="Horizontal" Margin="0,6,0,0">
-                        <Button x:Name="PinAddFromRunningBtn" Content="Anclar ▶" />
-                        <Button x:Name="PinRunningRefreshBtn" Content="↻ Refrescar" MinWidth="100" />
+                        <Button x:Name="PinAddFromRunningBtn" Content="{loc:Translate Config.PinSelected}" />
+                        <Button x:Name="PinRunningRefreshBtn" Content="{loc:Translate Config.Refresh}" MinWidth="100" />
                     </StackPanel>
                 </Grid>
 
@@ -510,17 +511,17 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Manual:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBlock Grid.Column="0" Text="{loc:Translate Config.ManualLabel}" VerticalAlignment="Center" Margin="0,0,8,0" />
                     <TextBox Grid.Column="1" x:Name="PinManualBox" Background="#2A2A2A"
                              Foreground="{StaticResource Fg}" BorderBrush="#444" Padding="6,4"
-                             VerticalContentAlignment="Center" ToolTip="Nombre del proceso, ej: brave.exe — se ancla al escritorio elegido arriba" />
-                    <Button Grid.Column="2" x:Name="PinAddManualBtn" Content="Anclar" Margin="6,0,0,0" />
+                             VerticalContentAlignment="Center" ToolTip="{loc:Translate Config.PinManualTooltip}" />
+                    <Button Grid.Column="2" x:Name="PinAddManualBtn" Content="{loc:Translate Config.Pin}" Margin="6,0,0,0" />
                 </Grid>
             </Grid>
         </TabItem>
 
         <!-- ===== Pestaña TAREAS ===== -->
-        <TabItem Header="Tareas">
+        <TabItem Header="{loc:Translate Config.TasksTab}">
             <Grid Margin="14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -530,10 +531,10 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="Cuentas de tareas" />
+                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="{loc:Translate Config.TaskAccounts}" />
                 <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
                            TextWrapping="Wrap" Margin="0,4,0,10"
-                           Text="Conectá uno o varios gestores a la vez (Vikunja, JIRA, Trello). El picker (Win+NumLock) agrega lo de todas las cuentas habilitadas y muestra de qué cuenta vino cada tarea. Sumá una por cliente." />
+                           Text="{loc:Translate Config.TaskAccountsHint}" />
 
                 <!-- Master-detail: lista de cuentas (izq) + editor (der) -->
                 <Grid Grid.Row="2">
@@ -556,8 +557,8 @@
                         </Border>
 
                         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,0">
-                            <Button x:Name="AccountAddBtn" Content="+ Agregar" MinWidth="92" />
-                            <Button x:Name="AccountRemoveBtn" Content="− Quitar" MinWidth="92" />
+                            <Button x:Name="AccountAddBtn" Content="{loc:Translate Config.AddAccount}" MinWidth="92" />
+                            <Button x:Name="AccountRemoveBtn" Content="{loc:Translate Config.RemoveAccount}" MinWidth="92" />
                         </StackPanel>
                     </Grid>
 
@@ -566,12 +567,12 @@
                             CornerRadius="4" Padding="12">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                           <StackPanel>
-                            <TextBlock Text="Nombre" Foreground="{StaticResource FgMuted}"
+                            <TextBlock Text="{loc:Translate Config.AccountName}" Foreground="{StaticResource FgMuted}"
                                        FontSize="11" Margin="0,0,0,2" />
                             <TextBox x:Name="AcctNameBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
                                      BorderBrush="#444" Padding="6,4" Margin="0,0,0,8"
                                      VerticalContentAlignment="Center"
-                                     ToolTip="Ej: 'Trello — Cliente Coca'. Lo que ves en el picker." />
+                                     ToolTip="{loc:Translate Config.AccountNameTooltip}" />
 
                             <Grid Margin="0,0,0,8">
                                 <Grid.ColumnDefinitions>
@@ -579,12 +580,12 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                    <TextBlock Text="Gestor" Foreground="{StaticResource FgMuted}"
+                                    <TextBlock Text="{loc:Translate Config.AccountKind}" Foreground="{StaticResource FgMuted}"
                                                FontSize="11" Margin="0,0,0,2" />
                                     <ComboBox x:Name="AcctKindCombo" Background="#2A2A2A"
                                               Foreground="{StaticResource Fg}" BorderBrush="#444" />
                                 </StackPanel>
-                                <CheckBox x:Name="AcctEnabledChk" Grid.Column="1" Content="Habilitada"
+                                <CheckBox x:Name="AcctEnabledChk" Grid.Column="1" Content="{loc:Translate Config.AccountEnabled}"
                                           VerticalAlignment="Bottom" Margin="0,0,0,4" />
                             </Grid>
 
@@ -597,29 +598,29 @@
                         <StackPanel>
                             <TextBlock Text="Vikunja" FontWeight="SemiBold" Margin="0,0,0,8" />
 
-                            <TextBlock Text="URL de la instancia (sin / final)"
+                            <TextBlock Text="{loc:Translate Config.VikunjaUrl}"
                                        Foreground="{StaticResource FgMuted}" FontSize="11" Margin="0,0,0,2" />
                             <TextBox x:Name="VkUrlBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
                                      BorderBrush="#444" Padding="6,4" Margin="0,0,0,8"
                                      VerticalContentAlignment="Center"
-                                     ToolTip="Ej: https://projects.blaster.com.ar" />
+                                     ToolTip="{loc:Translate Config.VikunjaUrlTooltip}" />
 
-                            <TextBlock Text="Usuario (login)" Foreground="{StaticResource FgMuted}"
+                            <TextBlock Text="{loc:Translate Config.VikunjaUser}" Foreground="{StaticResource FgMuted}"
                                        FontSize="11" Margin="0,0,0,2" />
                             <TextBox x:Name="VkUserBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
                                      BorderBrush="#444" Padding="6,4" Margin="0,0,0,8"
                                      VerticalContentAlignment="Center"
-                                     ToolTip="Tu nombre de usuario en Vikunja — necesario para filtrar solo tus tareas" />
+                                     ToolTip="{loc:Translate Config.VikunjaUserTooltip}" />
 
-                            <TextBlock Text="API token (tk_...)" Foreground="{StaticResource FgMuted}"
+                            <TextBlock Text="{loc:Translate Config.VikunjaToken}" Foreground="{StaticResource FgMuted}"
                                        FontSize="11" Margin="0,0,0,2" />
                             <TextBox x:Name="VkTokenBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
                                      BorderBrush="#444" Padding="6,4" VerticalContentAlignment="Center"
-                                     ToolTip="Vikunja → Settings → API Tokens" />
+                                     ToolTip="{loc:Translate Config.VikunjaTokenTooltip}" />
 
                             <TextBlock Foreground="{StaticResource FgMuted}" FontSize="11" FontStyle="Italic"
                                        TextWrapping="Wrap" Margin="0,8,0,0"
-                                       Text="El token se guarda en texto plano en %APPDATA%\AmpzDesktopBooster\tasks.json. No lo compartas." />
+                                       Text="{loc:Translate Config.TokenStorageWarning}" />
                         </StackPanel>
                     </Border>
 
@@ -627,28 +628,28 @@
                     <Border x:Name="JiraPanel" Background="{StaticResource Panel}" CornerRadius="4"
                             Padding="12" Margin="0,0,0,8" Visibility="Collapsed">
                         <StackPanel>
-                            <TextBlock Text="JIRA  (en preparación)" FontWeight="SemiBold" Margin="0,0,0,8" />
+                            <TextBlock Text="{loc:Translate Config.JiraTitle}" FontWeight="SemiBold" Margin="0,0,0,8" />
 
-                            <TextBlock Text="URL (https://tuorg.atlassian.net)"
+                            <TextBlock Text="{loc:Translate Config.JiraUrl}"
                                        Foreground="{StaticResource FgMuted}" FontSize="11" Margin="0,0,0,2" />
                             <TextBox x:Name="JiraUrlBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
                                      BorderBrush="#444" Padding="6,4" Margin="0,0,0,8"
                                      VerticalContentAlignment="Center" />
 
-                            <TextBlock Text="Email" Foreground="{StaticResource FgMuted}"
+                            <TextBlock Text="{loc:Translate Config.JiraEmail}" Foreground="{StaticResource FgMuted}"
                                        FontSize="11" Margin="0,0,0,2" />
                             <TextBox x:Name="JiraEmailBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
                                      BorderBrush="#444" Padding="6,4" Margin="0,0,0,8"
                                      VerticalContentAlignment="Center" />
 
-                            <TextBlock Text="API token" Foreground="{StaticResource FgMuted}"
+                            <TextBlock Text="{loc:Translate Config.JiraToken}" Foreground="{StaticResource FgMuted}"
                                        FontSize="11" Margin="0,0,0,2" />
                             <TextBox x:Name="JiraTokenBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
                                      BorderBrush="#444" Padding="6,4" VerticalContentAlignment="Center" />
 
                             <TextBlock Foreground="{StaticResource FgMuted}" FontSize="11" FontStyle="Italic"
                                        TextWrapping="Wrap" Margin="0,8,0,0"
-                                       Text="El adapter de JIRA todavía no hace fetch — podés guardar las credenciales, pero 'Probar conexión' avisará que está en preparación." />
+                                       Text="{loc:Translate Config.JiraNotReady}" />
                         </StackPanel>
                     </Border>
 
@@ -658,30 +659,30 @@
                         <StackPanel>
                             <TextBlock Text="Trello" FontWeight="SemiBold" Margin="0,0,0,8" />
 
-                            <TextBlock Text="API key" Foreground="{StaticResource FgMuted}"
+                            <TextBlock Text="{loc:Translate Config.TrelloApiKey}" Foreground="{StaticResource FgMuted}"
                                        FontSize="11" Margin="0,0,0,2" />
                             <TextBox x:Name="TrelloKeyBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
                                      BorderBrush="#444" Padding="6,4" Margin="0,0,0,8"
                                      VerticalContentAlignment="Center"
-                                     ToolTip="Creá un Power-Up en https://trello.com/power-ups/admin → campo 'API key'" />
+                                     ToolTip="{loc:Translate Config.TrelloApiKeyTooltip}" />
 
-                            <TextBlock Text="Token" Foreground="{StaticResource FgMuted}"
+                            <TextBlock Text="{loc:Translate Config.TrelloToken}" Foreground="{StaticResource FgMuted}"
                                        FontSize="11" Margin="0,0,0,2" />
                             <TextBox x:Name="TrelloTokenBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
                                      BorderBrush="#444" Padding="6,4" Margin="0,0,0,8"
                                      VerticalContentAlignment="Center"
-                                     ToolTip="Generá el token desde el link 'Token' al lado de tu API key" />
+                                     ToolTip="{loc:Translate Config.TrelloTokenTooltip}" />
 
-                            <TextBlock Text="Listas a ignorar (extras — uno por línea o coma-separados)"
+                            <TextBlock Text="{loc:Translate Config.TrelloIgnoredLists}"
                                        Foreground="{StaticResource FgMuted}" FontSize="11" Margin="0,0,0,2" />
                             <TextBox x:Name="TrelloIgnoredListsBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
                                      BorderBrush="#444" Padding="6,4" MinHeight="60"
                                      AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                                     ToolTip="Ej: Hecho, Validado, En review. Match por 'contiene' case-insensitive. Se SUMA a los defaults (done, cancelled, terminado, etc.)" />
+                                     ToolTip="{loc:Translate Config.TrelloIgnoredListsTooltip}" />
 
                             <TextBlock Foreground="{StaticResource FgMuted}" FontSize="11" FontStyle="Italic"
                                        TextWrapping="Wrap" Margin="0,8,0,0"
-                                       Text="Trae tus tarjetas asignadas de todos los tableros. Filtra automáticamente las que estás marcado como completas Y las que están en listas terminales (done/cancelled + las que agregues acá). La key y el token se guardan en texto plano en %APPDATA%\AmpzDesktopBooster\tasks.json — no los compartas." />
+                                       Text="{loc:Translate Config.TrelloStorageWarning}" />
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -696,15 +697,15 @@
 
                 <!-- Acciones -->
                 <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-                    <Button x:Name="TaskTestBtn" Content="Probar cuenta" MinWidth="140" Padding="10,4" Margin="0,0,6,0" />
-                    <Button x:Name="TaskSaveBtn" Content="Guardar" MinWidth="100" Padding="10,4"
+                    <Button x:Name="TaskTestBtn" Content="{loc:Translate Config.TestAccount}" MinWidth="140" Padding="10,4" Margin="0,0,6,0" />
+                    <Button x:Name="TaskSaveBtn" Content="{loc:Translate Config.Save}" MinWidth="100" Padding="10,4"
                             Background="{StaticResource Accent}" Foreground="#10222A" FontWeight="SemiBold" />
                 </StackPanel>
             </Grid>
         </TabItem>
 
         <!-- ===== Pestaña ATENCIÓN ===== -->
-        <TabItem Header="Atención">
+        <TabItem Header="{loc:Translate Config.AttentionTab}">
             <Grid Margin="14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -714,20 +715,20 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="Atención por escritorio" />
+                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="{loc:Translate Config.AttentionTitle}" />
                 <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
                            TextWrapping="Wrap" Margin="0,4,0,12"
-                           Text="Avisos cuando un escritorio reclama tu atención (Claude y futuros integradores). El sonido lo reproduce la app: elegí el .wav por nivel y probalo. Los cambios se guardan al apretar Guardar." />
+                           Text="{loc:Translate Config.AttentionHint}" />
 
                 <!-- Toggle de la feature entera -->
                 <CheckBox Grid.Row="2" x:Name="AttnEnabledChk" Margin="0,0,0,4"
-                          Content="Sistema de atención activado (toast + widget + sonido)" />
+                          Content="{loc:Translate Config.AttentionEnabled}" />
 
                 <!-- Cuerpo: sonido -->
                 <StackPanel Grid.Row="3" Margin="0,8,0,0">
 
                     <CheckBox x:Name="AttnSoundEnabledChk" Margin="0,0,0,14"
-                              Content="Sonido activado" />
+                              Content="{loc:Translate Config.SoundEnabled}" />
 
                     <!-- Te necesita -->
                     <Grid Margin="0,0,0,10">
@@ -737,13 +738,13 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="🔔  Te necesita" FontWeight="SemiBold" />
-                            <TextBlock Text="urgente — andá ya" Foreground="{StaticResource FgMuted}" FontSize="11" />
+                            <TextBlock Text="{loc:Translate Config.AttnUrgentLabel}" FontWeight="SemiBold" />
+                            <TextBlock Text="{loc:Translate Config.AttnUrgentSub}" Foreground="{StaticResource FgMuted}" FontSize="11" />
                         </StackPanel>
                         <ComboBox Grid.Column="1" x:Name="AttnSoundUrgentCombo" VerticalAlignment="Center" Margin="0,0,8,0" />
                         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button x:Name="AttnBrowseUrgentBtn" Content="📁" MinWidth="38" ToolTip="Elegir un .wav propio del disco" />
-                            <Button x:Name="AttnTestUrgentBtn" Content="▶ Probar" MinWidth="90" />
+                            <Button x:Name="AttnBrowseUrgentBtn" Content="📁" MinWidth="38" ToolTip="{loc:Translate Config.BrowseWavTooltip}" />
+                            <Button x:Name="AttnTestUrgentBtn" Content="{loc:Translate Config.TestSound}" MinWidth="90" />
                         </StackPanel>
                     </Grid>
 
@@ -755,13 +756,13 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="✅  Tarea lista" FontWeight="SemiBold" />
-                            <TextBlock Text="terminó — sin apuro" Foreground="{StaticResource FgMuted}" FontSize="11" />
+                            <TextBlock Text="{loc:Translate Config.AttnDoneLabel}" FontWeight="SemiBold" />
+                            <TextBlock Text="{loc:Translate Config.AttnDoneSub}" Foreground="{StaticResource FgMuted}" FontSize="11" />
                         </StackPanel>
                         <ComboBox Grid.Column="1" x:Name="AttnSoundDoneCombo" VerticalAlignment="Center" Margin="0,0,8,0" />
                         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button x:Name="AttnBrowseDoneBtn" Content="📁" MinWidth="38" ToolTip="Elegir un .wav propio del disco" />
-                            <Button x:Name="AttnTestDoneBtn" Content="▶ Probar" MinWidth="90" />
+                            <Button x:Name="AttnBrowseDoneBtn" Content="📁" MinWidth="38" ToolTip="{loc:Translate Config.BrowseWavTooltip}" />
+                            <Button x:Name="AttnTestDoneBtn" Content="{loc:Translate Config.TestSound}" MinWidth="90" />
                         </StackPanel>
                     </Grid>
 
@@ -772,7 +773,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="48" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Volumen" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="0" Text="{loc:Translate Config.Volume}" FontWeight="SemiBold" VerticalAlignment="Center" />
                         <Slider Grid.Column="1" x:Name="AttnVolumeSlider" Minimum="0" Maximum="100"
                                 VerticalAlignment="Center" TickFrequency="10" IsSnapToTickEnabled="False" />
                         <TextBlock Grid.Column="2" x:Name="AttnVolumeText" Text="100%" VerticalAlignment="Center"
@@ -780,26 +781,26 @@
                     </Grid>
 
                     <!-- Gate de mismo desk: toast y sonido por SEPARADO -->
-                    <TextBlock Text="Cuando el aviso es de mi escritorio actual:" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <TextBlock Text="{loc:Translate Config.SameDeskGate}" FontWeight="SemiBold" Margin="0,0,0,6" />
                     <StackPanel Orientation="Horizontal" Margin="22,0,0,0">
-                        <CheckBox x:Name="AttnSameDeskToastChk" Content="Mostrar toast" Margin="0,0,28,0" />
-                        <CheckBox x:Name="AttnSameDeskSoundChk" Content="Reproducir sonido" />
+                        <CheckBox x:Name="AttnSameDeskToastChk" Content="{loc:Translate Config.ShowToast}" Margin="0,0,28,0" />
+                        <CheckBox x:Name="AttnSameDeskSoundChk" Content="{loc:Translate Config.PlaySound}" />
                     </StackPanel>
                     <TextBlock Foreground="{StaticResource FgMuted}" FontSize="11" FontStyle="Italic"
                                TextWrapping="Wrap" Margin="22,4,0,0"
-                               Text="Ya estás parado ahí: podés querer solo el sonido (sin toast), solo el toast, ambos o nada." />
+                               Text="{loc:Translate Config.SameDeskGateHint}" />
                 </StackPanel>
 
                 <!-- Acciones -->
                 <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-                    <Button x:Name="AttnSaveBtn" Content="Guardar" MinWidth="100" Padding="10,4"
+                    <Button x:Name="AttnSaveBtn" Content="{loc:Translate Config.Save}" MinWidth="100" Padding="10,4"
                             Background="{StaticResource Accent}" Foreground="#10222A" FontWeight="SemiBold" />
                 </StackPanel>
             </Grid>
         </TabItem>
 
         <!-- ===== Pestaña NAVEGADOR ===== -->
-        <TabItem Header="Navegador">
+        <TabItem Header="{loc:Translate Config.BrowserTab}">
             <Grid Margin="14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -809,14 +810,14 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="Links en el escritorio actual" />
+                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="{loc:Translate Config.BrowserTitle}" />
                 <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
                            TextWrapping="Wrap" Margin="0,4,0,12"
-                           Text="Cuando hacés click en un link, Windows lo abre en la ventana del navegador que ya tenés en OTRO escritorio y te catapulta ahí. Con esto activado, la app se mete en el medio y abre el link en una ventana NUEVA en TU escritorio actual — sin moverte." />
+                           Text="{loc:Translate Config.BrowserHint}" />
 
                 <!-- Toggle de la feature -->
                 <CheckBox Grid.Row="2" x:Name="BrowserEnabledChk" Margin="0,0,0,4"
-                          Content="Abrir links en el escritorio actual (shim de navegador)" />
+                          Content="{loc:Translate Config.BrowserEnabled}" />
 
                 <StackPanel Grid.Row="3" Margin="0,8,0,0">
 
@@ -831,9 +832,9 @@
                     </Border>
 
                     <!-- Navegador real -->
-                    <TextBlock Text="Navegador real (al que reenviamos los links)" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <TextBlock Text="{loc:Translate Config.RealBrowser}" FontWeight="SemiBold" Margin="0,0,0,4" />
                     <TextBlock Foreground="{StaticResource FgMuted}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"
-                               Text="Vacío = se autodetecta Brave. Podés fijar otro navegador a mano (ej. chrome.exe / msedge.exe con ruta completa)." />
+                               Text="{loc:Translate Config.RealBrowserHint}" />
                     <Grid Margin="0,0,0,16">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -841,27 +842,27 @@
                         </Grid.ColumnDefinitions>
                         <TextBox Grid.Column="0" x:Name="BrowserPathBox" VerticalAlignment="Center"
                                  FontFamily="Consolas" Margin="0,0,8,0" />
-                        <Button Grid.Column="1" x:Name="BrowserBrowseBtn" Content="📁  Elegir…" MinWidth="100" />
+                        <Button Grid.Column="1" x:Name="BrowserBrowseBtn" Content="{loc:Translate Config.Browse}" MinWidth="100" />
                     </Grid>
 
                     <!-- Paso manual del default -->
-                    <TextBlock Text="Paso obligatorio (una sola vez)" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <TextBlock Text="{loc:Translate Config.BrowserSetupRequired}" FontWeight="SemiBold" Margin="0,0,0,4" />
                     <TextBlock Foreground="{StaticResource FgMuted}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"
-                               Text="Windows NO deja que una app se ponga como navegador por defecto sola (es por seguridad). Tenés que elegir 'Ampz Desktop Booster' a mano en Configuración → Apps predeterminadas, para http y https. Es un click, una vez." />
-                    <Button x:Name="BrowserOpenSettingsBtn" Content="Abrir Apps predeterminadas de Windows"
+                               Text="{loc:Translate Config.BrowserSetupHint}" />
+                    <Button x:Name="BrowserOpenSettingsBtn" Content="{loc:Translate Config.OpenDefaultApps}"
                             HorizontalAlignment="Left" MinWidth="280" Padding="12,6" />
                 </StackPanel>
 
                 <!-- Acciones -->
                 <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-                    <Button x:Name="BrowserSaveBtn" Content="Guardar" MinWidth="100" Padding="10,4"
+                    <Button x:Name="BrowserSaveBtn" Content="{loc:Translate Config.Save}" MinWidth="100" Padding="10,4"
                             Background="{StaticResource Accent}" Foreground="#10222A" FontWeight="SemiBold" />
                 </StackPanel>
             </Grid>
         </TabItem>
 
         <!-- ===== Pestaña GENERAL ===== -->
-        <TabItem Header="General">
+        <TabItem Header="{loc:Translate General.Title}">
             <Grid Margin="14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -871,25 +872,35 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="General" />
+                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="{loc:Translate General.Title}" />
 
                 <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
-                           Margin="0,8,0,4" Text="Tu configuración se guarda en:" />
+                           Margin="0,8,0,4" Text="{loc:Translate General.DataPathLabel}" />
                 <Border Grid.Row="2" Background="{StaticResource Panel}" CornerRadius="4" Padding="8,6">
                     <TextBlock x:Name="DataPathText" Foreground="{StaticResource Fg}" FontSize="12"
                                FontFamily="Consolas" TextWrapping="Wrap" />
                 </Border>
 
+                <!-- Selector de idioma (i18n). El cambio se aplica al reiniciar (modelo por reinicio). -->
+                <StackPanel Grid.Row="3" Margin="0,16,0,0" VerticalAlignment="Top">
+                    <TextBlock Text="{loc:Translate General.Language}" Foreground="{StaticResource Fg}"
+                               FontSize="13" FontWeight="SemiBold" />
+                    <ComboBox x:Name="LanguageCombo" Width="220" HorizontalAlignment="Left"
+                              Margin="0,6,0,0" Padding="6,4" FontSize="13" />
+                    <TextBlock Text="{loc:Translate General.LanguageHint}" Foreground="{StaticResource FgMuted}"
+                               FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap" />
+                </StackPanel>
+
                 <!-- Zona de riesgo -->
                 <Border Grid.Row="4" BorderBrush="{StaticResource Danger}" BorderThickness="1"
                         CornerRadius="4" Padding="12" Margin="0,12,0,0">
                     <StackPanel>
-                        <TextBlock Text="⚠ Zona de riesgo" Foreground="{StaticResource Danger}"
+                        <TextBlock Text="{loc:Translate General.RiskZone}" Foreground="{StaticResource Danger}"
                                    FontWeight="SemiBold" FontSize="13" />
                         <TextBlock Foreground="{StaticResource FgMuted}" FontSize="11" TextWrapping="Wrap"
                                    Margin="0,6,0,10"
-                                   Text="Restablecer borra TODA tu configuración (escritorios, proyectos, pins, protecciones, apps, atajos, widgets y uso) y NO se puede deshacer. La app se reinicia con los valores por defecto." />
-                        <Button x:Name="ResetAllBtn" Content="Restablecer toda la configuración"
+                                   Text="{loc:Translate General.ResetWarning}" />
+                        <Button x:Name="ResetAllBtn" Content="{loc:Translate General.ResetButton}"
                                 HorizontalAlignment="Left" MinWidth="240" Padding="12,6"
                                 Background="{StaticResource Danger}" Foreground="#FFFFFF" FontWeight="SemiBold" />
                     </StackPanel>

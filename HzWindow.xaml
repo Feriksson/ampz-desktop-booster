@@ -1,7 +1,8 @@
 <Window x:Class="AmpzDesktopBooster.HzWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Frecuencia de pantalla"
+        xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
+        Title="{loc:Translate Hz.Title}"
         Width="340" SizeToContent="Height"
         WindowStyle="None" ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
@@ -25,7 +26,7 @@
             <TextBlock x:Name="CurrentText" Foreground="#9A9A9A" FontSize="12" Margin="0,0,0,10" />
             <StackPanel x:Name="RatesPanel" />
             <TextBlock Foreground="#6E6E78" FontSize="10" Margin="0,4,0,0"
-                       Text="Win+F12: ciclar · soltar Win: aplicar · clic: aplicar directo · Esc: cancelar" />
+                       Text="{loc:Translate Hz.Hint}" />
         </StackPanel>
     </Border>
 </Window>

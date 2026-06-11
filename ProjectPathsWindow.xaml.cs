@@ -8,6 +8,7 @@ using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Interop;
 using AmpzDesktopBooster.Persistence;
 using AmpzDesktopBooster.Services;
+using AmpzDesktopBooster.Services.Localization;
 
 namespace AmpzDesktopBooster;
 
@@ -65,7 +66,7 @@ public partial class ProjectPathsWindow : Window
         _explorerSeed = explorerSeed;
 
         Icon = AppIcon.TryLoadForWindow();
-        HeaderText.Text = $"{pool.Label} — Variables";
+        HeaderText.Text = $"{pool.Label} — {Loc.T("Paths.HeaderSuffix")}";
         SubHeaderText.Text = deskName;
 
         RefreshList();
@@ -112,7 +113,7 @@ public partial class ProjectPathsWindow : Window
             var globals = PoolRows(_globalPool, RowScope.Global, filter).ToList();
             if (globals.Count > 0)
             {
-                PathList.Items.Add(SeparatorRow("──  Globales (compartidas)  ──"));
+                PathList.Items.Add(SeparatorRow(Loc.T("Paths.SepGlobals")));
                 AddGroupedByType(globals);
             }
         }
@@ -136,12 +137,12 @@ public partial class ProjectPathsWindow : Window
 
         if (folders.Count > 0)
         {
-            if (label) PathList.Items.Add(SeparatorRow("📁  Carpetas / Paths"));
+            if (label) PathList.Items.Add(SeparatorRow(Loc.T("Paths.SepFolders")));
             foreach (var r in folders) PathList.Items.Add(r);
         }
         if (urls.Count > 0)
         {
-            if (label) PathList.Items.Add(SeparatorRow("🌐  URLs"));
+            if (label) PathList.Items.Add(SeparatorRow(Loc.T("Paths.SepUrls")));
             foreach (var r in urls) PathList.Items.Add(r);
         }
     }
@@ -241,8 +242,8 @@ public partial class ProjectPathsWindow : Window
         var result = claude ? PathOpener.OpenInClaude(value) : PathOpener.Open(value, monitor);
         if (result == PathOpener.Result.NotFound)
             MessageBox.Show(
-                claude ? "Sólo se puede abrir un directorio en Claude CLI." : $"No existe o no es válido:\n{value}",
-                "Variables", MessageBoxButton.OK, MessageBoxImage.Warning);
+                claude ? Loc.T("Paths.ClaudeOnlyDir") : $"{Loc.T("Paths.NotFound")}\n{value}",
+                Loc.T("Paths.WindowTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private void CopySelected()
@@ -268,7 +269,7 @@ public partial class ProjectPathsWindow : Window
     private void RenameSelected()
     {
         if (SelectedProject is not { } row) return; // globales: solo-lectura
-        string? title = PromptDialog.Show(this, "Renombrar variable", "Título:", row.Title);
+        string? title = PromptDialog.Show(this, Loc.T("Paths.DlgRenameTitle"), Loc.T("Paths.DlgRenameLabel"), row.Title);
         if (title is null) return;
         _pool.UpdateTitle(row.PoolIndex, title);
         RefreshList();
@@ -277,9 +278,9 @@ public partial class ProjectPathsWindow : Window
     private void AddNew()
     {
         // Path pre-cargado con el del Explorer activo (si lo capturamos al abrir), como el legacy.
-        string? path = PromptDialog.Show(this, "Nueva variable", "Path o URL:", _explorerSeed);
+        string? path = PromptDialog.Show(this, Loc.T("Paths.DlgNewTitle"), Loc.T("Paths.DlgNewPathLabel"), _explorerSeed);
         if (string.IsNullOrWhiteSpace(path)) return;
-        string? title = PromptDialog.Show(this, "Nueva variable", "Título:", "");
+        string? title = PromptDialog.Show(this, Loc.T("Paths.DlgNewTitle"), Loc.T("Paths.DlgRenameLabel"), "");
         if (title is null) return;
         if (title.Trim() == "") title = path.Trim();
         _pool.Add(title, path);

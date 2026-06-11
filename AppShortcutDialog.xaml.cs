@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using AmpzDesktopBooster.Apps;
+using AmpzDesktopBooster.Services.Localization;
 
 namespace AmpzDesktopBooster;
 
@@ -22,8 +23,8 @@ public partial class AppShortcutDialog : Window
         InitializeComponent();
 
         bool isEdit = existing is not null;
-        HeaderText.Text = isEdit ? $"Editar shortcut · {proc}" : $"Nuevo shortcut · {proc}";
-        SaveBtn.Content = isEdit ? "Guardar cambios" : "Crear shortcut";
+        HeaderText.Text = isEdit ? $"{Loc.T("Shortcut.HeaderEdit")} · {proc}" : $"{Loc.T("Shortcut.HeaderNew")} · {proc}";
+        SaveBtn.Content = isEdit ? Loc.T("Shortcut.SaveBtn") : Loc.T("Shortcut.CreateBtn");
 
         if (existing is not null)
         {
@@ -36,7 +37,7 @@ public partial class AppShortcutDialog : Window
         if (!string.IsNullOrEmpty(activeTitle))
         {
             var t = activeTitle.Length > 80 ? activeTitle[..77] + "…" : activeTitle;
-            CurrentTitleHint.Text = "Título actual: " + t;
+            CurrentTitleHint.Text = $"{Loc.T("Shortcut.CurrentTitle")}: {t}";
             CurrentTitleHint.Visibility = Visibility.Visible;
         }
 
@@ -60,7 +61,7 @@ public partial class AppShortcutDialog : Window
     private void BeginCapture()
     {
         _capturing = true;
-        CaptureBtn.Content = "Presioná… (Esc cancela)";
+        CaptureBtn.Content = Loc.T("Shortcut.CapturingPrompt");
         // Sacamos el foco del TextBox para que las teclas NO se tipeen ahí; el window las captura.
         Focus();
         Keyboard.Focus(this);
@@ -69,7 +70,7 @@ public partial class AppShortcutDialog : Window
     private void EndCapture()
     {
         _capturing = false;
-        CaptureBtn.Content = "🎯 Capturar";
+        CaptureBtn.Content = Loc.T("Shortcut.CaptureBtn");
     }
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
@@ -108,8 +109,8 @@ public partial class AppShortcutDialog : Window
     {
         if (KeyBox.Text.Trim() == "" || DescBox.Text.Trim() == "")
         {
-            MessageBox.Show("La combinación y la descripción son obligatorias.",
-                "Datos faltantes", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(Loc.T("Shortcut.ValidationMessage"),
+                Loc.T("Shortcut.ValidationTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         DialogResult = true;

@@ -9,6 +9,7 @@ using AmpzDesktopBooster.Interop;
 using AmpzDesktopBooster.Persistence;
 using AmpzDesktopBooster.Services;
 using AmpzDesktopBooster.Services.Attention;
+using AmpzDesktopBooster.Services.Localization;
 using AmpzDesktopBooster.Services.Browser;
 using AmpzDesktopBooster.Services.Tasks;
 
@@ -87,6 +88,7 @@ public partial class ConfigWindow : Window
         // ── Pestaña General ──
         DataPathText.Text = AppPaths.DataDir;
         ResetAllBtn.Click += (_, _) => ResetAll();
+        SetupLanguageSelector();
 
         // ── Pestaña Tareas ──
         // OJO orden: cableamos handlers ANTES de InitTasksTab. Si init seteara SelectedIndex con el
@@ -164,32 +166,32 @@ public partial class ConfigWindow : Window
         bool registered = BrowserShim.IsRegistered();
         bool isDefault = BrowserShim.IsDefault();
         string browser = BrowserSettings.Load().EffectiveBrowserPath();
-        string browserName = string.IsNullOrEmpty(browser) ? "ninguno detectado" : System.IO.Path.GetFileName(browser);
+        string browserName = string.IsNullOrEmpty(browser) ? Loc.T("Config.BrowserNoneDetected") : System.IO.Path.GetFileName(browser);
 
         if (isDefault)
         {
             BrowserStatusText.Foreground = (System.Windows.Media.Brush)FindResource("Accent");
-            BrowserStatusText.Text = "✓ Ampz es tu navegador predeterminado. Los links abren en tu escritorio actual.";
+            BrowserStatusText.Text = Loc.T("Config.BrowserIsDefault");
         }
         else if (registered)
         {
             BrowserStatusText.Foreground = (System.Windows.Media.Brush)FindResource("Fg");
-            BrowserStatusText.Text = "Registrado como candidato, pero todavía NO sos el predeterminado. Elegí 'Ampz Desktop Booster' en Apps predeterminadas (botón de abajo).";
+            BrowserStatusText.Text = Loc.T("Config.BrowserRegisteredNotDefault");
         }
         else
         {
             BrowserStatusText.Foreground = (System.Windows.Media.Brush)FindResource("FgMuted");
-            BrowserStatusText.Text = "Desactivado. Activá la casilla y guardá para registrarte como navegador.";
+            BrowserStatusText.Text = Loc.T("Config.BrowserDisabled");
         }
-        BrowserStatusHint.Text = $"Navegador real al que se reenvía: {browserName}.";
+        BrowserStatusHint.Text = $"{Loc.T("Config.BrowserRealPrefix")}{browserName}.";
     }
 
     private void BrowseRealBrowser()
     {
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "Elegí el ejecutable del navegador",
-            Filter = "Ejecutables (*.exe)|*.exe",
+            Title = Loc.T("Config.BrowseBrowserTitle"),
+            Filter = Loc.T("Config.BrowseBrowserFilter"),
             CheckFileExists = true,
         };
         if (dlg.ShowDialog() == true)
@@ -213,13 +215,12 @@ public partial class ConfigWindow : Window
         else BrowserShim.Unregister();
 
         RefreshBrowserStatus();
-        Toasts.Saved("Navegador");
+        Toasts.Saved(Loc.T("Config.BrowserTab"));
 
         if (s.Enabled && !BrowserShim.IsDefault())
             MessageBox.Show(
-                "Listo. Ahora elegí 'Ampz Desktop Booster' como navegador para http y https en " +
-                "Configuración → Apps predeterminadas (te abro la ventana con el botón).",
-                "Navegador", MessageBoxButton.OK, MessageBoxImage.Information);
+                Loc.T("Config.BrowserSavePrompt"),
+                Loc.T("Config.BrowserTab"), MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     // ── Pestaña Atención ────────────────────────────────────────────────────────
@@ -260,8 +261,8 @@ public partial class ConfigWindow : Window
     {
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "Elegí un sonido (.wav)",
-            Filter = "Audio WAV (*.wav)|*.wav",
+            Title = Loc.T("Config.BrowseWavTitle"),
+            Filter = Loc.T("Config.BrowseWavFilter"),
             CheckFileExists = true,
         };
         if (dlg.ShowDialog() != true) return;
@@ -311,7 +312,7 @@ public partial class ConfigWindow : Window
             SoundActionNeeded = SelectedSound(AttnSoundUrgentCombo),
             SoundCompleted = SelectedSound(AttnSoundDoneCombo),
         }.Save();
-        Toasts.Saved("Atención");
+        Toasts.Saved(Loc.T("Config.AttentionTab"));
     }
 
     // ── Pestaña Anclajes ───────────────────────────────────────────────────────
@@ -370,7 +371,7 @@ public partial class ConfigWindow : Window
         if (!proc.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) proc += ".exe"; // normalizamos al .exe
         if (_pins.IsBlocked(proc))
         {
-            MessageBox.Show($"'{proc}' no puede anclarse (proceso del sistema).", "Anclar",
+            MessageBox.Show(string.Format(Loc.T("Config.PinBlockedMsg"), proc), Loc.T("Config.Pin"),
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -389,7 +390,7 @@ public partial class ConfigWindow : Window
     private void UnpinAll()
     {
         if (_pins.All.Count == 0) return;
-        if (MessageBox.Show("¿Desanclar todas las apps?", "Anclajes",
+        if (MessageBox.Show(Loc.T("Config.UnpinAllConfirm"), Loc.T("Config.PinsTab"),
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         _pins.Clear();
         RefreshPins();
@@ -402,18 +403,34 @@ public partial class ConfigWindow : Window
     /// enumera qué se pierde. El borrado real + el reinicio (con su relauncher anti-mutex) viven en
     /// AppPaths.ResetAllData() y App.RestartApplication().
     /// </summary>
+    /// <summary>
+    /// Llena el combo de idioma y cablea el cambio. El modelo es por REINICIO: al elegir un idioma
+    /// distinto, persistimos la preferencia y avisamos por toast que hay que reiniciar para verlo
+    /// aplicado en toda la UI. Enganchamos el handler DESPUÉS de fijar la selección inicial para no
+    /// dispararlo en el armado (y, por las dudas, el guard <c>lang != Loc.Current</c> lo blinda).
+    /// </summary>
+    private void SetupLanguageSelector()
+    {
+        LanguageCombo.Items.Clear();
+        LanguageCombo.Items.Add(new ComboBoxItem { Content = Loc.T("Language.Spanish"), Tag = AppLanguage.Spanish });
+        LanguageCombo.Items.Add(new ComboBoxItem { Content = Loc.T("Language.English"), Tag = AppLanguage.English });
+        LanguageCombo.SelectedIndex = Loc.Current == AppLanguage.English ? 1 : 0;
+
+        LanguageCombo.SelectionChanged += (_, _) =>
+        {
+            if (LanguageCombo.SelectedItem is ComboBoxItem { Tag: AppLanguage lang } && lang != Loc.Current)
+            {
+                Loc.SetAndPersist(lang);
+                Toasts.Info(Loc.T("General.Language"), Loc.T("General.LanguageHint"));
+            }
+        };
+    }
+
     private void ResetAll()
     {
         var r = MessageBox.Show(
-            "Esto borra TODA la configuración y NO se puede deshacer:\n\n" +
-            "• Escritorios gestionados\n" +
-            "• Proyectos (historial, paths, notas)\n" +
-            "• Pins (anclajes)\n" +
-            "• Protecciones y whitelists\n" +
-            "• Apps de “Abrir con” y sus atajos\n" +
-            "• Widgets de la barra y panel de uso\n\n" +
-            "La app se reinicia con la configuración por defecto.\n\n¿Continuar?",
-            "Restablecer todo",
+            Loc.T("Config.ResetAllConfirm"),
+            Loc.T("Config.ResetAllTitle"),
             MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
         if (r != MessageBoxResult.Yes) return;
 
@@ -542,7 +559,7 @@ public partial class ConfigWindow : Window
         string exe = AppExeBox.Text.Trim();
         if (name == "" || exe == "")
         {
-            MessageBox.Show("Completá al menos Nombre y Ruta al ejecutable.", "Aplicaciones",
+            MessageBox.Show(Loc.T("Config.AppRequiredFields"), Loc.T("Config.AppsTab"),
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -571,7 +588,7 @@ public partial class ConfigWindow : Window
         {
             string name = _config.Managed[i];
             bool exists = _desktops.FindExact(name) >= 0;
-            string status = exists ? "✓ existe" : "✗ falta";
+            string status = exists ? Loc.T("Config.DeskExists") : Loc.T("Config.DeskMissing");
             DeskList.Items.Add($"{i + 1}.  {name}      —  {status}");
         }
 
@@ -635,8 +652,8 @@ public partial class ConfigWindow : Window
         RefreshList();
         _onApplied();
         MessageBox.Show(
-            created > 0 ? $"Listo. Escritorios creados: {created}." : "Listo. No faltaba ninguno (sólo se renombraron los que diferían).",
-            "Desktops", MessageBoxButton.OK, MessageBoxImage.Information);
+            created > 0 ? string.Format(Loc.T("Config.DesktopsCreated"), created) : Loc.T("Config.DesktopsNoneMissing"),
+            Loc.T("Config.DesktopsTab"), MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void SaveAndApply()
@@ -647,7 +664,7 @@ public partial class ConfigWindow : Window
             DesktopBootstrapper.Ensure(_config, _desktops);
         RefreshList();
         _onApplied();
-        Toasts.Saved("Desktops");
+        Toasts.Saved(Loc.T("Config.DesktopsTab"));
     }
 
     // ── Pestaña Tareas ─────────────────────────────────────────────────────────
@@ -666,8 +683,8 @@ public partial class ConfigWindow : Window
     {
         public override string ToString()
         {
-            string nm = string.IsNullOrWhiteSpace(Account.DisplayName) ? "(sin nombre)" : Account.DisplayName;
-            return Account.Enabled ? nm : $"{nm}   · apagada";
+            string nm = string.IsNullOrWhiteSpace(Account.DisplayName) ? Loc.T("Config.AccountNoName") : Account.DisplayName;
+            return Account.Enabled ? nm : $"{nm}   · {Loc.T("Config.AccountDisabled")}";
         }
     }
 
@@ -834,7 +851,7 @@ public partial class ConfigWindow : Window
         var a = new TaskAccount
         {
             Kind = "vikunja",
-            DisplayName = "Cuenta nueva",
+            DisplayName = Loc.T("Config.NewAccount"),
             Enabled = true,
             Vikunja = new VikunjaSettings(),
         };
@@ -886,9 +903,9 @@ public partial class ConfigWindow : Window
         _tasks.Save();
 
         TaskTestStatus.Foreground = (System.Windows.Media.Brush)FindResource("FgMuted");
-        TaskTestStatus.Text = $"Guardado en tasks.json. {_tasks.Accounts.Count} cuenta(s).";
+        TaskTestStatus.Text = string.Format(Loc.T("Config.TasksSaved"), _tasks.Accounts.Count);
         RefreshAccountsList(preserveSelection: true); // los DisplayName trimeados se ven en la lista
-        Toasts.Saved("Tareas");
+        Toasts.Saved(Loc.T("Config.TasksTab"));
     }
 
     /// <summary>Prueba SOLO la cuenta seleccionada con los valores actuales del editor.</summary>
@@ -900,20 +917,20 @@ public partial class ConfigWindow : Window
         if (provider is null)
         {
             TaskTestStatus.Foreground = (System.Windows.Media.Brush)FindResource("FgMuted");
-            TaskTestStatus.Text = "Esta cuenta no tiene credenciales del tipo elegido.";
+            TaskTestStatus.Text = Loc.T("Config.TaskNoCredentials");
             return;
         }
 
         TaskTestBtn.IsEnabled = false;
         TaskTestStatus.Foreground = (System.Windows.Media.Brush)FindResource("FgMuted");
-        TaskTestStatus.Text = $"Probando '{_currentAccount.DisplayName}'…";
+        TaskTestStatus.Text = string.Format(Loc.T("Config.TaskTesting"), _currentAccount.DisplayName);
         try
         {
             var result = await provider.GetOpenTasksAsync();
             if (result.Ok)
             {
                 TaskTestStatus.Foreground = (System.Windows.Media.Brush)FindResource("Accent");
-                TaskTestStatus.Text = $"✓ Conectado a '{_currentAccount.DisplayName}'. Tareas abiertas: {result.Items.Count}.";
+                TaskTestStatus.Text = string.Format(Loc.T("Config.TaskTestOk"), _currentAccount.DisplayName, result.Items.Count);
             }
             else
             {

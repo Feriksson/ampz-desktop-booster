@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Input;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Services;
+using AmpzDesktopBooster.Services.Localization;
 
 namespace AmpzDesktopBooster;
 
@@ -16,7 +17,7 @@ public partial class WhitelistPickerWindow : Window
 {
     private sealed record Row(int Idx, string Name, bool Already)
     {
-        public override string ToString() => $"{Name}   —   {(Already ? "✓ ya permitida" : "agregar")}";
+        public override string ToString() => $"{Name}   —   {(Already ? Loc.T("Whitelist.RowAlready") : Loc.T("Whitelist.RowAdd"))}";
     }
 
     private readonly RestrictionStore _restrictions;

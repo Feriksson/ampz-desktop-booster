@@ -1,6 +1,7 @@
 <Window x:Class="AmpzDesktopBooster.AppShortcutDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
         Title="Shortcut"
         Width="480" SizeToContent="Height"
         WindowStyle="None" ResizeMode="NoResize"
@@ -60,7 +61,7 @@
             <TextBlock x:Name="HeaderText" Foreground="#FFD700" FontSize="14" FontWeight="Bold"
                        Margin="0,0,0,14" />
 
-            <TextBlock Text="Combinación de teclas" Foreground="#888" FontSize="12" Margin="0,0,0,3" />
+            <TextBlock Text="{loc:Translate Shortcut.KeyComboLabel}" Foreground="#888" FontSize="12" Margin="0,0,0,3" />
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -69,28 +70,28 @@
                 <TextBox x:Name="KeyBox" Grid.Column="0" FontFamily="Consolas" FontSize="13"
                          Foreground="#00D4FF" />
                 <Button x:Name="CaptureBtn" Grid.Column="1" Width="110" Margin="8,0,0,0"
-                        Content="🎯 Capturar" />
+                        Content="{loc:Translate Shortcut.CaptureBtn}" />
             </Grid>
 
-            <TextBlock Text="Descripción" Foreground="#888" FontSize="12" Margin="0,14,0,3" />
+            <TextBlock Text="{loc:Translate Shortcut.DescLabel}" Foreground="#888" FontSize="12" Margin="0,14,0,3" />
             <TextBox x:Name="DescBox" FontSize="13" />
 
-            <TextBlock Text="Filtro de título de ventana (opcional)" Foreground="#888" FontSize="12"
+            <TextBlock Text="{loc:Translate Shortcut.TitleFilterLabel}" Foreground="#888" FontSize="12"
                        Margin="0,14,0,3" />
             <TextBlock x:Name="CurrentTitleHint" Foreground="#5577AA" FontSize="11"
                        TextWrapping="Wrap" Margin="0,0,0,3" Visibility="Collapsed" />
             <TextBox x:Name="TitleBox" FontSize="13" />
             <TextBlock Foreground="#666" FontSize="11" FontStyle="Italic" TextWrapping="Wrap"
                        Margin="0,6,0,0"
-                       Text="VACÍO → el shortcut aparece SIEMPRE cuando esta app tenga el foco." />
+                       Text="{loc:Translate Shortcut.TitleFilterHint1}" />
             <TextBlock Foreground="#666" FontSize="11" FontStyle="Italic" TextWrapping="Wrap"
-                       Text="CON TEXTO → solo aparece cuando el título de la ventana contiene ese texto." />
+                       Text="{loc:Translate Shortcut.TitleFilterHint2}" />
             <TextBlock Foreground="#666" FontSize="11" FontStyle="Italic" TextWrapping="Wrap"
-                       Text="Ej: para Chrome, poner 'GitHub' lo muestra solo en pestañas con 'GitHub'." />
+                       Text="{loc:Translate Shortcut.TitleFilterHint3}" />
 
             <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
-                <Button x:Name="SaveBtn" Width="170" Content="Crear shortcut" />
-                <Button x:Name="CancelBtn" Width="100" Margin="10,0,0,0" Content="Cancelar" />
+                <Button x:Name="SaveBtn" Width="170" Content="{loc:Translate Shortcut.CreateBtn}" />
+                <Button x:Name="CancelBtn" Width="100" Margin="10,0,0,0" Content="{loc:Translate Shortcut.CancelBtn}" />
             </StackPanel>
         </StackPanel>
     </Border>

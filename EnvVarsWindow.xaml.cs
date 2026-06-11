@@ -7,6 +7,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 using AmpzDesktopBooster.Services;
+using AmpzDesktopBooster.Services.Localization;
 
 namespace AmpzDesktopBooster;
 
@@ -80,7 +81,7 @@ public partial class EnvVarsWindow : Window
         }
         else
         {
-            MessageBox.Show("El valor no es un directorio válido.", "Variables de entorno",
+            MessageBox.Show(Loc.T("EnvVars.NotADirectory"), Loc.T("EnvVars.Title"),
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }

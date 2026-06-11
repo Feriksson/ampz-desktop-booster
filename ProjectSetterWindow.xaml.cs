@@ -3,6 +3,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 using AmpzDesktopBooster.Desktops;
+using AmpzDesktopBooster.Services.Localization;
 
 namespace AmpzDesktopBooster;
 
@@ -26,7 +27,7 @@ public partial class ProjectSetterWindow : Window
         _store = store;
         _onChanged = onChanged;
 
-        HeaderText.Text = "Proyecto para este escritorio";
+        HeaderText.Text = Loc.T("Setter.Header");
         SubHeaderText.Text = deskName;
 
         // Pre-cargar con el proyecto activo (sesión) o, si no hay, la sugerencia persistida.
@@ -105,8 +106,8 @@ public partial class ProjectSetterWindow : Window
         if (name.Length > 23)
         {
             MessageBox.Show(
-                $"El nombre del proyecto no puede tener más de 23 caracteres (tiene {name.Length}).",
-                "Nombre demasiado largo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                string.Format(Loc.T("Setter.NameTooLong"), name.Length),
+                Loc.T("Setter.NameTooLongTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -121,8 +122,8 @@ public partial class ProjectSetterWindow : Window
             return;
 
         var resp = MessageBox.Show(
-            $"¿Borrar '{name}' del historial?\nSe eliminan también sus paths y notas.",
-            "Borrar proyecto", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            string.Format(Loc.T("Setter.DeleteConfirm"), name),
+            Loc.T("Setter.DeleteTitle"), MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (resp != MessageBoxResult.Yes)
             return;
 

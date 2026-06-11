@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Input;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Services;
+using AmpzDesktopBooster.Services.Localization;
 using AmpzDesktopBooster.Services.Tasks;
 
 namespace AmpzDesktopBooster;
@@ -47,7 +48,7 @@ public partial class SendWindowPickerWindow : Window
         _hwnd = hwnd;
         Icon = AppIcon.TryLoadForWindow();
 
-        HeaderText.Text = string.IsNullOrEmpty(activeTitle) ? "Enviar ventana a…" : $"Enviar: {activeTitle}";
+        HeaderText.Text = string.IsNullOrEmpty(activeTitle) ? Loc.T("SendPicker.Title") : $"{Loc.T("SendPicker.SendPrefix")}: {activeTitle}";
 
         int current = _desktops.Current;
         for (int i = 0; i < _desktops.Count; i++)

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 using AmpzDesktopBooster.Desktops;
+using AmpzDesktopBooster.Services.Localization;
 
 namespace AmpzDesktopBooster;
 
@@ -114,8 +115,8 @@ public partial class DeskPickerWindow : Window
         if (_all.Count == 0)
             return;
         var resp = MessageBox.Show(
-            "¿Quitar todos los proyectos de la sesión?",
-            "Limpiar todo", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            Loc.T("DeskPicker.ClearAllConfirm"),
+            Loc.T("DeskPicker.BtnClearAll"), MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (resp != MessageBoxResult.Yes)
             return;
         _store.ClearAllSession();

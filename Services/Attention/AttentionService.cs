@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Interop;
+using AmpzDesktopBooster.Services.Localization;
 
 namespace AmpzDesktopBooster.Services.Attention;
 
@@ -71,7 +72,7 @@ public sealed class AttentionService
             // No pudimos ubicar la ventana (proceso headless, ya cerrado, etc.). No hay desk que
             // resaltar — avisamos igual para no perder la señal, pero no tocamos el estado.
             MaybePlay(settings, signal.Level, sameDesk: false); // sin desk no aplica el gate de mismo-desk
-            Toasts.Info("Atención (desk no resuelto)", DescribeSource(signal));
+            Toasts.Info(Loc.T("Attention.UnresolvedDesk"), DescribeSource(signal));
             return;
         }
 
@@ -90,12 +91,12 @@ public sealed class AttentionService
         string title;
         if (sameDesk)
             title = signal.Level == AttentionLevel.ActionNeeded
-                ? "🔔  Te necesita, acá mismo"
-                : "✅  Listo, terminó acá";
+                ? $"🔔  {Loc.T("Attention.NeedsYouHere")}"
+                : $"✅  {Loc.T("Attention.DoneHere")}";
         else
             title = signal.Level == AttentionLevel.ActionNeeded
-                ? $"🔔  {deskName} te necesita"
-                : $"✅  {deskName}: tarea lista";
+                ? $"🔔  {deskName} {Loc.T("Attention.NeedsYou")}"
+                : $"✅  {deskName}: {Loc.T("Attention.TaskDone")}";
 
         // Sonido y toast son INDEPENDIENTES en el caso mismo-desk: podés querer solo el sonido (sin
         // toast) cuando algo pasa donde ya estás, o al revés. Cada uno tiene su propio gate.

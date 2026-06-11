@@ -9,6 +9,7 @@ using System.Windows.Threading;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Services;
 using AmpzDesktopBooster.Services.Attention;
+using AmpzDesktopBooster.Services.Localization;
 using AmpzDesktopBooster.Services.Usage;
 
 namespace AmpzDesktopBooster;
@@ -282,7 +283,7 @@ public partial class BarWindow : Window
             GaugesPanel.Visibility = Visibility.Collapsed;
             PlanBadge.Visibility = Visibility.Collapsed;
             UsageStatus.Visibility = Visibility.Visible;
-            UsageStatus.Text = "— sin datos";
+            UsageStatus.Text = Loc.T("Bar.UsageNoData");
             UsageWidget.ToolTip = snap.Error;
             return;
         }
@@ -302,7 +303,7 @@ public partial class BarWindow : Window
             PlanBadge.Visibility = Visibility.Visible;
         }
 
-        UsageWidget.ToolTip = $"Claude — actualizado {snap.FetchedAt:HH:mm}";
+        UsageWidget.ToolTip = $"Claude — {Loc.T("Bar.UsageUpdatedAt")} {snap.FetchedAt:HH:mm}";
 
         SetGauge(Fill5h, Pct5h, Gauge5h, FindGauge(snap, "five_hour"));
         SetGauge(Fill7d, Pct7d, Gauge7d, FindGauge(snap, "seven_day"));
@@ -350,8 +351,8 @@ public partial class BarWindow : Window
 
         var local = reset.ToLocalTime();
         var remaining = local - DateTimeOffset.Now;
-        string falta = remaining > TimeSpan.Zero ? FormatRemaining(remaining) : "ya se reinició";
-        return $"{g.Label}\nFalta: {falta}\nSe reinicia: {local:ddd dd/MM · HH:mm}";
+        string falta = remaining > TimeSpan.Zero ? FormatRemaining(remaining) : Loc.T("Bar.UsageAlreadyReset");
+        return $"{g.Label}\n{Loc.T("Bar.UsageRemaining")}: {falta}\n{Loc.T("Bar.UsageResetsAt")}: {local:ddd dd/MM · HH:mm}";
     }
 
     /// <summary>
@@ -530,7 +531,7 @@ public partial class BarWindow : Window
     /// <summary>Tooltip del dot: qué pasa en ese desk + el proyecto (si tiene), en su línea.</summary>
     private static string AttentionTip(string deskName, bool urgent, string project)
     {
-        string head = urgent ? $"{deskName} te necesita" : $"{deskName}: tarea lista";
+        string head = urgent ? $"{deskName} {Loc.T("Bar.AttentionNeedsYou")}" : $"{deskName}: {Loc.T("Bar.AttentionTaskDone")}";
         return string.IsNullOrEmpty(project) ? head : $"{head}\n{project}";
     }
 

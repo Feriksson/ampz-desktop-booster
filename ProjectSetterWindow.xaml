@@ -1,7 +1,8 @@
 <Window x:Class="AmpzDesktopBooster.ProjectSetterWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Proyecto del escritorio"
+        xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
+        Title="{loc:Translate Key=Setter.Title}"
         Width="480" SizeToContent="Height"
         WindowStyle="None" ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
@@ -27,11 +28,11 @@
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
 
             <TextBlock Foreground="#6E6E78" FontFamily="Segoe UI" FontSize="10" Margin="0,8,0,0"
-                       Text="Enter: confirmar (fila / único resultado / texto nuevo) · Supr: borrar del historial · Esc: cerrar" />
+                       Text="{loc:Translate Key=Setter.Hint}" />
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-                <Button x:Name="RemoveBtn" Content="Quitar del desk" Width="130" Height="26" Margin="0,0,8,0" />
-                <Button x:Name="CloseBtn"  Content="Cerrar" Width="90" Height="26" />
+                <Button x:Name="RemoveBtn" Content="{loc:Translate Key=Setter.RemoveFromDesk}" Width="130" Height="26" Margin="0,0,8,0" />
+                <Button x:Name="CloseBtn"  Content="{loc:Translate Key=Setter.Close}" Width="90" Height="26" />
             </StackPanel>
         </StackPanel>
     </Border>

@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Input;
 using AmpzDesktopBooster.Apps;
 using AmpzDesktopBooster.Services;
+using AmpzDesktopBooster.Services.Localization;
 
 namespace AmpzDesktopBooster;
 
@@ -39,7 +40,7 @@ public partial class DockerWindow : Window
     {
         if (!DockerCli.IsAvailable)
         {
-            StatusText.Text = "⚠ Docker no está disponible (no se encontró en el PATH)";
+            StatusText.Text = $"⚠ {Loc.T("Docker.NotAvailable")}";
             _all = new();
             ApplyFilter();
             return;
@@ -48,8 +49,8 @@ public partial class DockerWindow : Window
         _all = DockerCli.List();
         int running = _all.Count(c => c.IsRunning);
         StatusText.Text = _all.Count == 0
-            ? "Sin contenedores"
-            : $"{_all.Count} contenedor(es) · {running} corriendo";
+            ? Loc.T("Docker.NoContainers")
+            : $"{_all.Count} {Loc.T("Docker.ContainersSuffix")} · {running} {Loc.T("Docker.RunningLabel")}";
         ApplyFilter();
     }
 
@@ -71,7 +72,7 @@ public partial class DockerWindow : Window
         var names = ContainersList.SelectedItems.Cast<DockerContainer>().Select(c => c.Name).ToList();
         if (names.Count == 0)
         {
-            StatusText.Text = "Seleccioná al menos un contenedor";
+            StatusText.Text = Loc.T("Docker.SelectAtLeastOne");
             return;
         }
         if (start) DockerCli.Start(names); else DockerCli.Stop(names);
@@ -83,9 +84,9 @@ public partial class DockerWindow : Window
         if (ContainersList.SelectedItem is not DockerContainer c) return;
         if (string.IsNullOrEmpty(c.ExposedPorts))
         {
-            StatusText.Text = $"'{c.Name}' no tiene puerto expuesto";
+            StatusText.Text = $"'{c.Name}' {Loc.T("Docker.NoExposedPort")}";
             return;
         }
-        try { Clipboard.SetText(c.ExposedPorts); StatusText.Text = $"Copiado: {c.ExposedPorts}"; } catch { }
+        try { Clipboard.SetText(c.ExposedPorts); StatusText.Text = $"{Loc.T("Docker.Copied")}: {c.ExposedPorts}"; } catch { }
     }
 }

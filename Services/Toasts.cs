@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Media;
+using AmpzDesktopBooster.Services.Localization;
 
 namespace AmpzDesktopBooster.Services;
 
@@ -24,37 +25,37 @@ public static class Toasts
     private static readonly List<ToastWindow> Live = new();
 
     public static void Pinned(string proc, string deskName) =>
-        Show(Kind.Pin, $"📌  Anclado a  {deskName}", proc);
+        Show(Kind.Pin, $"📌  {Loc.T("Toast.PinnedTo")}  {deskName}", proc);
 
     public static void Unpinned(string proc, string deskName) =>
-        Show(Kind.Info, $"📍  Desanclado de  {deskName}", proc);
+        Show(Kind.Info, $"📍  {Loc.T("Toast.UnpinnedFrom")}  {deskName}", proc);
 
     public static void MovedByPin(string what, string deskName) =>
-        Show(Kind.Move, $"Movida por anclaje  →  {deskName}", what);
+        Show(Kind.Move, $"{Loc.T("Toast.MovedByPin")}  →  {deskName}", what);
 
     public static void MovedByRestriction(string what, string fromDesk, string toDesk) =>
-        Show(Kind.Move, $"{fromDesk}  →  {toDesk}  (no permitida)", what);
+        Show(Kind.Move, $"{fromDesk}  →  {toDesk}  ({Loc.T("Toast.NotAllowed")})", what);
 
     public static void SendBlockedByRestriction(string proc, string deskName) =>
-        Show(Kind.Protect, $"🔒  {deskName} está protegido", $"{proc} no está permitida ahí");
+        Show(Kind.Protect, $"🔒  {deskName} {Loc.T("Toast.IsProtected")}", $"{proc} {Loc.T("Toast.NotAllowedThere")}");
 
     public static void ProtectionOn(string deskName) =>
-        Show(Kind.Protect, "🔒  Escritorio protegido", deskName);
+        Show(Kind.Protect, $"🔒  {Loc.T("Toast.DesktopProtected")}", deskName);
 
     public static void ProtectionOff(string deskName) =>
-        Show(Kind.Info, "🔓  Protección desactivada", deskName);
+        Show(Kind.Info, $"🔓  {Loc.T("Toast.ProtectionOff")}", deskName);
 
     public static void Whitelisted(string proc, string deskName) =>
-        Show(Kind.Protect, $"Permitida en  {deskName}", proc);
+        Show(Kind.Protect, $"{Loc.T("Toast.AllowedIn")}  {deskName}", proc);
 
     public static void TaskUnassigned(string task, string deskName) =>
-        Show(Kind.Info, $"🗒  Tarea quitada de  {deskName}", task);
+        Show(Kind.Info, $"🗒  {Loc.T("Toast.TaskRemovedFrom")}  {deskName}", task);
 
     public static void Info(string title, string detail = "", string extra = "") => Show(Kind.Info, title, detail, extra);
     public static void Error(string title, string detail = "") => Show(Kind.Error, title, detail);
 
     /// <summary>Confirmación de guardado en la ventana de Config. <paramref name="what"/> = qué se guardó.</summary>
-    public static void Saved(string what) => Show(Kind.Success, "✓  Configuración guardada", what);
+    public static void Saved(string what) => Show(Kind.Success, $"✓  {Loc.T("Toast.ConfigSaved")}", what);
 
     private static void Show(Kind kind, string title, string detail, string extra = "")
     {

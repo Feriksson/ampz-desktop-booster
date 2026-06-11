@@ -1,7 +1,8 @@
 <Window x:Class="AmpzDesktopBooster.WhitelistPickerWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Permitir app"
+        xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
+        Title="{loc:Translate Key=Whitelist.Title}"
         Width="500" SizeToContent="Height"
         WindowStyle="None" ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
@@ -13,7 +14,7 @@
         <StackPanel>
             <TextBlock x:Name="HeaderText" Foreground="#F2F2F2" FontSize="14" FontWeight="SemiBold" />
             <TextBlock Foreground="#9A9A9A" FontSize="11" Margin="0,2,0,10"
-                       Text="Elegí el escritorio protegido (Enter o doble clic): agrega la app a su whitelist y la mueve ahí." />
+                       Text="{loc:Translate Key=Whitelist.Subtitle}" />
 
             <ListBox x:Name="DeskList" Height="200" Background="#161616" Foreground="#E6E6EA"
                      BorderBrush="#333" FontSize="13"
@@ -21,13 +22,13 @@
 
             <TextBlock x:Name="EmptyHint" Foreground="#6E6E78" FontSize="11" Margin="0,6,0,0"
                        TextWrapping="Wrap"
-                       Text="No hay escritorios protegidos. Activá uno desde Configuración → Protecciones."
+                       Text="{loc:Translate Key=Whitelist.EmptyHint}"
                        Visibility="Collapsed" />
 
             <TextBlock Foreground="#6E6E78" FontSize="10" Margin="0,8,0,0"
-                       Text="Enter / doble clic: agregar y mover · Esc: cancelar" />
+                       Text="{loc:Translate Key=Whitelist.Hint}" />
 
-            <Button x:Name="CloseBtn" Content="Cancelar" Width="90" Height="26"
+            <Button x:Name="CloseBtn" Content="{loc:Translate Key=Whitelist.Cancel}" Width="90" Height="26"
                     HorizontalAlignment="Right" Margin="0,10,0,0" />
         </StackPanel>
     </Border>

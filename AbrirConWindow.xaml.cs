@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using AmpzDesktopBooster.Apps;
 using AmpzDesktopBooster.Services;
+using AmpzDesktopBooster.Services.Localization;
 
 namespace AmpzDesktopBooster;
 
@@ -42,8 +43,8 @@ public partial class AbrirConWindow : Window
                 catch (System.Exception ex)
                 {
                     MessageBox.Show(
-                        $"No se pudo abrir con {app.Name}.\n\n{ex.GetType().Name}: {ex.Message}",
-                        "Abrir con", MessageBoxButton.OK, MessageBoxImage.Error);
+                        $"{string.Format(Loc.T("OpenWith.LaunchError"), app.Name)}\n\n{ex.GetType().Name}: {ex.Message}",
+                        Loc.T("OpenWith.Title"), MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             };
             ButtonsPanel.Children.Add(btn);
@@ -68,7 +69,7 @@ public partial class AbrirConWindow : Window
     private static string DescribeTargets(IReadOnlyList<string> targets)
     {
         if (targets.Count == 1)
-            return $"Target:\n{targets[0]}\n\n¿Con qué app lo abro?";
-        return $"{targets.Count} carpetas seleccionadas.\n¿Con qué app las abro?";
+            return $"Target:\n{targets[0]}\n\n{Loc.T("OpenWith.PromptSingle")}";
+        return $"{string.Format(Loc.T("OpenWith.PromptMultiple"), targets.Count)}";
     }
 }

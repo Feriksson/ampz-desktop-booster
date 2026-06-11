@@ -1,7 +1,8 @@
 <Window x:Class="AmpzDesktopBooster.ShortcutsHelperWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Atajos"
+        xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
+        Title="{loc:Translate Helper.Title}"
         WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True"
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="False" Topmost="True"
@@ -55,7 +56,7 @@
 
             <!-- Header -->
             <Grid Grid.Row="0" Margin="0,0,0,10">
-                <TextBlock Text="⌨  Atajos · Ampz Desktop Booster"
+                <TextBlock Text="{loc:Translate Helper.Header}"
                            Foreground="#EDEDED" FontSize="17" FontWeight="Bold" />
                 <Button x:Name="CloseBtn" Content="✕" Width="30" Height="26"
                         HorizontalAlignment="Right" VerticalAlignment="Top" />
@@ -78,7 +79,7 @@
 
             <!-- Footer -->
             <TextBlock Grid.Row="2" Margin="0,14,0,0" HorizontalAlignment="Center"
-                       Foreground="#5A5A5A" FontSize="12" Text="Win+/ · Esc  para cerrar" />
+                       Foreground="#5A5A5A" FontSize="12" Text="{loc:Translate Helper.Footer}" />
         </Grid>
     </Border>
 </Window>

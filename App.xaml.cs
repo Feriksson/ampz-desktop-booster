@@ -50,6 +50,10 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // i18n: cargar el idioma persistido ANTES de montar cualquier ventana o mostrar mensajes.
+        // El modelo es por reinicio: con el idioma fijado acá, cada ventana se construye ya traducida.
+        Services.Localization.Loc.Init();
+
         // ¿Nos lanzaron con una URL? (Windows hace esto cuando somos el navegador elegido y clickeás
         // un link.) La detectamos ANTES del mutex: define cómo se comporta la segunda instancia.
         string? urlArg = TryGetUrlArg(e.Args);
@@ -70,7 +74,7 @@ public partial class App : Application
             {
                 // Arranque manual con la app ya corriendo → el aviso de siempre.
                 MessageBox.Show(
-                    "Ampz Desktop Booster ya está corriendo.",
+                    Services.Localization.Loc.T("App.AlreadyRunning"),
                     "Ampz Desktop Booster",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);

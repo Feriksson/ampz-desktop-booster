@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using AmpzDesktopBooster.Interop;
 using AmpzDesktopBooster.Services;
+using AmpzDesktopBooster.Services.Localization;
 
 namespace AmpzDesktopBooster;
 
@@ -35,7 +36,7 @@ public partial class HzWindow : Window
         Icon = AppIcon.TryLoadForWindow();
 
         _current = DisplaySettings.CurrentRate();
-        CurrentText.Text = $"Frecuencia actual: {_current} Hz";
+        CurrentText.Text = $"{Loc.T("Hz.Current")} {_current} Hz";
 
         var rates = DisplaySettings.AvailableRates();
         int currentIdx = 0;
@@ -80,7 +81,7 @@ public partial class HzWindow : Window
         // Si la seleccionada es la actual (p. ej. se cicló hasta volver a ella), no tocamos el modo:
         // evitamos el parpadeo de pantalla de un ChangeDisplaySettings inútil.
         if (hz != _current && !DisplaySettings.SetRate(hz))
-            MessageBox.Show($"No se pudo cambiar a {hz} Hz.", "Frecuencia",
+            MessageBox.Show(string.Format(Loc.T("Hz.ErrorMsg"), hz), Loc.T("Hz.ErrorTitle"),
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         Close();
     }

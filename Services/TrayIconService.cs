@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Windows.Forms;
+using AmpzDesktopBooster.Services.Localization;
 
 namespace AmpzDesktopBooster.Services;
 
@@ -15,13 +16,14 @@ public sealed class TrayIconService : IDisposable
 
     // Etiqueta legible por widget para el submenú. Orden = orden del menú.
     // "Fecha" no está: el día + fecha viajan SIEMPRE con la hora (no es un toggle aparte).
-    private static readonly (WidgetKind Kind, string Label)[] WidgetMenu =
+    // Las labels se resuelven en tiempo de construcción del menú (no es estático) para respetar el idioma activo.
+    private static (WidgetKind Kind, string LabelKey)[] WidgetMenuKeys =
     {
-        (WidgetKind.Clock,   "Hora y fecha"),
-        (WidgetKind.Cpu,     "CPU"),
-        (WidgetKind.Ram,     "RAM"),
-        (WidgetKind.Network, "Red"),
-        (WidgetKind.Battery, "Batería"),
+        (WidgetKind.Clock,   "Tray.WidgetClock"),
+        (WidgetKind.Cpu,     "Tray.WidgetCpu"),
+        (WidgetKind.Ram,     "Tray.WidgetRam"),
+        (WidgetKind.Network, "Tray.WidgetNetwork"),
+        (WidgetKind.Battery, "Tray.WidgetBattery"),
     };
 
     /// <param name="settings">Estado actual de los widgets (para marcar los checks).</param>
@@ -41,14 +43,14 @@ public sealed class TrayIconService : IDisposable
         menu.Items.Add(header);
         menu.Items.Add(new ToolStripSeparator());
 
-        menu.Items.Add("Configuración", null, (_, _) => onOpenConfig());
+        menu.Items.Add(Loc.T("Tray.Settings"), null, (_, _) => onOpenConfig());
         menu.Items.Add(new ToolStripSeparator());
 
         // ----- Submenú "Widgets" con un toggle por cada uno -----
-        var widgetsRoot = new ToolStripMenuItem("Widgets");
-        foreach (var (kind, label) in WidgetMenu)
+        var widgetsRoot = new ToolStripMenuItem(Loc.T("Tray.Widgets"));
+        foreach (var (kind, labelKey) in WidgetMenuKeys)
         {
-            var item = new ToolStripMenuItem(label)
+            var item = new ToolStripMenuItem(Loc.T(labelKey))
             {
                 CheckOnClick = true,           // el click alterna el check solo
                 Checked = settings.Get(kind),  // refleja el estado persistido
@@ -64,10 +66,10 @@ public sealed class TrayIconService : IDisposable
         menu.Items.Add(widgetsRoot);
 
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Reposicionar barra", null, (_, _) => onReposition());
+        menu.Items.Add(Loc.T("Tray.RepositionBar"), null, (_, _) => onReposition());
 
         // Toggle "iniciar con Windows": el check refleja la clave Run; el click la escribe/borra.
-        var autoStart = new ToolStripMenuItem("Iniciar con Windows")
+        var autoStart = new ToolStripMenuItem(Loc.T("Tray.StartWithWindows"))
         {
             CheckOnClick = true,
             Checked = autoStartEnabled,
@@ -76,7 +78,7 @@ public sealed class TrayIconService : IDisposable
         menu.Items.Add(autoStart);
 
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Salir", null, (_, _) => onExit());
+        menu.Items.Add(Loc.T("Tray.Quit"), null, (_, _) => onExit());
 
         // Ícono real de la app (embebido en el .exe). Si falla, caemos al dibujado a mano.
         _generatedIcon = AppIcon.TryLoadForTray() ?? CreateIcon();

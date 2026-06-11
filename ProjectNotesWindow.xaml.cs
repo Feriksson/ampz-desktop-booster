@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Input;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Services;
+using AmpzDesktopBooster.Services.Localization;
 
 namespace AmpzDesktopBooster;
 
@@ -42,7 +43,7 @@ public partial class ProjectNotesWindow : Window
 
         Icon = AppIcon.TryLoadForWindow();
         HeaderText.Text = store.ScopeLabel(deskName, deskIdx); // "<Proyecto>" o "Global"
-        SubHeaderText.Text = $"Notas del proyecto del desk · {deskName}";
+        SubHeaderText.Text = $"{Loc.T("Notes.ProjectScope")} · {deskName}";
 
         _initial = store.GetNotes(deskName, deskIdx);
         NotesBox.Text = _initial;
@@ -55,7 +56,7 @@ public partial class ProjectNotesWindow : Window
             // Header = nombre de la carpeta (lo que identifica la nota); subheader = path completo,
             // para que se vea de qué carpeta exacta son estas notas (la key es sólo el nombre).
             FolderHeaderText.Text = Path.GetFileName(_activeFolder.TrimEnd('\\', '/', ' '));
-            FolderSubHeaderText.Text = $"Notas de la carpeta · {_activeFolder}";
+            FolderSubHeaderText.Text = $"{Loc.T("Notes.FolderScope")} · {_activeFolder}";
             _folderInitial = store.GetFolderNotes(_activeFolder);
             FolderNotesBox.Text = _folderInitial;
         }

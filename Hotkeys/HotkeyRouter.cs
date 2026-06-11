@@ -4,6 +4,7 @@ using AmpzDesktopBooster.Apps;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Interop;
 using AmpzDesktopBooster.Services;
+using AmpzDesktopBooster.Services.Localization;
 using AmpzDesktopBooster.Services.Tasks;
 
 namespace AmpzDesktopBooster.Hotkeys;
@@ -118,7 +119,7 @@ public sealed class HotkeyRouter
 
         if (_pins.IsBlocked(proc))
         {
-            MessageBox.Show($"'{proc}' no puede anclarse.", "Anclar",
+            MessageBox.Show(string.Format(Loc.T("Router.CannotPin"), proc), Loc.T("Router.PinTitle"),
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -126,7 +127,7 @@ public sealed class HotkeyRouter
         if (_pins.TryGet(proc, out string pinnedTo))
         {
             // pinnedTo YA es el nombre del desk anclado (el store es por nombre).
-            if (MessageBox.Show($"'{proc}' está anclado a '{pinnedTo}'.\n¿Desanclar?", "Desanclar",
+            if (MessageBox.Show(string.Format(Loc.T("Router.UnpinConfirm"), proc, pinnedTo), Loc.T("Router.UnpinTitle"),
                     MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
             {
                 _pins.Unpin(proc);
@@ -137,7 +138,7 @@ public sealed class HotkeyRouter
         {
             // Anclamos por NOMBRE del desk actual, no por su índice (que cambia al reordenar).
             string deskName = _desktops.GetName(_desktops.Current);
-            if (MessageBox.Show($"¿Anclar '{proc}' a este escritorio?\n→ '{deskName}'", "Anclar",
+            if (MessageBox.Show(string.Format(Loc.T("Router.PinConfirm"), proc, deskName), Loc.T("Router.PinTitle"),
                     MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
             {
                 _pins.Pin(proc, deskName);
@@ -155,7 +156,7 @@ public sealed class HotkeyRouter
         string proc = WindowMethods.ProcessNameOf(hwnd);
         if (proc == "")
         {
-            MessageBox.Show("No se pudo identificar la app activa.", "Permitir app",
+            MessageBox.Show(Loc.T("Router.CannotIdentifyApp"), Loc.T("Router.AllowAppTitle"),
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -422,7 +423,7 @@ public sealed class HotkeyRouter
             {
                 _ = Application.Current.Dispatcher.BeginInvoke(() =>
                 {
-                    if (w.IsLoaded) w.SetError("Falló el fetch: " + ex.Message);
+                    if (w.IsLoaded) w.SetError(Loc.T("Router.FetchFailed") + ex.Message);
                 });
             }
         });
@@ -435,8 +436,8 @@ public sealed class HotkeyRouter
 
         if (results.Count == 0)
         {
-            w.SetEmpty("Sin cuentas activas",
-                "Agregá una cuenta de Vikunja, JIRA o Trello en Configuración → Tareas.");
+            w.SetEmpty(Loc.T("Router.NoActiveAccounts"),
+                Loc.T("Router.NoActiveAccountsHint"));
             return;
         }
 
@@ -451,13 +452,13 @@ public sealed class HotkeyRouter
         }
 
         if (failed.Count > 0)
-            Toasts.Error($"Algunas cuentas fallaron ({failed.Count})", string.Join("\n", failed));
+            Toasts.Error(string.Format(Loc.T("Router.SomeAccountsFailed"), failed.Count), string.Join("\n", failed));
 
         if (allItems.Count == 0)
         {
             w.SetEmpty(
-                failed.Count == 0 ? "Sin tareas abiertas" : "Ninguna cuenta trajo tareas",
-                failed.Count == 0 ? "No hay tareas para pickear ahora mismo." : "Revisá las cuentas que fallaron.");
+                failed.Count == 0 ? Loc.T("Router.NoOpenTasks") : Loc.T("Router.NoAccountBroughtTasks"),
+                failed.Count == 0 ? Loc.T("Router.NoTasksHint") : Loc.T("Router.CheckFailedAccounts"));
             return;
         }
 
