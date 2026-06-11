@@ -27,6 +27,20 @@ public static class ExplorerContext
         return new[] { current };
     }
 
+    /// <summary>
+    /// La carpeta abierta en el Explorer en foreground, o "" si el foreground NO es un Explorer
+    /// (o es una vista especial tipo "Este equipo"). A diferencia de <see cref="GetTargetPaths"/>,
+    /// acá NO caemos al Escritorio: para las notas de carpeta, "no hay carpeta" tiene que ser
+    /// distinguible (string vacío) para poder ocultar el panel.
+    /// </summary>
+    public static string GetActiveFolder()
+    {
+        var current = GetCurrentFolder();
+        if (string.IsNullOrEmpty(current) || current.Contains("::{")) // vista especial → no es una carpeta real
+            return "";
+        return current;
+    }
+
     private static dynamic? ForegroundExplorer()
     {
         try

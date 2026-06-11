@@ -12,22 +12,47 @@
     <Border BorderBrush="#33FFFFFF" BorderThickness="1" Padding="16">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
+                <!-- Panel SUPERIOR: notas del proyecto/global (lo de siempre). -->
+                <RowDefinition x:Name="ProjectRow" Height="*" />
+                <!-- Splitter para repartir el alto entre los dos paneles a gusto. -->
+                <RowDefinition x:Name="SplitterRow" Height="Auto" />
+                <!-- Panel INFERIOR: notas de la carpeta activa del Explorer (se colapsa si no hay). -->
+                <RowDefinition x:Name="FolderRow" Height="*" />
+                <!-- Footer con las hints de teclado. -->
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <TextBlock Grid.Row="0" x:Name="HeaderText" Foreground="#FFD700"
-                       FontSize="18" FontWeight="SemiBold" />
-            <TextBlock Grid.Row="1" x:Name="SubHeaderText" Foreground="#9A9A9A"
-                       FontSize="11" Margin="0,2,0,10" />
+            <!-- ── Notas del proyecto / global ─────────────────────────────────── -->
+            <DockPanel Grid.Row="0">
+                <TextBlock DockPanel.Dock="Top" x:Name="HeaderText" Foreground="#FFD700"
+                           FontSize="18" FontWeight="SemiBold" />
+                <TextBlock DockPanel.Dock="Top" x:Name="SubHeaderText" Foreground="#9A9A9A"
+                           FontSize="11" Margin="0,2,0,10" />
+                <TextBox x:Name="NotesBox"
+                         Background="#161616" Foreground="#E6E6EA" BorderBrush="#333"
+                         FontFamily="Consolas" FontSize="14" Padding="8"
+                         AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto" />
+            </DockPanel>
 
-            <TextBox Grid.Row="2" x:Name="NotesBox"
-                     Background="#161616" Foreground="#E6E6EA" BorderBrush="#333"
-                     FontFamily="Consolas" FontSize="14" Padding="8"
-                     AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
-                     VerticalScrollBarVisibility="Auto" />
+            <!-- ── Splitter horizontal entre los dos paneles ───────────────────── -->
+            <GridSplitter x:Name="PanelSplitter" Grid.Row="1" Height="7"
+                          HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                          Background="#2A2A2A" Margin="0,8" ResizeBehavior="PreviousAndNext"
+                          ResizeDirection="Rows" />
+
+            <!-- ── Notas de la carpeta activa (celeste = "carpeta") ────────────── -->
+            <DockPanel x:Name="FolderPanel" Grid.Row="2">
+                <TextBlock DockPanel.Dock="Top" x:Name="FolderHeaderText" Foreground="#5BC0EB"
+                           FontSize="18" FontWeight="SemiBold" />
+                <TextBlock DockPanel.Dock="Top" x:Name="FolderSubHeaderText" Foreground="#9A9A9A"
+                           FontSize="11" Margin="0,2,0,10" TextTrimming="CharacterEllipsis" />
+                <TextBox x:Name="FolderNotesBox"
+                         Background="#13181B" Foreground="#E6E6EA" BorderBrush="#2C3A40"
+                         FontFamily="Consolas" FontSize="14" Padding="8"
+                         AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto" />
+            </DockPanel>
 
             <TextBlock Grid.Row="3" Foreground="#6E6E78" FontSize="10" Margin="0,8,0,0"
                        Text="Ctrl+S: guardar · Esc: guardar y cerrar (auto-guarda si cambió)" />

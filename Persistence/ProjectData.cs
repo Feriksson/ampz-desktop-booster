@@ -21,6 +21,7 @@ public sealed class PathEntry
 ///   paths         — paths/URLs por proyecto
 ///   shared_notes  — pizarra GLOBAL (desks sin proyecto)
 ///   shared_paths  — pool de paths GLOBAL (desks sin proyecto)
+///   folder_notes  — pizarra ligada a una CARPETA del disco (independiente de desk/proyecto)
 ///
 /// OJO: este catálogo NO es lo mismo que "qué proyecto está en qué desk HOY" — eso es la sesión
 /// (efímera, en memoria, en <see cref="Desktops.ProjectStore"/>). Acá vive sólo el catálogo durable.
@@ -32,4 +33,9 @@ public sealed class ProjectData
     [JsonPropertyName("paths")]        public Dictionary<string, List<PathEntry>> Paths { get; set; } = new();
     [JsonPropertyName("shared_notes")] public string SharedNotes { get; set; } = "";
     [JsonPropertyName("shared_paths")] public List<PathEntry> SharedPaths { get; set; } = new();
+
+    // Notas ligadas a una carpeta del disco. La key es el NOMBRE de la carpeta (hoja) en minúsculas,
+    // NO el path completo: así mover/renombrar el path base (Desktop → D:\) no pierde las notas.
+    // Ver ProjectStore.FolderKey para el criterio y el porqué de la decisión.
+    [JsonPropertyName("folder_notes")] public Dictionary<string, string> FolderNotes { get; set; } = new();
 }

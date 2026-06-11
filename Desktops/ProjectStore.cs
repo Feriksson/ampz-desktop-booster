@@ -128,6 +128,47 @@ public sealed class ProjectStore
         Save();
     }
 
+    // ── Notas de CARPETA (ligadas al disco, no al desk/proyecto) ────────────────
+
+    /// <summary>
+    /// Key estable de una carpeta para sus notas: el NOMBRE de la carpeta hoja, en minúsculas.
+    /// Decisión de diseño (a propósito NO usamos el path completo): así mover o renombrar el path
+    /// base — pasar el repo de Desktop a D:\, por ejemplo — NO pierde las notas. El nombre de un
+    /// repo es único en la práctica, que es el caso de uso real ("le anoto detalles a un repo").
+    /// Contra: dos carpetas distintas con el MISMO nombre comparten notas — caso muy raro y, por eso,
+    /// la ventana muestra el path completo en el subtítulo para que la ambigüedad sea visible.
+    /// Si algún día molesta, migrar a path-exacto es cambiar SOLO esta función.
+    /// </summary>
+    public static string FolderKey(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return "";
+        var name = Path.GetFileName(path.TrimEnd('\\', '/', ' '));
+        return name.ToLowerInvariant();
+    }
+
+    /// <summary>Lee las notas de una carpeta (por su <see cref="FolderKey"/>), o "" si no tiene.</summary>
+    public string GetFolderNotes(string path)
+    {
+        var key = FolderKey(path);
+        if (key == "") return "";
+        return _data.FolderNotes.TryGetValue(key, out var n) ? n : "";
+    }
+
+    /// <summary>
+    /// Guarda las notas de una carpeta. Si el texto queda vacío, borra la entrada en vez de dejar
+    /// una key muerta — así el catálogo no se llena de carpetas que abriste de paso y no anotaste.
+    /// </summary>
+    public void SetFolderNotes(string path, string text)
+    {
+        var key = FolderKey(path);
+        if (key == "") return;
+        if (string.IsNullOrEmpty(text))
+            _data.FolderNotes.Remove(key);
+        else
+            _data.FolderNotes[key] = text;
+        Save();
+    }
+
     /// <summary>Etiqueta del scope para el header: el nombre del proyecto o "Global".</summary>
     public string ScopeLabel(string deskName, int deskIdx) =>
         UseProjectScope(deskName, deskIdx, out var project) ? project : "Global";

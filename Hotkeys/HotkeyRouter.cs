@@ -344,7 +344,12 @@ public sealed class HotkeyRouter
         int idx = _desktops.Current;
         string name = _desktops.GetName(idx);
 
-        _notesWindow = new ProjectNotesWindow(_projects, name, idx);
+        // Capturamos la carpeta del Explorer AHORA, antes de crear la ventana: en este punto el
+        // Explorer sigue en foreground (la ventana de notas todavía no robó el foco). Mismo timing
+        // que "Abrir con" (Win+F2). "" si no había un Explorer con carpeta → el panel se colapsa.
+        string folder = ExplorerContext.GetActiveFolder();
+
+        _notesWindow = new ProjectNotesWindow(_projects, name, idx, folder);
         _notesWindow.Closed += (_, _) => _notesWindow = null;
         _notesWindow.ShowFocused();
     }
