@@ -100,25 +100,50 @@ public partial class ProjectPathsWindow : Window
         string filter = FilterBox.Text.Trim();
         PathList.Items.Clear();
 
-        // 1) Las del proyecto (operables).
-        foreach (var r in PoolRows(_pool, RowScope.Project, filter))
-            PathList.Items.Add(r);
+        // 1) Las del proyecto (operables), agrupadas por tipo (carpetas / URLs).
+        AddGroupedByType(PoolRows(_pool, RowScope.Project, filter).ToList());
 
         // 2) En scope de proyecto anexamos las GLOBALES de solo-lectura bajo un separador, para no
         //    quedar ciegos a las compartidas. El separador entra SÓLO si hay alguna que matchee el
-        //    filtro (si no, no ensuciamos la lista con un rótulo de sección vacío).
+        //    filtro (si no, no ensuciamos la lista con un rótulo de sección vacío). También se agrupan
+        //    por tipo dentro de su sección.
         if (_globalPool is not null)
         {
             var globals = PoolRows(_globalPool, RowScope.Global, filter).ToList();
             if (globals.Count > 0)
             {
-                PathList.Items.Add(Separator());
-                foreach (var r in globals)
-                    PathList.Items.Add(r);
+                PathList.Items.Add(SeparatorRow("──  Globales (compartidas)  ──"));
+                AddGroupedByType(globals);
             }
         }
 
         SelectFirstSelectable();
+    }
+
+    /// <summary>
+    /// Agrega las filas de UN scope a la lista, partidas por TIPO: carpetas/paths primero, URLs
+    /// después (lo que más usa un dev arriba). El criterio de "qué es URL" es el MISMO que usa
+    /// <see cref="PathOpener.Open"/> (<see cref="UrlHelper.IsUrl"/>): así lo que se muestra agrupado
+    /// coincide exacto con cómo se abre — no hay una clasificación paralela que se pueda desincronizar.
+    /// El rótulo de tipo entra SÓLO si conviven ambos tipos: con uno solo no hay nada que separar y el
+    /// rótulo sería ruido. Dentro de cada grupo se respeta el orden original de la pool.
+    /// </summary>
+    private void AddGroupedByType(List<Row> rows)
+    {
+        var folders = rows.Where(r => !UrlHelper.IsUrl(r.Path)).ToList();
+        var urls    = rows.Where(r =>  UrlHelper.IsUrl(r.Path)).ToList();
+        bool label  = folders.Count > 0 && urls.Count > 0;
+
+        if (folders.Count > 0)
+        {
+            if (label) PathList.Items.Add(SeparatorRow("📁  Carpetas / Paths"));
+            foreach (var r in folders) PathList.Items.Add(r);
+        }
+        if (urls.Count > 0)
+        {
+            if (label) PathList.Items.Add(SeparatorRow("🌐  URLs"));
+            foreach (var r in urls) PathList.Items.Add(r);
+        }
     }
 
     /// <summary>Filas de una pool que matchean el filtro (busca SOLO en el título, como el legacy).</summary>
@@ -134,11 +159,11 @@ public partial class ProjectPathsWindow : Window
         }
     }
 
-    /// <summary>Fila-rótulo que separa la sección de globales. No es operable (ver estilo en el XAML).</summary>
-    private static Row Separator() => new()
+    /// <summary>Fila-rótulo (sección de globales o tipo). No es operable (ver estilo en el XAML).</summary>
+    private static Row SeparatorRow(string text) => new()
     {
         Scope = RowScope.Separator, PoolIndex = -1, IsDefault = false, Path = "",
-        Title = "──  Globales (compartidas)  ──",
+        Title = text,
     };
 
     /// <summary>Selecciona la primera fila operable (saltea el separador). Lista vacía → sin selección.</summary>
