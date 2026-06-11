@@ -40,6 +40,11 @@ public sealed class HotkeyRouter
     private ProjectPathsWindow? _pathsWindow;
     // Ventana de notas abierta (instancia única — re-press la trae al frente).
     private ProjectNotesWindow? _notesWindow;
+    // Picker de tareas abierto (instancia única — re-press DESASIGNA la tarea del desk y cierra).
+    // Guardamos también el desk con el que se abrió: el re-press desasigna ESE, no el current (por si
+    // navegaste de desk con el picker abierto — la tarea visible es la del desk donde lo abriste).
+    private TaskPickerWindow? _taskWindow;
+    private int _taskWindowDeskIdx;
     // Shortcuts Helper abierto (instancia única — re-press de Win+/ la cierra).
     private ShortcutsHelperWindow? _shortcutsWindow;
     // Picker de Hz abierto (Win+F12). Instancia única: re-press cicla; soltar Win aplica.
@@ -376,12 +381,32 @@ public sealed class HotkeyRouter
     /// </summary>
     private void ShowTaskPicker()
     {
+        // Re-press con el picker abierto → DESASIGNAR la tarea del desk donde se abrió y cerrar (toggle).
+        // Es el mismo "quitar" que ya hace el detalle de la tarea (onUnpin), pero al alcance del gesto.
+        // Sin tarea previa, RemoveDeskTask es no-op y sólo cerramos (no mostramos toast de gusto).
+        if (_taskWindow is not null)
+        {
+            int openIdx = _taskWindowDeskIdx;
+            var existing = _taskSession.GetDeskTask(openIdx);
+            if (existing is not null)
+            {
+                _taskSession.RemoveDeskTask(openIdx);
+                _refreshTaskWidget();
+                Toasts.TaskUnassigned(existing.Title, _desktops.GetName(openIdx));
+            }
+            _taskWindow.Close();
+            return;
+        }
+
         int idx = _desktops.Current;
+        _taskWindowDeskIdx = idx;
         var w = new TaskPickerWindow(_desktops.GetName(idx), picked =>
         {
             _taskSession.SetDeskTask(idx, picked);
             _refreshTaskWidget();
         });
+        _taskWindow = w;
+        w.Closed += (_, _) => _taskWindow = null;
         w.ShowFocused(); // YA aparece — con su loader
 
         // Fetch en background; cuando termina, marshaleamos al UI thread para popular.

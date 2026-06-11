@@ -47,6 +47,9 @@ public static class Toasts
     public static void Whitelisted(string proc, string deskName) =>
         Show(Kind.Protect, $"Permitida en  {deskName}", proc);
 
+    public static void TaskUnassigned(string task, string deskName) =>
+        Show(Kind.Info, $"🗒  Tarea quitada de  {deskName}", task);
+
     public static void Info(string title, string detail = "", string extra = "") => Show(Kind.Info, title, detail, extra);
     public static void Error(string title, string detail = "") => Show(Kind.Error, title, detail);
 
