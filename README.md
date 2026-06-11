@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🖥️ Ampz Desktop Booster
+<img src=".github/assets/main-logo.png" width="340" alt="Ampz Desktop Booster" />
+
+# Ampz Desktop Booster
 
 **A keyboard-first productivity cockpit built around your projects and tasks.**
 Your alternative to a wall of monitors — go *deep* on one screen instead of *wide* across glass (and save your neck).
@@ -11,6 +13,10 @@ Every virtual desktop becomes a **project** with its own **tasks**, *variables* 
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-0078D6?logo=windows11&logoColor=white)](#)
 [![Arch](https://img.shields.io/badge/arch-x64-lightgrey)](#)
 [![License](https://img.shields.io/badge/license-Proprietary-red)](LICENSE)
+
+<br />
+
+<img src=".github/assets/main-ui.png" width="80%" alt="Ampz Desktop Booster — configuration window with managed desktops" />
 
 </div>
 
@@ -32,9 +38,7 @@ So while Windows virtual desktops are powerful but *forgettable* — nameless, o
 - 🛡️ **Order** — a **window governor** keeps the right apps on the right desktops, so a project's space stays a project's space.
 - ⌨️ **Flow** — it's all driven from the **numpad**, for people who don't want to leave the keyboard mid-thought.
 
-It's the modern **WPF / .NET 10** rewrite of a battle-tested AutoHotkey v2 script. The behavior is the source of truth; the codebase is the polished, maintainable evolution of it.
-
-> 📸 *Screenshots coming soon — drop your captures in a `docs/` folder and link them here.*
+It's a **battle-tested workflow**, refined over years of daily use and rebuilt on modern **WPF / .NET 10**. The behavior is the source of truth; the codebase is the polished, maintainable evolution of it.
 
 ---
 
@@ -67,6 +71,80 @@ The consequence is blunt: **while the app runs, your numpad no longer types numb
 | 🔔 **Per-desktop attention** | External signals (via Named Pipe) raise a quiet, per-desktop alert with a widget dot, toast and sound. |
 | 🧰 **Developer quick-actions** | Open terminal here, "Open with", environment variables, a Docker panel, downloads, refresh-rate (Hz) switcher, and more. |
 | ⌨️ **100% keyboard** | NumLock is permanently suppressed; the numpad is decoded by scancode so it's rock-solid regardless of NumLock state. |
+
+---
+
+## 📸 A look inside
+
+The **bar** lives at the bottom of every desktop — system stats, the active task, and attention dots — in a real AppBar that other windows can't cover:
+
+<p align="center">
+  <img src=".github/assets/auxiliary-bar.png" width="92%" alt="The Ampz bar across the bottom of a desktop" />
+</p>
+
+### 📋 Projects & tasks — the core
+
+<table>
+<tr>
+<td width="50%" valign="top">
+  <img src=".github/assets/set-project.png" width="100%" alt="Set a project on a desktop" /><br />
+  <b>Bind a project to a desktop</b> — <code>Win+NumpadEnter</code>. The desktop now carries its own context.
+</td>
+<td width="50%" valign="top">
+  <img src=".github/assets/link-task-to-desktop.png" width="100%" alt="Link a live task to a desktop" /><br />
+  <b>Pin a live task</b> from Vikunja / JIRA / Trello — <code>Win+NumpadInsert</code>. Re-press to unassign.
+</td>
+</tr>
+</table>
+
+### 🔗 Context that follows the project
+
+<table>
+<tr>
+<td width="50%" valign="top">
+  <img src=".github/assets/variables-manager.png" width="100%" alt="Variables grouped by scope and type" /><br />
+  <b>Variables</b> (paths &amp; URLs), grouped by scope and type — <code>Win+Numpad✱</code>.
+</td>
+<td width="50%" valign="top">
+  <img src=".github/assets/notes-project-and-folder.png" width="100%" alt="Project notes and active-folder notes" /><br />
+  <b>Dual notes</b>: project notes + active-folder notes — <code>Win+Numpad/</code>.
+</td>
+</tr>
+</table>
+
+### ⌨️ Keyboard, made memorable
+
+<table>
+<tr>
+<td width="50%" valign="top">
+  <img src=".github/assets/shortcuts-cheatsheet.png" width="100%" alt="Built-in shortcuts cheatsheet" /><br />
+  <b>A built-in cheatsheet</b> — every shortcut, one keystroke away. No memorizing alone.
+</td>
+<td width="50%" valign="top">
+  <img src=".github/assets/add-custom-shortcut.png" width="100%" alt="Add your own custom shortcut" /><br />
+  <b>Add your own shortcuts</b> for the apps and paths you reach for most.
+</td>
+</tr>
+</table>
+
+### 🧰 Developer quick-actions
+
+<table>
+<tr>
+<td width="33%" valign="top">
+  <img src=".github/assets/open-with.png" width="100%" alt="Open with" /><br />
+  <b>Open with</b> — <code>Win+F2</code>.
+</td>
+<td width="33%" valign="top">
+  <img src=".github/assets/env-vars-search.png" width="100%" alt="Environment variables search" /><br />
+  <b>Env vars search</b> — <code>Win+F3</code>.
+</td>
+<td width="33%" valign="top">
+  <img src=".github/assets/docker-panel.png" width="100%" alt="Running Docker containers" /><br />
+  <b>Running containers</b> — <code>Win+F5</code>.
+</td>
+</tr>
+</table>
 
 ---
 
@@ -193,7 +271,6 @@ You may download and use this software for personal, non-commercial purposes. Yo
 
 ## 🙏 Acknowledgements
 
-- The original **AutoHotkey v2** script that defined the behavior this app faithfully modernizes.
 - **VirtualDesktopAccessor** — for exposing the virtual-desktop API Microsoft never documented.
 
 <div align="center">
