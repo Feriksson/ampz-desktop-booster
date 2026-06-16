@@ -43,6 +43,19 @@ public sealed class PathPool
         _save();
     }
 
+    /// <summary>
+    /// Borra varias entries por índice en una sola pasada (un solo <c>save</c>). Lo usa el "purgar
+    /// rotos" del Paths Manager: si borrásemos uno por uno con <see cref="Delete"/> reescribiríamos
+    /// el JSON N veces. Se remueve de mayor a menor para que los índices no se corran al quitar.
+    /// </summary>
+    public void DeleteMany(IEnumerable<int> indices)
+    {
+        foreach (var i in indices.Distinct().OrderByDescending(i => i))
+            if (i >= 0 && i < _entries.Count)
+                _entries.RemoveAt(i);
+        _save();
+    }
+
     public void UpdateTitle(int index, string title)
     {
         if (index < 0 || index >= _entries.Count) return;

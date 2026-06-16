@@ -58,6 +58,17 @@
                     </MultiDataTrigger.Conditions>
                     <Setter Property="Foreground" Value="#8A8A92" />
                 </MultiDataTrigger>
+                <!-- Roto: el path ya no existe en disco. Texto ROJO cuando NO está seleccionado (al
+                     seleccionarlo, IsSelected del template le da blanco = feedback normal). Va DESPUÉS
+                     del trigger de globales para que el rojo gane sobre el gris en una global rota:
+                     "roto" es la señal más importante. El ⚠ del prefijo lo agrega Row.Display. -->
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding IsBroken}" Value="True" />
+                        <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource Self}}" Value="False" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Foreground" Value="#E06C75" />
+                </MultiDataTrigger>
                 <!-- Separador: rótulo de sección, NO seleccionable ni navegable (IsEnabled=False
                      hace que el teclado lo saltee y el mouse no lo seleccione). -->
                 <DataTrigger Binding="{Binding IsSeparator}" Value="True">
@@ -157,6 +168,7 @@
                 <Button x:Name="EditBtn"       Content="{loc:Translate Paths.BtnRename}" MinWidth="100" Margin="0,0,6,0" Padding="10,4" />
                 <Button x:Name="DefaultBtn"    Content="{loc:Translate Paths.BtnDefault}" MinWidth="140" Margin="0,0,6,0" Padding="10,4" />
                 <Button x:Name="DeleteBtn"     Content="{loc:Translate Paths.BtnDelete}" MinWidth="80" Margin="0,0,6,0" Padding="10,4" />
+                <Button x:Name="PurgeBtn"      Content="{loc:Translate Paths.BtnPurge}" MinWidth="120" Margin="0,0,6,0" Padding="10,4" />
                 <!-- IsCancel=True: Esc dispara el Click de este botón sin importar qué control
                      tenga el foco. Sin esto, al tabular a un botón el foco se va del FilterBox/
                      PathList y los PreviewKeyDown de Esc no se ejecutan → Esc dejaba de cerrar. -->

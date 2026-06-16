@@ -39,6 +39,14 @@ public partial class ProjectPathsWindow : Window
         public required string Path { get; init; }
         public required bool IsDefault { get; init; }
 
+        /// <summary>
+        /// El path apunta a algo que ya NO existe en disco (carpeta/archivo borrado o movido). Solo
+        /// aplica a paths de filesystem — una URL nunca se considera "rota" acá (chequear existencia
+        /// de una URL exigiría un request HTTP por fila al listar, absurdo). Se usa para pintar la
+        /// fila en rojo con ⚠ y para que "purgar rotos" sepa qué borrar.
+        /// </summary>
+        public required bool IsBroken { get; init; }
+
         public bool IsProject   => Scope == RowScope.Project;
         public bool IsGlobal    => Scope == RowScope.Global;    // solo-lectura en la vista de proyecto
         public bool IsSeparator => Scope == RowScope.Separator; // rótulo de sección, no seleccionable
@@ -47,8 +55,28 @@ public partial class ProjectPathsWindow : Window
         /// Columna Título. El ⭐ del predeterminado se muestra SÓLO en las del proyecto: en esta
         /// vista el re-press del Win+* dispara el predeterminado DEL PROYECTO, así que marcar una
         /// global confundiría (su predeterminado sólo aplica cuando estás parado en un desk global).
+        /// El ⚠ de "roto" se antepone a todo: es la señal más importante de la fila.
         /// </summary>
-        public string Display => IsProject && IsDefault ? "⭐ " + Title : Title;
+        public string Display
+        {
+            get
+            {
+                string t = IsProject && IsDefault ? "⭐ " + Title : Title;
+                return IsBroken ? "⚠ " + t : t;
+            }
+        }
+    }
+
+    /// <summary>
+    /// true si <paramref name="path"/> es un path de filesystem que ya no existe (ni carpeta ni
+    /// archivo). Las URLs y los strings vacíos NO se consideran rotos. Mismo criterio de "qué es URL"
+    /// que <see cref="PathOpener.Open"/> para no clasificar distinto de cómo se abre.
+    /// </summary>
+    private static bool IsBrokenPath(string path)
+    {
+        path = path.Trim();
+        if (path == "" || UrlHelper.IsUrl(path)) return false;
+        return !System.IO.Directory.Exists(path) && !System.IO.File.Exists(path);
     }
 
     private readonly PathPool _pool;
@@ -80,6 +108,7 @@ public partial class ProjectPathsWindow : Window
         EditBtn.Click += (_, _) => RenameSelected();
         DefaultBtn.Click += (_, _) => ToggleDefaultSelected();
         DeleteBtn.Click += (_, _) => DeleteSelected();
+        PurgeBtn.Click += (_, _) => PurgeBroken();
         CloseBtn.Click += (_, _) => Close();
 
         Loaded += (_, _) => FilterBox.Focus();
@@ -156,14 +185,14 @@ public partial class ProjectPathsWindow : Window
             var e = entries[i];
             if (filter != "" && !e.Title.Contains(filter, StringComparison.OrdinalIgnoreCase))
                 continue;
-            yield return new Row { Scope = scope, PoolIndex = i, Title = e.Title, Path = e.Path, IsDefault = e.Default };
+            yield return new Row { Scope = scope, PoolIndex = i, Title = e.Title, Path = e.Path, IsDefault = e.Default, IsBroken = IsBrokenPath(e.Path) };
         }
     }
 
     /// <summary>Fila-rótulo (sección de globales o tipo). No es operable (ver estilo en el XAML).</summary>
     private static Row SeparatorRow(string text) => new()
     {
-        Scope = RowScope.Separator, PoolIndex = -1, IsDefault = false, Path = "",
+        Scope = RowScope.Separator, PoolIndex = -1, IsDefault = false, IsBroken = false, Path = "",
         Title = text,
     };
 
@@ -272,6 +301,36 @@ public partial class ProjectPathsWindow : Window
         string? title = PromptDialog.Show(this, Loc.T("Paths.DlgRenameTitle"), Loc.T("Paths.DlgRenameLabel"), row.Title);
         if (title is null) return;
         _pool.UpdateTitle(row.PoolIndex, title);
+        RefreshList();
+    }
+
+    /// <summary>
+    /// Borra de un saque todos los paths ROTOS del pool OPERABLE (<see cref="_pool"/>). Las globales
+    /// en la vista de proyecto son solo-lectura (igual que Delete/Rename) → no se purgan desde acá:
+    /// para limpiarlas hay que pararse en un desk global, donde el pool global ES el operable.
+    /// Pide confirmación con el conteo: borrar variables es destructivo y no hay undo.
+    /// </summary>
+    private void PurgeBroken()
+    {
+        var broken = new List<int>();
+        var entries = _pool.Entries;
+        for (int i = 0; i < entries.Count; i++)
+            if (IsBrokenPath(entries[i].Path))
+                broken.Add(i);
+
+        if (broken.Count == 0)
+        {
+            MessageBox.Show(Loc.T("Paths.PurgeNone"), Loc.T("Paths.WindowTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            string.Format(Loc.T("Paths.PurgeConfirm"), broken.Count), Loc.T("Paths.WindowTitle"),
+            MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.Yes) return;
+
+        _pool.DeleteMany(broken);
         RefreshList();
     }
 
