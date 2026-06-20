@@ -107,41 +107,6 @@ public sealed class DesktopService
         return true;
     }
 
-    /// <summary>
-    /// Cicla entre los desktops "DESK +N" con wrap-around. dir=+1 siguiente, -1 anterior.
-    /// NOTA: el legacy sólo cicla los DESK+ que tienen proyecto activo en la sesión; como el
-    /// sistema de proyectos todavía no está portado, acá ciclamos TODOS los DESK+. Se ajusta
-    /// cuando llegue esa fase. false si no hay ningún DESK+.
-    /// </summary>
-    public bool CyclePlus(int dir)
-    {
-        int count = Count, current = Current;
-
-        // Igual que el legacy: sólo los DESK+ que tienen proyecto activo en la sesión.
-        var deskPlus = new List<int>();
-        for (int i = 0; i < count; i++)
-            if (GetName(i).Contains("DESK +", StringComparison.OrdinalIgnoreCase) && GetProject(i) != "")
-                deskPlus.Add(i);
-
-        if (deskPlus.Count == 0) return false;
-
-        int curPos = deskPlus.IndexOf(current);
-        int nextPos;
-        if (curPos < 0)
-        {
-            // No estamos en un DESK+ — al primero o al último según dirección.
-            nextPos = dir > 0 ? 0 : deskPlus.Count - 1;
-        }
-        else
-        {
-            nextPos = curPos + dir;
-            if (nextPos < 0) nextPos = deskPlus.Count - 1;
-            else if (nextPos >= deskPlus.Count) nextPos = 0;
-        }
-
-        return GoTo(deskPlus[nextPos]);
-    }
-
     /// <summary>Proyecto activo del desktop (vía <see cref="ProjectLookup"/>), o "" si no hay.</summary>
     public string GetProject(int index) => ProjectLookup?.Invoke(index) ?? "";
 

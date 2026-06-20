@@ -95,7 +95,7 @@ que `WH_KEYBOARD_LL` y el `PostMessage` de la DLL necesitan.
 
 ### 1. Navegación por NOMBRE, no por índice
 Los desks se identifican por **fragmento de nombre** (case-insensitive), no por posición.
-`Win+Numpad7` va SIEMPRE a "MAIN" aunque lo muevas de lugar. Set gestionado por defecto:
+`Win+Numpad1` va SIEMPRE a "MAIN" aunque lo muevas de lugar. Set gestionado por defecto:
 `MAIN`, `MAILS`, `MISCS`, `DESK +1` … `DESK +6` (ver `DesktopConfig.DefaultManaged`).
 `DesktopService` es la capa alta sobre la DLL — **nadie más toca P/Invoke de desktops directo**.
 
@@ -157,15 +157,14 @@ del hook no se puede bloquear).
 
 | Atajo | Acción |
 |---|---|
-| `Win+Numpad 7/8/9` | Ir a MAIN / MAILS / MISCS |
-| `Win+Numpad 1..6` | Ir a DESK +1 … +6 |
-| `Win+Numpad + / −` | Ciclar entre los DESK+ **que tienen proyecto activo** (wrap-around) |
+| `Win+Numpad 1/2/3` | Ir a MAIN / MAILS / MISCS (fila inferior, la más cómoda) |
+| `Win+Numpad 4..9` | Ir a DESK +1 … +6 |
 | `Win+Shift+`(navegación) | Enviar la ventana activa a ese desk **y seguirla** |
 | `Win+NumpadEnter` | Setear el proyecto del desk actual (solo en `DESK +N`) |
 | `NumpadClear` (Numpad5, **sin Win**) | Abrir el **DeskPicker** (saltar a un proyecto de la sesión) |
 | `Win+Numpad *` | **Variables** del proyecto/global (Paths Manager); re-press dispara el predeterminado |
 | `Win+Numpad /` | **Notas** del proyecto/global |
-| `Win+Numpad .` (Del) | **Send-window picker** (mandar la ventana activa a un desk elegido) |
+| `Win+Numpad −` (Sub) | **Send-window picker** (mandar la ventana activa a un desk elegido) |
 | `Win+F2` | "Abrir con" (sobre el path activo del Explorer) |
 | `Win+F3` | Variables de entorno |
 | `Win+F5` | Panel Docker |

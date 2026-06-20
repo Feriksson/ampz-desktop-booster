@@ -14,14 +14,14 @@ namespace AmpzDesktopBooster.Hotkeys;
 /// (Numpad físico con NumLock OFF), proyectos por desk, y el DeskPicker.
 ///
 /// Mapeo (igual que el legacy ampzWinTunner.ahk líneas 1289-1314, 3760, 3905-3906):
-///   Win+Numpad 7/8/9 → MAIN / MAILS / MISCS
-///   Win+Numpad 1..6  → DESK +1..+6
-///   Win+Numpad +/−   → ciclar entre DESK+ (con proyecto)
+///   Win+Numpad 1/2/3 → MAIN / MAILS / MISCS  (fila inferior, la más cómoda)
+///   Win+Numpad 4..9  → DESK +1..+6
 ///   Win+Shift+(nav)  → mandar ventana activa ahí + seguir
 ///   Win+NumpadEnter  → setear proyecto del desk actual (sólo DESK+)
 ///   NumpadClear solo → DeskPicker (saltar a un proyecto de la sesión)
 ///   Win+NumpadMult   → Variables del proyecto/global (Paths Manager) — re-press dispara el predeterminado
-///   Win+NumpadDiv/Del → Notes / Send-picker (todavía no portados)
+///   Win+NumpadDiv    → Notes
+///   Win+NumpadSub    → Send-window picker (mandar la ventana activa a un desk elegido)
 ///
 /// Corre headless: el feedback visual lo dispara el DesktopChangeListener, no este router.
 /// </summary>
@@ -240,12 +240,10 @@ public sealed class HotkeyRouter
         // ── Win + … ──
         switch (e.Key)
         {
-            case NumpadKey.Add:      _desktops.CyclePlus(1);  return;
-            case NumpadKey.Subtract: _desktops.CyclePlus(-1); return;
+            case NumpadKey.Subtract: ShowSendWindowPicker();  return; // Win+NumpadSub (antes Win+NumpadDel)
             case NumpadKey.Enter:    ShowProjectSetter();     return;
             case NumpadKey.Multiply: ShowProjectPaths();      return;
             case NumpadKey.Divide:   ShowProjectNotes();      return;
-            case NumpadKey.Decimal:  ShowSendWindowPicker();  return; // Win+NumpadDel
             case NumpadKey.D0:       ShowTaskPicker();        return; // Win+NumpadInsert (scancode 0x52)
         }
 
@@ -501,17 +499,26 @@ public sealed class HotkeyRouter
     }
 
     /// <summary>Tecla física del numpad → fragmento de nombre del desktop destino.</summary>
+    /// <remarks>
+    /// Layout reorganizado (pedido del usuario): MAIN/MAILS/MISCS bajan a la fila INFERIOR (1-2-3),
+    /// la más cómoda al alcance del pulgar; los DESK+ suben ocupando las filas media y superior.
+    ///   Fila inferior  1 2 3 → MAIN  / MAILS  / MISCS
+    ///   Fila media     4 5 6 → DESK+1 / DESK+2 / DESK+3
+    ///   Fila superior  7 8 9 → DESK+4 / DESK+5 / DESK+6
+    /// OJO: D5 (Numpad5/Clear) acá es Win+5 → DESK +2. El Numpad5 PELADO (sin Win) sigue abriendo el
+    /// DeskPicker — no colisionan: lo distingue WinDown en Route().
+    /// </remarks>
     private static string? TargetFor(NumpadKey key) => key switch
     {
-        NumpadKey.D7 => "MAIN",     // Numpad7 / Home
-        NumpadKey.D8 => "MAILS",    // Numpad8 / Up
-        NumpadKey.D9 => "MISCS",    // Numpad9 / PgUp
-        NumpadKey.D1 => "DESK +1",  // Numpad1 / End
-        NumpadKey.D2 => "DESK +2",  // Numpad2 / Down
-        NumpadKey.D3 => "DESK +3",  // Numpad3 / PgDn
-        NumpadKey.D4 => "DESK +4",  // Numpad4 / Left
-        NumpadKey.D5 => "DESK +5",  // Numpad5 / Clear
-        NumpadKey.D6 => "DESK +6",  // Numpad6 / Right
+        NumpadKey.D1 => "MAIN",     // Numpad1 / End
+        NumpadKey.D2 => "MAILS",    // Numpad2 / Down
+        NumpadKey.D3 => "MISCS",    // Numpad3 / PgDn
+        NumpadKey.D4 => "DESK +1",  // Numpad4 / Left
+        NumpadKey.D5 => "DESK +2",  // Numpad5 / Clear
+        NumpadKey.D6 => "DESK +3",  // Numpad6 / Right
+        NumpadKey.D7 => "DESK +4",  // Numpad7 / Home
+        NumpadKey.D8 => "DESK +5",  // Numpad8 / Up
+        NumpadKey.D9 => "DESK +6",  // Numpad9 / PgUp
         _ => null,
     };
 }
