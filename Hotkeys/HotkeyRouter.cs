@@ -38,7 +38,12 @@ public sealed class HotkeyRouter
     private readonly Action _refreshTaskWidget;
 
     // Ventana de variables actualmente abierta (para el "re-press dispara el predeterminado").
+    // Guardamos también el desk con el que se abrió: el re-press solo dispara el predeterminado si
+    // seguís en ESE desk. Si navegaste de desk con Variables abierta, el contexto (pool de proyecto
+    // o global) cambió → cerramos la vieja y abrimos la del desk actual, en vez de disparar el path
+    // del desk viejo. Mismo criterio desk-aware que _taskWindow/_taskWindowDeskIdx (ver abajo).
     private ProjectPathsWindow? _pathsWindow;
+    private int _pathsWindowDeskIdx;
     // Ventana de notas abierta (instancia única — re-press la trae al frente).
     private ProjectNotesWindow? _notesWindow;
     // Picker de tareas abierto (instancia única — re-press DESASIGNA la tarea del desk y cierra).
@@ -318,20 +323,28 @@ public sealed class HotkeyRouter
 
     private void ShowProjectPaths()
     {
+        int idx = _desktops.Current;
+
         // Re-press con la ventana abierta → dispara el predeterminado (no abre otra). Como el legacy.
-        if (_pathsWindow is not null)
+        // PERO solo si seguís en el desk donde se abrió: el predeterminado pertenece al CONTEXTO de
+        // ese desk (pool de proyecto vs global). Si cambiaste de desk con Variables abierta, disparar
+        // el path del desk viejo es justo el bug (FireDefault del contexto equivocado) → en ese caso
+        // cerramos la vieja y reabrimos para el desk actual más abajo.
+        if (_pathsWindow is not null && _pathsWindowDeskIdx == idx)
         {
             _pathsWindow.FireDefault();
             return;
         }
+        // Quedó abierta en OTRO desk → descartarla (Close dispara el handler que limpia _pathsWindow).
+        _pathsWindow?.Close();
 
-        int idx = _desktops.Current;
         string name = _desktops.GetName(idx);
         // dual-scope: pool primaria (proyecto o global) + la global de SOLO-LECTURA para anexar
         // cuando estamos en scope de proyecto (globalPool == null en scope global → no se anexa nada).
         var pool = _projects.ResolvePoolWithGlobal(name, idx, out var globalPool);
 
         _pathsWindow = new ProjectPathsWindow(pool, name, globalPool: globalPool);
+        _pathsWindowDeskIdx = idx; // recordamos el desk: el re-press solo cuenta si seguís acá
         _pathsWindow.Closed += (_, _) => _pathsWindow = null;
         _pathsWindow.ShowFocused();
     }
