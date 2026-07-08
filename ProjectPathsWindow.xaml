@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
         Title="{loc:Translate Paths.WindowTitle}"
-        Width="980" Height="700"
+        Width="1080" Height="860"
         WindowStyle="None" ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="False" Topmost="True"
@@ -48,12 +48,13 @@
                 </Setter.Value>
             </Setter>
             <Style.Triggers>
-                <!-- Globales: texto ATENUADO cuando NO están seleccionadas (al seleccionarlas, el
-                     trigger IsSelected del template les da blanco = feedback normal de selección).
-                     Style.Triggers gana sobre Template.Triggers, por eso gateamos en IsSelected=False. -->
+                <!-- Solo-lectura (globales u otros proyectos): texto ATENUADO cuando NO están
+                     seleccionadas (al seleccionarlas, el trigger IsSelected del template les da blanco
+                     = feedback normal de selección). Style.Triggers gana sobre Template.Triggers, por
+                     eso gateamos en IsSelected=False. -->
                 <MultiDataTrigger>
                     <MultiDataTrigger.Conditions>
-                        <Condition Binding="{Binding IsGlobal}" Value="True" />
+                        <Condition Binding="{Binding IsReadOnlyRef}" Value="True" />
                         <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource Self}}" Value="False" />
                     </MultiDataTrigger.Conditions>
                     <Setter Property="Foreground" Value="#8A8A92" />
@@ -169,6 +170,7 @@
                 <Button x:Name="DefaultBtn"    Content="{loc:Translate Paths.BtnDefault}" MinWidth="140" Margin="0,0,6,0" Padding="10,4" />
                 <Button x:Name="DeleteBtn"     Content="{loc:Translate Paths.BtnDelete}" MinWidth="80" Margin="0,0,6,0" Padding="10,4" />
                 <Button x:Name="PurgeBtn"      Content="{loc:Translate Paths.BtnPurge}" MinWidth="120" Margin="0,0,6,0" Padding="10,4" />
+                <Button x:Name="AllProjectsBtn" Content="{loc:Translate Paths.BtnAllProjectsOff}" MinWidth="160" Margin="0,0,6,0" Padding="10,4" />
                 <!-- IsCancel=True: Esc dispara el Click de este botón sin importar qué control
                      tenga el foco. Sin esto, al tabular a un botón el foco se va del FilterBox/
                      PathList y los PreviewKeyDown de Esc no se ejecutan → Esc dejaba de cerrar. -->

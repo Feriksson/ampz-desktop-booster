@@ -28,7 +28,12 @@ namespace AmpzDesktopBooster;
 public partial class ProjectPathsWindow : Window
 {
     /// <summary>De qué pool viene la fila — define si es operable o sólo referencia, y cómo se pinta.</summary>
-    private enum RowScope { Project, Global, Separator }
+    /// <remarks>
+    /// Project = operable (mutás). Global y Other = SOLO-LECTURA (abrís/copiás, no mutás): Global es la
+    /// pool compartida anexada en scope de proyecto; Other es OTRO proyecto traído por el toggle "ver
+    /// todos los proyectos". Separator = rótulo de sección, no seleccionable.
+    /// </remarks>
+    private enum RowScope { Project, Global, Other, Separator }
 
     /// <summary>Fila visible. Indexa a la entry real de SU pool por <see cref="PoolIndex"/>.</summary>
     private sealed class Row
@@ -48,23 +53,40 @@ public partial class ProjectPathsWindow : Window
         public required bool IsBroken { get; init; }
 
         public bool IsProject   => Scope == RowScope.Project;
-        public bool IsGlobal    => Scope == RowScope.Global;    // solo-lectura en la vista de proyecto
         public bool IsSeparator => Scope == RowScope.Separator; // rótulo de sección, no seleccionable
+
+        /// <summary>Fila de SOLO-LECTURA (global u otro proyecto): se atenúa y no se puede mutar.</summary>
+        public bool IsReadOnlyRef => Scope == RowScope.Global || Scope == RowScope.Other;
 
         /// <summary>
         /// Columna Título. El ⭐ del predeterminado se muestra SÓLO en las del proyecto: en esta
         /// vista el re-press del Win+* dispara el predeterminado DEL PROYECTO, así que marcar una
         /// global confundiría (su predeterminado sólo aplica cuando estás parado en un desk global).
+        /// Va al FINAL del nombre (pedido del usuario): así los títulos quedan alineados a la
+        /// izquierda y la marca no desplaza el texto de la fila predeterminada respecto de las demás.
         /// El ⚠ de "roto" se antepone a todo: es la señal más importante de la fila.
         /// </summary>
         public string Display
         {
             get
             {
-                string t = IsProject && IsDefault ? "⭐ " + Title : Title;
+                string t = IsProject && IsDefault ? Title + " ⭐" : Title;
                 return IsBroken ? "⚠ " + t : t;
             }
         }
+    }
+
+    /// <summary>
+    /// Normaliza un título a "sentence case": primera letra en MAYÚSCULA, el resto en minúscula
+    /// (pedido del usuario para que las variables se vean SIEMPRE parejas sin importar cómo se
+    /// tipearon). Es SÓLO de presentación — el título real de la pool no se toca, así la regla de
+    /// normalización es reversible y nunca perdemos el dato original que escribió el usuario.
+    /// </summary>
+    private static string NormalizeTitle(string title)
+    {
+        title = title.Trim();
+        if (title.Length == 0) return title;
+        return char.ToUpper(title[0]) + title[1..].ToLower();
     }
 
     /// <summary>
@@ -81,21 +103,31 @@ public partial class ProjectPathsWindow : Window
 
     private readonly PathPool _pool;
     private readonly PathPool? _globalPool; // no-null en scope de proyecto: se anexa de solo-lectura
+    private readonly IReadOnlyList<PathPool> _otherProjectPools; // los demás proyectos (toggle F4), read-only
     private readonly string _deskName;
     private readonly string _explorerSeed;
 
-    public ProjectPathsWindow(PathPool pool, string deskName, string explorerSeed = "", PathPool? globalPool = null)
+    /// <summary>Toggle "ver todos los proyectos". OFF por default: arrancás en TU contexto y te abrís al resto a pedido.</summary>
+    private bool _showAllProjects;
+
+    public ProjectPathsWindow(PathPool pool, string deskName, string explorerSeed = "",
+                              PathPool? globalPool = null, IReadOnlyList<PathPool>? otherProjectPools = null)
     {
         InitializeComponent();
 
         _pool = pool;
         _globalPool = globalPool;
+        _otherProjectPools = otherProjectPools ?? System.Array.Empty<PathPool>();
         _deskName = deskName;
         _explorerSeed = explorerSeed;
 
         Icon = AppIcon.TryLoadForWindow();
         HeaderText.Text = $"{pool.Label} — {Loc.T("Paths.HeaderSuffix")}";
         SubHeaderText.Text = deskName;
+
+        // Sin otros proyectos en el catálogo no hay nada que togglear → ocultamos el botón.
+        AllProjectsBtn.Visibility = _otherProjectPools.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateAllProjectsBtn();
 
         RefreshList();
 
@@ -109,10 +141,23 @@ public partial class ProjectPathsWindow : Window
         DefaultBtn.Click += (_, _) => ToggleDefaultSelected();
         DeleteBtn.Click += (_, _) => DeleteSelected();
         PurgeBtn.Click += (_, _) => PurgeBroken();
+        AllProjectsBtn.Click += (_, _) => ToggleAllProjects();
         CloseBtn.Click += (_, _) => Close();
 
         Loaded += (_, _) => FilterBox.Focus();
     }
+
+    /// <summary>Alterna la vista "todos los proyectos" y repinta. Lo dispara el botón y F4.</summary>
+    private void ToggleAllProjects()
+    {
+        if (_otherProjectPools.Count == 0) return; // nada que mostrar
+        _showAllProjects = !_showAllProjects;
+        UpdateAllProjectsBtn();
+        RefreshList();
+    }
+
+    private void UpdateAllProjectsBtn() =>
+        AllProjectsBtn.Content = Loc.T(_showAllProjects ? "Paths.BtnAllProjectsOn" : "Paths.BtnAllProjectsOff");
 
     /// <summary>Dispara el predeterminado del pool (lo llama el router al re-presionar Win+*).</summary>
     public bool FireDefault()
@@ -147,6 +192,21 @@ public partial class ProjectPathsWindow : Window
             }
         }
 
+        // 3) Toggle "todos los proyectos": cada OTRO proyecto bajo su propio separador (su nombre),
+        //    de SOLO-LECTURA. El separador entra sólo si ese proyecto tiene alguna fila que matchee
+        //    el filtro — así, filtrando, sólo ves los proyectos que realmente tienen algo. Esto es lo
+        //    que te deja "encontrar una variable de cualquier proyecto" tipeando un fragmento.
+        if (_showAllProjects)
+        {
+            foreach (var other in _otherProjectPools)
+            {
+                var rows = PoolRows(other, RowScope.Other, filter).ToList();
+                if (rows.Count == 0) continue;
+                PathList.Items.Add(SeparatorRow(other.Label));
+                AddGroupedByType(rows);
+            }
+        }
+
         SelectFirstSelectable();
     }
 
@@ -156,12 +216,14 @@ public partial class ProjectPathsWindow : Window
     /// <see cref="PathOpener.Open"/> (<see cref="UrlHelper.IsUrl"/>): así lo que se muestra agrupado
     /// coincide exacto con cómo se abre — no hay una clasificación paralela que se pueda desincronizar.
     /// El rótulo de tipo entra SÓLO si conviven ambos tipos: con uno solo no hay nada que separar y el
-    /// rótulo sería ruido. Dentro de cada grupo se respeta el orden original de la pool.
+    /// rótulo sería ruido. Dentro de cada grupo las filas van ORDENADAS ALFABÉTICAMENTE por título
+    /// (pedido del usuario) — se ordena por el título YA normalizado (<see cref="Row.Title"/>), así el
+    /// orden que ves coincide con el texto que ves; ordenar por el crudo se vería "desordenado".
     /// </summary>
     private void AddGroupedByType(List<Row> rows)
     {
-        var folders = rows.Where(r => !UrlHelper.IsUrl(r.Path)).ToList();
-        var urls    = rows.Where(r =>  UrlHelper.IsUrl(r.Path)).ToList();
+        var folders = rows.Where(r => !UrlHelper.IsUrl(r.Path)).OrderBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase).ToList();
+        var urls    = rows.Where(r =>  UrlHelper.IsUrl(r.Path)).OrderBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase).ToList();
         bool label  = folders.Count > 0 && urls.Count > 0;
 
         if (folders.Count > 0)
@@ -185,7 +247,7 @@ public partial class ProjectPathsWindow : Window
             var e = entries[i];
             if (filter != "" && !e.Title.Contains(filter, StringComparison.OrdinalIgnoreCase))
                 continue;
-            yield return new Row { Scope = scope, PoolIndex = i, Title = e.Title, Path = e.Path, IsDefault = e.Default, IsBroken = IsBrokenPath(e.Path) };
+            yield return new Row { Scope = scope, PoolIndex = i, Title = NormalizeTitle(e.Title), Path = e.Path, IsDefault = e.Default, IsBroken = IsBrokenPath(e.Path) };
         }
     }
 
@@ -226,8 +288,9 @@ public partial class ProjectPathsWindow : Window
 
     private void OnFilterKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter)        { OpenSelected(claude: Shift); e.Handled = true; }
-        else if (e.Key == Key.Escape)  { Close(); e.Handled = true; }
+        if (e.Key == Key.Enter)            { OpenSelected(claude: Shift); e.Handled = true; }
+        else if (e.Key == Key.Escape)      { Close(); e.Handled = true; }
+        else if (e.Key == Key.P && Ctrl)   { ToggleAllProjects(); e.Handled = true; }
         else if (e.Key == Key.Down && PathList.Items.Count > 0)
         {
             PathList.SelectedIndex = 0;
@@ -245,6 +308,7 @@ public partial class ProjectPathsWindow : Window
             case Key.Delete: DeleteSelected();            e.Handled = true; break;
             case Key.F2:     RenameSelected();            e.Handled = true; break;
             case Key.F3:     ToggleDefaultSelected();     e.Handled = true; break;
+            case Key.P when Ctrl: ToggleAllProjects();    e.Handled = true; break;
             case Key.C when Ctrl: CopySelected();         e.Handled = true; break;
         }
     }

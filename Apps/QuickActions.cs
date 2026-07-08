@@ -50,13 +50,15 @@ public static class QuickActions
         return isDownloads && VirtualDesktopAccessor.GetWindowDesktopNumber(hwnd) == desktop;
     }
 
-    /// <summary>Win+`: abre el shell preferido (pwsh → powershell) parado en cada carpeta target.</summary>
+    /// <summary>
+    /// Win+`: abre el shell preferido (pwsh → powershell) parado en la RUTA ACTUAL del Explorer.
+    /// A propósito ignora las carpetas seleccionadas (usa <see cref="ExplorerContext.GetCurrentTargetPath"/>,
+    /// no <c>GetTargetPaths</c>): con varias carpetas marcadas abría una terminal por cada una, que
+    /// es justo lo que no se quiere. Una selección múltiple solo tiene sentido en "Abrir con" (Win+F2).
+    /// </summary>
     public static void OpenTerminalInExplorerPath()
     {
-        foreach (var path in ExplorerContext.GetTargetPaths())
-        {
-            try { Shell.OpenInDir(path); }
-            catch { }
-        }
+        try { Shell.OpenInDir(ExplorerContext.GetCurrentTargetPath()); }
+        catch { }
     }
 }

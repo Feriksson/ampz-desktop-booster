@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Windows;
 using AmpzDesktopBooster.Apps;
 using AmpzDesktopBooster.Desktops;
@@ -198,7 +199,9 @@ public sealed class HotkeyRouter
 
     private void ShowAbrirCon()
     {
-        var targets = ExplorerContext.GetTargetPaths();
+        // Igual que Win+`: ignora las carpetas seleccionadas y trabaja sobre la RUTA ACTUAL del
+        // Explorer (una sola). Antes usaba GetTargetPaths (una entrada por carpeta marcada).
+        var targets = new[] { ExplorerContext.GetCurrentTargetPath() };
         var w = new AbrirConWindow(targets, _apps);
         w.ShowFocused();
     }
@@ -343,7 +346,14 @@ public sealed class HotkeyRouter
         // cuando estamos en scope de proyecto (globalPool == null en scope global → no se anexa nada).
         var pool = _projects.ResolvePoolWithGlobal(name, idx, out var globalPool);
 
-        _pathsWindow = new ProjectPathsWindow(pool, name, globalPool: globalPool);
+        // Toggle "todos los proyectos" (F4 / botón): todas las pools de proyecto MENOS la primaria
+        // actual (ya se ve arriba) — la global tampoco, que se anexa por su cuenta. Read-only en la
+        // ventana. En scope global pool.Label == "Global" (no es key de proyecto) → se ven todos.
+        var others = _projects.GetAllProjectPools()
+            .Where(p => !string.Equals(p.Label, pool.Label, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        _pathsWindow = new ProjectPathsWindow(pool, name, globalPool: globalPool, otherProjectPools: others);
         _pathsWindowDeskIdx = idx; // recordamos el desk: el re-press solo cuenta si seguís acá
         _pathsWindow.Closed += (_, _) => _pathsWindow = null;
         _pathsWindow.ShowFocused();

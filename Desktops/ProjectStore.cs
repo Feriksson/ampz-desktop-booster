@@ -80,6 +80,20 @@ public sealed class ProjectStore
     public PathPool GetSharedPool() => new(_data.SharedPaths, Save, "Global");
 
     /// <summary>
+    /// TODAS las pools de proyecto del catálogo (una por key de <c>_data.Paths</c>), para el toggle
+    /// "ver todos los proyectos" del Paths Manager. NO incluye la global (esa se anexa por su lado) ni
+    /// excluye el proyecto actual — eso queda a cargo del caller, que es quien conoce el contexto del
+    /// desk. El Label de cada pool es el nombre del proyecto (sirve de rótulo de sección en la vista).
+    /// </summary>
+    public IReadOnlyList<PathPool> GetAllProjectPools()
+    {
+        var list = new List<PathPool>();
+        foreach (var kv in _data.Paths)
+            list.Add(new PathPool(kv.Value, Save, kv.Key));
+        return list;
+    }
+
+    /// <summary>
     /// Resuelve QUÉ pool corresponde según el desk actual (la regla dual-scope del legacy):
     /// DESK +N con proyecto activo → pool del proyecto; cualquier otro caso → pool global.
     /// </summary>
