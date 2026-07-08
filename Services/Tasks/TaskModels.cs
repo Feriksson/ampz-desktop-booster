@@ -26,7 +26,8 @@ public sealed record TaskItem(
     string AccountId = "",
     string AccountName = "",
     string? Stage = null,
-    string? Description = null);
+    string? Description = null,
+    bool IsCustom = false); // true = tarea PERSONAL local (CustomTaskStore), no vino de ningún gestor
 
 /// <summary>
 /// Resultado de pedirle las tareas a un provider. Mismo contrato que UsageSnapshot: NUNCA se tira,

@@ -64,9 +64,16 @@
             <TextBlock x:Name="SubHeaderText" Foreground="#9A9A9A" FontFamily="Segoe UI" FontSize="11"
                        Margin="0,0,0,10" />
 
-            <TextBox x:Name="FilterBox" FontFamily="Segoe UI" FontSize="13"
-                     Background="#2A2A2A" Foreground="#F2F2F2" BorderBrush="#444"
-                     Padding="6,4" Margin="0,0,0,8" />
+            <!-- El searchbox es DOBLE: filtra el listado y, con Ctrl+Enter, crea una tarea personal
+                 con el texto tipeado. El watermark (FilterPlaceholder) lo anuncia y se colapsa al tipear. -->
+            <Grid Margin="0,0,0,8">
+                <TextBox x:Name="FilterBox" FontFamily="Segoe UI" FontSize="13"
+                         Background="#2A2A2A" Foreground="#F2F2F2" BorderBrush="#444" Padding="6,4" />
+                <TextBlock x:Name="FilterPlaceholder" IsHitTestVisible="False"
+                           Text="{loc:Translate TaskPicker.FilterPlaceholder}"
+                           Foreground="#6E6E78" FontFamily="Segoe UI" FontSize="13"
+                           VerticalAlignment="Center" Margin="8,0,0,0" />
+            </Grid>
 
             <!-- Grid contenedor: la ListBox y el overlay de loading coexisten en la misma celda.
                  El overlay se Colapsa cuando termina la carga (ver TaskPickerWindow.SetItems). -->
