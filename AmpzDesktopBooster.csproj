@@ -57,6 +57,10 @@
     <!-- Audio del feedback de atención: NAudio da control de volumen REAL + amplificación (gain >1),
          a diferencia de MediaPlayer (que no amplifica y reproduce flojo) y SoundPlayer (sin volumen). -->
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <!-- QR de la URL-de-red (popup de puertos): escaneás con el celu y entrás al servicio local.
+         Usamos SOLO PngByteQRCode → bytes PNG → BitmapImage de WPF, así NO arrastramos la dependencia
+         de System.Drawing.Common (que en WPF chocaría con los tipos de System.Windows.Media). -->
+    <PackageReference Include="QRCoder" Version="1.6.0" />
   </ItemGroup>
 
 </Project>

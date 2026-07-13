@@ -28,6 +28,9 @@ public static class AppPaths
     /// <summary>INI con secciones varias (sugerencias de proyecto, pins, restricciones, etc.).</summary>
     public static string SettingsIni => Path.Combine(DataDir, "settings.ini");
 
+    /// <summary>Catálogo de puertos/servicios locales (título + puerto). Lista GLOBAL única.</summary>
+    public static string PortsFile => Path.Combine(DataDir, "ports.json");
+
     /// <summary>
     /// Borra TODA la config del usuario: todos los archivos de DataDir (proyectos, settings.ini,
     /// apps, atajos, desktops, widgets, uso). Operación DESTRUCTIVA — el caller confirma y luego

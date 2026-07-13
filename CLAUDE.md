@@ -137,6 +137,7 @@ legacy guardaba en `A_ScriptDir`; esto se modernizó para que la app sea compart
 | `desktops.json` | JSON | `DesktopConfig`: lista `managed` + flag `autoCreate`. |
 | `apps.json` | JSON | `AppsConfig`: apps de usuario (`name`, `exePath`, `args` con `{path}`). |
 | `widgets.json` | JSON | `WidgetSettings`: qué widgets de la barra están activos (defaults: Clock + Ram). |
+| `ports.json` | JSON | `PortStore`: catálogo GLOBAL de puertos/servicios locales (`title` + `port`). Estado/URL/proceso NO se persisten — se derivan en vivo. |
 | `ampz-crash.log` | texto | Junto al **exe** (no en APPDATA). Log de excepciones no manejadas. |
 
 `IniFile` es un parser INI propio (.NET no trae uno): reescribe el archivo entero en cada op
@@ -165,6 +166,7 @@ del hook no se puede bloquear).
 | `Win+Numpad *` | **Variables** del proyecto/global (Paths Manager); re-press dispara el predeterminado |
 | `Win+Numpad /` | **Notas** del proyecto/global |
 | `Win+Numpad −` (Sub) | **Send-window picker** (mandar la ventana activa a un desk elegido) |
+| `Win+Numpad +` (Add) | **Puertos / Servicios locales** (lista global de apps web por puerto; estado vivo 🟢/⚪, copiar localhost / IP de red, QR) |
 | `Win+F2` | "Abrir con" (sobre el path activo del Explorer) |
 | `Win+F3` | Variables de entorno |
 | `Win+F5` | Panel Docker |

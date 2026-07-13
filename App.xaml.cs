@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Threading;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Hotkeys;
+using AmpzDesktopBooster.Persistence;
 using AmpzDesktopBooster.Services.Browser;
 using AmpzDesktopBooster.Services.Tasks;
 using AmpzDesktopBooster.Services.Usage;
@@ -168,7 +169,9 @@ public partial class App : Application
         },
             taskSession,
             // Refresca el widget de tarea del desk ACTUAL (tras pickear o desanclar).
-            () => bar.UpdateDeskTask(taskSession.GetDeskTask(desktops.Current)));
+            () => bar.UpdateDeskTask(taskSession.GetDeskTask(desktops.Current)),
+            // Catálogo GLOBAL de puertos/servicios locales (Win+Numpad+). Durable en ports.json.
+            PortStore.Load());
 
         // Click en el widget de tarea → el detalle (lo orquesta el router, que tiene la sesión).
         bar.OnTaskWidgetClicked = () => _router.ShowTaskDetail();

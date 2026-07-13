@@ -4,6 +4,7 @@ using System.Windows;
 using AmpzDesktopBooster.Apps;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Interop;
+using AmpzDesktopBooster.Persistence;
 using AmpzDesktopBooster.Services;
 using AmpzDesktopBooster.Services.Localization;
 using AmpzDesktopBooster.Services.Tasks;
@@ -37,6 +38,7 @@ public sealed class HotkeyRouter
     private readonly Action _refreshCurrentDesk;
     private readonly TaskSessionStore _taskSession;
     private readonly Action _refreshTaskWidget;
+    private readonly PortStore _ports;
 
     // Ventana de variables actualmente abierta (para el "re-press dispara el predeterminado").
     // Guardamos también el desk con el que se abrió: el re-press solo dispara el predeterminado si
@@ -58,6 +60,9 @@ public sealed class HotkeyRouter
     private HzWindow? _hzWindow;
     // Setter de proyecto abierto (Win+NumpadEnter). Instancia única: re-press RESETEA el desk.
     private ProjectSetterWindow? _setterWindow;
+    // Popup de puertos/servicios locales abierto (Win+Numpad+). Instancia única, scope GLOBAL (no
+    // depende del desk) → re-press SOLO la trae al frente (no dispara nada, como Notas).
+    private PortsWindow? _portsWindow;
 
     // Virtual-keys de las F que ruteamos (F1..F12 = 0x70..0x7B; backtick = 0xC0; barra /? = 0xBF).
     // F7 (Pin Manager) y F8 (Restricciones) SE QUITARON: eran popups de gestión compleja que hoy
@@ -68,7 +73,8 @@ public sealed class HotkeyRouter
 
     public HotkeyRouter(HotkeyService hotkeys, DesktopService desktops, ProjectStore projects,
         AppsConfig apps, PinStore pins, RestrictionStore restrictions, AppShortcutStore shortcuts,
-        Action refreshCurrentDesk, TaskSessionStore taskSession, Action refreshTaskWidget)
+        Action refreshCurrentDesk, TaskSessionStore taskSession, Action refreshTaskWidget,
+        PortStore ports)
     {
         _desktops = desktops;
         _projects = projects;
@@ -79,6 +85,7 @@ public sealed class HotkeyRouter
         _refreshCurrentDesk = refreshCurrentDesk;
         _taskSession = taskSession;
         _refreshTaskWidget = refreshTaskWidget;
+        _ports = ports;
         hotkeys.HotkeyFired += OnHotkeyFired;
         hotkeys.WinFunctionKey += OnWinFunctionKey;
         hotkeys.WinReleased += OnWinReleased;
@@ -252,6 +259,7 @@ public sealed class HotkeyRouter
             case NumpadKey.Enter:    ShowProjectSetter();     return;
             case NumpadKey.Multiply: ShowProjectPaths();      return;
             case NumpadKey.Divide:   ShowProjectNotes();      return;
+            case NumpadKey.Add:      ShowPorts();             return; // Win+Numpad+ (puertos/servicios locales)
             case NumpadKey.D0:       ShowTaskPicker();        return; // Win+NumpadInsert (scancode 0x52)
         }
 
@@ -379,6 +387,21 @@ public sealed class HotkeyRouter
         _notesWindow = new ProjectNotesWindow(_projects, name, idx, folder);
         _notesWindow.Closed += (_, _) => _notesWindow = null;
         _notesWindow.ShowFocused();
+    }
+
+    private void ShowPorts()
+    {
+        // Instancia única, scope GLOBAL (la lista de puertos no depende del desk): re-press SÓLO trae
+        // la ventana al frente, no dispara ninguna acción (a diferencia de Variables, que es desk-aware).
+        if (_portsWindow is not null)
+        {
+            _portsWindow.Activate();
+            return;
+        }
+
+        _portsWindow = new PortsWindow(_ports);
+        _portsWindow.Closed += (_, _) => _portsWindow = null;
+        _portsWindow.ShowFocused();
     }
 
     private void ShowDeskPicker()
