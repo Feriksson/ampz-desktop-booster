@@ -76,7 +76,7 @@ public sealed class ProjectStore
         return new PathPool(list, Save, project);
     }
 
-    /// <summary>Pool GLOBAL compartida — la usan los desks sin proyecto (MAIN/MAILS/MISCS/DESK+ vacío).</summary>
+    /// <summary>Pool GLOBAL compartida — la usan los desks sin proyecto (MAIN/CONSOLES/MISCS/DESK+ vacío).</summary>
     public PathPool GetSharedPool() => new(_data.SharedPaths, Save, "Global");
 
     /// <summary>

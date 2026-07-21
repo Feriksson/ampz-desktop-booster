@@ -82,7 +82,7 @@ public sealed class AttentionService
         string deskName = _desktops.GetName(desk);
         // Si el desk tiene un proyecto activo en la sesión, va en su PROPIO renglón (tercera línea del
         // toast) para que de un vistazo sepas no sólo DÓNDE sino EN QUÉ. Si no hay proyecto
-        // (MAIN/MAILS/MISCS, o un DESK+ sin proyecto), la línea queda vacía → el toast ni la muestra.
+        // (MAIN/CONSOLES/MISCS, o un DESK+ sin proyecto), la línea queda vacía → el toast ni la muestra.
         string project = _desktops.GetProject(desk);
 
         // El TÍTULO es distinto según dónde caiga el aviso:

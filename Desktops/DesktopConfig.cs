@@ -11,7 +11,7 @@ namespace AmpzDesktopBooster.Desktops;
 /// Se persiste en %APPDATA%\AmpzDesktopBooster\desktops.json y se edita desde la pestaña
 /// DESKTOPS de la ventana de configuración.
 ///
-/// Defaults = el set del legacy: MAIN, MAILS, MISCS y DESK +1..+6.
+/// Defaults = el set del legacy con el rename posterior: MAIN, CONSOLES (ex-MAILS), MISCS y DESK +1..+6.
 /// </summary>
 public sealed class DesktopConfig
 {
@@ -24,7 +24,7 @@ public sealed class DesktopConfig
 
     public static List<string> DefaultManaged() => new()
     {
-        "MAIN", "MAILS", "MISCS",
+        "MAIN", "CONSOLES", "MISCS",
         "DESK +1", "DESK +2", "DESK +3", "DESK +4", "DESK +5", "DESK +6",
     };
 

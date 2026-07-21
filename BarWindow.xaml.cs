@@ -393,7 +393,7 @@ public partial class BarWindow : Window
         // El modo lo decide el TIPO de desk, no si hay proyecto cargado:
         //   · DESK +N  → SIEMPRE modo DUAL (es un desk de proyecto: le reservamos el espacio
         //                del nombre del proyecto aunque hoy esté vacío).
-        //   · MAIN/MAILS/MISCS → modo SOLO centrado (nunca aceptan proyecto).
+        //   · MAIN/CONSOLES/MISCS → modo SOLO centrado (nunca aceptan proyecto).
         bool isProjectDesk = name.Contains("DESK +", StringComparison.OrdinalIgnoreCase);
 
         if (isProjectDesk)
@@ -520,7 +520,7 @@ public partial class BarWindow : Window
         return pill;
     }
 
-    /// <summary>"DESK +3" → "3"; los nombrados (MAIN/MAILS/MISCS) → su inicial. El tooltip da el nombre completo.</summary>
+    /// <summary>"DESK +3" → "3"; los nombrados (MAIN/CONSOLES/MISCS) → su inicial. El tooltip da el nombre completo.</summary>
     private static string ShortDeskLabel(string name)
     {
         var m = System.Text.RegularExpressions.Regex.Match(name, @"\+\s*(\d+)");

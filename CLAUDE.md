@@ -96,7 +96,7 @@ que `WH_KEYBOARD_LL` y el `PostMessage` de la DLL necesitan.
 ### 1. Navegación por NOMBRE, no por índice
 Los desks se identifican por **fragmento de nombre** (case-insensitive), no por posición.
 `Win+Numpad1` va SIEMPRE a "MAIN" aunque lo muevas de lugar. Set gestionado por defecto:
-`MAIN`, `MAILS`, `MISCS`, `DESK +1` … `DESK +6` (ver `DesktopConfig.DefaultManaged`).
+`MAIN`, `CONSOLES`, `MISCS`, `DESK +1` … `DESK +6` (ver `DesktopConfig.DefaultManaged`).
 `DesktopService` es la capa alta sobre la DLL — **nadie más toca P/Invoke de desktops directo**.
 
 ### 2. Las TRES capas de "proyecto por desk" (clave — `ProjectStore`)
@@ -112,7 +112,7 @@ sin confirmar sería confuso. El INI solo alimenta el setter, no la sesión acti
 
 ### 3. Dual-scope de variables y notas
 `ProjectStore.ResolvePool` / `GetNotes`: si el desk es un `DESK +N` **con proyecto activo en la
-sesión** → usa el pool/notas DE ESE PROYECTO. Cualquier otro caso (MAIN/MAILS/MISCS, o DESK+ sin
+sesión** → usa el pool/notas DE ESE PROYECTO. Cualquier otro caso (MAIN/CONSOLES/MISCS, o DESK+ sin
 proyecto) → usa el pool/notas **GLOBAL compartido**. Mismo criterio en `UseProjectScope`.
 
 ### 4. Gobierno de ventanas (`WindowGovernor`)
@@ -158,7 +158,7 @@ del hook no se puede bloquear).
 
 | Atajo | Acción |
 |---|---|
-| `Win+Numpad 1/2/3` | Ir a MAIN / MAILS / MISCS (fila inferior, la más cómoda) |
+| `Win+Numpad 1/2/3` | Ir a MAIN / CONSOLES / MISCS (fila inferior, la más cómoda) |
 | `Win+Numpad 4..9` | Ir a DESK +1 … +6 |
 | `Win+Shift+`(navegación) | Enviar la ventana activa a ese desk **y seguirla** |
 | `Win+NumpadEnter` | Setear el proyecto del desk actual (solo en `DESK +N`) |

@@ -37,7 +37,7 @@ public sealed class RestrictionStore
 
     /// <summary>
     /// Un desk es "restringible" si NO es MAIN y NO es un "DESK +N" (esos son de proyecto).
-    /// MAILS, MISCS y similares califican. Misma regla que el legacy.
+    /// CONSOLES, MISCS y similares califican. Misma regla que el legacy.
     /// </summary>
     public static bool IsRestrictable(string deskName) =>
         deskName != "" &&

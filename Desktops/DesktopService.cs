@@ -7,7 +7,7 @@ namespace AmpzDesktopBooster.Desktops;
 
 /// <summary>
 /// Capa de alto nivel sobre VirtualDesktopAccessor.dll. Acá vive la lógica del legacy:
-/// navegar por NOMBRE de desktop (MAIN / MAILS / MISCS / "DESK +N"), enviar ventanas,
+/// navegar por NOMBRE de desktop (MAIN / CONSOLES / MISCS / "DESK +N"), enviar ventanas,
 /// ciclar entre los DESK+. La app no toca P/Invoke directo.
 ///
 /// Diferencia clave con la primera versión del port: el legacy NO navega por índice fijo,

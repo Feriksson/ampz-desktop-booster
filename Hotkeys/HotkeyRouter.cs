@@ -16,7 +16,7 @@ namespace AmpzDesktopBooster.Hotkeys;
 /// (Numpad físico con NumLock OFF), proyectos por desk, y el DeskPicker.
 ///
 /// Mapeo (igual que el legacy ampzWinTunner.ahk líneas 1289-1314, 3760, 3905-3906):
-///   Win+Numpad 1/2/3 → MAIN / MAILS / MISCS  (fila inferior, la más cómoda)
+///   Win+Numpad 1/2/3 → MAIN / CONSOLES / MISCS  (fila inferior, la más cómoda)
 ///   Win+Numpad 4..9  → DESK +1..+6
 ///   Win+Shift+(nav)  → mandar ventana activa ahí + seguir
 ///   Win+NumpadEnter  → setear proyecto del desk actual (sólo DESK+)
@@ -546,9 +546,9 @@ public sealed class HotkeyRouter
 
     /// <summary>Tecla física del numpad → fragmento de nombre del desktop destino.</summary>
     /// <remarks>
-    /// Layout reorganizado (pedido del usuario): MAIN/MAILS/MISCS bajan a la fila INFERIOR (1-2-3),
+    /// Layout reorganizado (pedido del usuario): MAIN/CONSOLES/MISCS bajan a la fila INFERIOR (1-2-3),
     /// la más cómoda al alcance del pulgar; los DESK+ suben ocupando las filas media y superior.
-    ///   Fila inferior  1 2 3 → MAIN  / MAILS  / MISCS
+    ///   Fila inferior  1 2 3 → MAIN  / CONSOLES / MISCS
     ///   Fila media     4 5 6 → DESK+1 / DESK+2 / DESK+3
     ///   Fila superior  7 8 9 → DESK+4 / DESK+5 / DESK+6
     /// OJO: D5 (Numpad5/Clear) acá es Win+5 → DESK +2. El Numpad5 PELADO (sin Win) sigue abriendo el
@@ -557,7 +557,7 @@ public sealed class HotkeyRouter
     private static string? TargetFor(NumpadKey key) => key switch
     {
         NumpadKey.D1 => "MAIN",     // Numpad1 / End
-        NumpadKey.D2 => "MAILS",    // Numpad2 / Down
+        NumpadKey.D2 => "CONSOLES", // Numpad2 / Down (ex-MAILS: el usuario renombró el desk)
         NumpadKey.D3 => "MISCS",    // Numpad3 / PgDn
         NumpadKey.D4 => "DESK +1",  // Numpad4 / Left
         NumpadKey.D5 => "DESK +2",  // Numpad5 / Clear
