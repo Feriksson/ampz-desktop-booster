@@ -42,7 +42,7 @@
                     <TextBlock x:Name="CpuText" Style="{StaticResource WidgetValue}" Width="42" TextAlignment="Right" />
                 </StackPanel>
 
-                <!-- Uso de IA (provider activo): 3 mini-islas — sesión 5h, semanal todos, semanal Sonnet —
+                <!-- Uso de IA (provider activo): 3 mini-islas — sesión 5h, semanal todos, semanal por-modelo (la letra la setea el code-behind: hoy F de Fable, ayer S de Sonnet) —
                      separadas por un divisor delicado. % exacto + reset en el tooltip de cada isla.
                      El relleno lo setea el code-behind; se pone naranja al pasar 80%.
                      El separador izquierdo lo gestiona FixUpSeparators (se oculta si es el 1er widget visible). -->
@@ -82,12 +82,12 @@
                         </StackPanel>
 
                         <Rectangle Width="1" Height="11" Fill="{StaticResource Separator}" Opacity="0.3" Margin="5,0" VerticalAlignment="Center" />
-                        <StackPanel x:Name="GaugeSonnet" Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="S" Style="{StaticResource WidgetLabel}" Margin="0,0,4,2" />
+                        <StackPanel x:Name="GaugeScoped" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="LblScoped" Text="·" Style="{StaticResource WidgetLabel}" Margin="0,0,4,2" />
                             <Border Width="28" Height="8" CornerRadius="4" Background="#1B2D36" VerticalAlignment="Center">
-                                <Border x:Name="FillSonnet" Width="0" CornerRadius="4" Background="{StaticResource Accent}" HorizontalAlignment="Left" />
+                                <Border x:Name="FillScoped" Width="0" CornerRadius="4" Background="{StaticResource Accent}" HorizontalAlignment="Left" />
                             </Border>
-                            <TextBlock x:Name="PctSonnet" Style="{StaticResource WidgetValue}" Margin="5,0,0,0" />
+                            <TextBlock x:Name="PctScoped" Style="{StaticResource WidgetValue}" Margin="5,0,0,0" />
                         </StackPanel>
                     </StackPanel>
 

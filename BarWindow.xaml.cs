@@ -305,9 +305,24 @@ public partial class BarWindow : Window
 
         UsageWidget.ToolTip = $"Claude — {Loc.T("Bar.UsageUpdatedAt")} {snap.FetchedAt:HH:mm}";
 
-        SetGauge(Fill5h, Pct5h, Gauge5h, FindGauge(snap, "five_hour"));
-        SetGauge(Fill7d, Pct7d, Gauge7d, FindGauge(snap, "seven_day"));
-        SetGauge(FillSonnet, PctSonnet, GaugeSonnet, FindGauge(snap, "seven_day_sonnet"));
+        SetGauge(Fill5h, Pct5h, Gauge5h, FindGauge(snap, "session"));
+        SetGauge(Fill7d, Pct7d, Gauge7d, FindGauge(snap, "weekly_all"));
+
+        // Tercera isla: el tope semanal SCOPED, que sigue al modelo que Anthropic tope-e (hoy Fable,
+        // ayer Sonnet). Su letra se deriva EN VIVO del nombre real ("Semanal · Fable" → "F") — así no
+        // hay que tocar el XAML cuando Anthropic rote el modelo con límite semanal.
+        var scoped = FindGauge(snap, "weekly_scoped");
+        SetGauge(FillScoped, PctScoped, GaugeScoped, scoped);
+        if (scoped is not null)
+            LblScoped.Text = ScopedInitial(scoped.Label);
+    }
+
+    /// <summary>Inicial del modelo scoped para la mini-isla: "Semanal · Fable" → "F". Fallback "·".</summary>
+    private static string ScopedInitial(string label)
+    {
+        int i = label.LastIndexOf('·');
+        string model = (i >= 0 ? label[(i + 1)..] : label).Trim();
+        return model.Length > 0 ? model[..1].ToUpperInvariant() : "·";
     }
 
     private static UsageGauge? FindGauge(UsageSnapshot s, string key)

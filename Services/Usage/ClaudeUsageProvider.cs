@@ -57,8 +57,14 @@ public sealed class ClaudeUsageProvider : IUsageProvider
     }
 
     /// <summary>
-    /// Mapea el JSON del endpoint a barras. Cada métrica viene como objeto
-    /// { "utilization": 0-100, "resets_at": ISO8601 } o null si no aplica al plan.
+    /// Mapea el JSON del endpoint a barras. Usamos keys de salida ESTABLES —"session", "weekly_all",
+    /// "weekly_scoped"— que NO dependen del nombre del modelo: la UI las busca por esas keys fijas.
+    ///
+    /// Por qué: en jul-2026 Anthropic migró el modelo de datos. Las viejas keys por-modelo
+    /// (seven_day_sonnet/seven_day_opus) ahora llegan SIEMPRE null del lado del server, y el tope
+    /// semanal scoped pasó a declarar su modelo dinámicamente en el array "limits[]"
+    /// (scope.model.display_name, hoy "Fable", ayer "Sonnet"). Si atáramos la UI al nombre del modelo,
+    /// se rompería en cada rotación — como ya pasó. Por eso leemos limits[] y seguimos al modelo solo.
     /// </summary>
     private UsageSnapshot Parse(string json)
     {
@@ -66,10 +72,20 @@ public sealed class ClaudeUsageProvider : IUsageProvider
         var root = doc.RootElement;
 
         var gauges = new List<UsageGauge>();
-        AddGauge(gauges, root, "five_hour", "Sesión (5h)");
-        AddGauge(gauges, root, "seven_day", "Semanal · todos los modelos");
-        AddGauge(gauges, root, "seven_day_sonnet", "Semanal · Sonnet");
-        AddGauge(gauges, root, "seven_day_opus", "Semanal · Opus");
+
+        // Formato NUEVO: el array "limits[]". Cada límite trae kind (session|weekly_all|weekly_scoped),
+        // percent (0-100), resets_at y —sólo el scoped— scope.model.display_name con el modelo topeado.
+        if (root.TryGetProperty("limits", out var limits) && limits.ValueKind == JsonValueKind.Array)
+            foreach (var lim in limits.EnumerateArray())
+                AddLimit(gauges, lim);
+
+        // Fallback al formato viejo (top-level) sólo si limits[] no vino: five_hour/seven_day SIGUEN
+        // existiendo como objetos; las scoped por-modelo ya no (llegan null → AddGauge las saltea).
+        if (gauges.Count == 0)
+        {
+            AddGauge(gauges, root, "five_hour", "session", "Sesión (5h)");
+            AddGauge(gauges, root, "seven_day", "weekly_all", "Semanal · todos los modelos");
+        }
 
         return new UsageSnapshot
         {
@@ -80,10 +96,64 @@ public sealed class ClaudeUsageProvider : IUsageProvider
         };
     }
 
-    /// <summary>Agrega una barra sólo si la clave existe y es un objeto (null = no aplica al plan).</summary>
-    private static void AddGauge(List<UsageGauge> into, JsonElement root, string key, string label)
+    /// <summary>
+    /// Mapea un elemento de "limits[]" (formato nuevo) a una barra con key de salida ESTABLE.
+    /// El tope scoped toma el nombre real del modelo de scope.model.display_name → la mini-isla
+    /// muestra "Semanal · Fable" hoy y lo que Anthropic tope-e mañana, sin tocar código.
+    /// Nota: si algún día hubiera MÁS de un weekly_scoped, la UI (3 islas fijas) sólo muestra el
+    /// primero — limitación aceptada del layout actual, no del parseo.
+    /// </summary>
+    private static void AddLimit(List<UsageGauge> into, JsonElement lim)
     {
-        if (!root.TryGetProperty(key, out var el) || el.ValueKind != JsonValueKind.Object)
+        string kind = lim.TryGetProperty("kind", out var k) && k.ValueKind == JsonValueKind.String
+            ? k.GetString() ?? ""
+            : "";
+
+        double pct = lim.TryGetProperty("percent", out var p) && p.ValueKind == JsonValueKind.Number
+            ? p.GetDouble()
+            : 0;
+
+        DateTimeOffset? reset =
+            lim.TryGetProperty("resets_at", out var r) &&
+            r.ValueKind == JsonValueKind.String &&
+            DateTimeOffset.TryParse(r.GetString(), out var dt)
+                ? dt
+                : null;
+
+        switch (kind)
+        {
+            case "session":
+                into.Add(new UsageGauge("session", "Sesión (5h)", pct, reset));
+                break;
+            case "weekly_all":
+                into.Add(new UsageGauge("weekly_all", "Semanal · todos los modelos", pct, reset));
+                break;
+            case "weekly_scoped":
+                var model = ReadScopedModel(lim) ?? "modelo";
+                into.Add(new UsageGauge("weekly_scoped", "Semanal · " + model, pct, reset));
+                break;
+            // kind desconocido → lo ignoramos (no rompemos si Anthropic agrega tipos nuevos).
+        }
+    }
+
+    /// <summary>Nombre del modelo topeado de un límite scoped: scope.model.display_name (o null).</summary>
+    private static string? ReadScopedModel(JsonElement lim)
+    {
+        if (lim.TryGetProperty("scope", out var scope) && scope.ValueKind == JsonValueKind.Object &&
+            scope.TryGetProperty("model", out var m) && m.ValueKind == JsonValueKind.Object &&
+            m.TryGetProperty("display_name", out var dn) && dn.ValueKind == JsonValueKind.String)
+            return dn.GetString();
+        return null;
+    }
+
+    /// <summary>
+    /// Formato VIEJO (top-level): agrega una barra sólo si la clave existe y es un objeto
+    /// (null = no aplica al plan). La key de salida (gaugeKey) es estable y puede diferir de la
+    /// clave JSON, para que la UI busque siempre por el mismo nombre venga del formato que venga.
+    /// </summary>
+    private static void AddGauge(List<UsageGauge> into, JsonElement root, string jsonKey, string gaugeKey, string label)
+    {
+        if (!root.TryGetProperty(jsonKey, out var el) || el.ValueKind != JsonValueKind.Object)
             return;
 
         double pct = el.TryGetProperty("utilization", out var u) && u.ValueKind == JsonValueKind.Number
@@ -97,7 +167,7 @@ public sealed class ClaudeUsageProvider : IUsageProvider
                 ? dt
                 : null;
 
-        into.Add(new UsageGauge(key, label, pct, reset));
+        into.Add(new UsageGauge(gaugeKey, label, pct, reset));
     }
 
     /// <summary>
