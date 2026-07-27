@@ -32,6 +32,12 @@ public partial class OverlayWindow : Window
         _hideTimer = new DispatcherTimer { Interval = AutoHide };
         _hideTimer.Tick += (_, _) => { _hideTimer.Stop(); Hide(); };
 
+        // Auto-corrección del centrado: con SizeToContent la ventana se re-mide cada vez que
+        // cambian los textos/dots, y ESTE evento llega con el ancho REAL ya arrangeado (no una
+        // estimación). Recentrar acá cubre el primer show tras el arranque, que es donde la
+        // predicción fallaba. Dispara durante el layout pass, antes del render → no se ve saltar.
+        SizeChanged += (_, _) => Recenter();
+
         // Forzamos la creación del HWND YA (sin mostrar) para aplicar los estilos extendidos
         // y pinear el overlay a todos los desktops ANTES del primer cambio — así aparece en
         // cualquier desktop desde el arranque, aun si saltás rápido apenas abre la app.
@@ -72,22 +78,41 @@ public partial class OverlayWindow : Window
 
         BuildDots(count, index, desktops);
 
-        // Posicionar centrado horizontal, un poco por encima del centro vertical.
-        // OJO: NO usar ActualWidth acá. La primera vez que se llama a ShowOverlay tras el
-        // arranque, la ventana nunca pasó por un layout pass real (el HWND se creó con
-        // EnsureHandle sin mostrar) → ActualWidth viene 0/stale y el cálculo
-        // (screenWidth - 0) / 2 deja la card corrida a la derecha. A partir del segundo
-        // cambio ActualWidth ya es correcto y centra bien. Forzamos un Measure y usamos
-        // DesiredSize, que está disponible sin necesidad de que la ventana esté visible.
+        // Posicionamiento tentativo ANTES de mostrar, para que no aparezca en 0,0 y salte.
+        // OJO: acá el ancho es sólo una ESTIMACIÓN — la primera vez tras el arranque la ventana
+        // nunca pasó por un layout/arrange real (el HWND se creó con EnsureHandle sin mostrar),
+        // así que ni ActualWidth (0/stale) ni DesiredSize (lo que el contenido PIDE, no lo que la
+        // ventana MIDE una vez arrangeada en su monitor con su DPI) coinciden con el ancho final.
+        // Si la estimación sale corta, (pantalla - anchoCorto)/2 deja la card corrida a la DERECHA:
+        // ése era el bug del primer cambio de desk. El centrado DEFINITIVO lo hace Recenter()
+        // desde SizeChanged (ancho real) y desde el pase diferido de abajo. No borres esa red.
         Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        Left = (SystemParameters.PrimaryScreenWidth - DesiredSize.Width) / 2;
-        Top = SystemParameters.PrimaryScreenHeight / 2 - 220;
+        Recenter(DesiredSize.Width);
 
         Visibility = Visibility.Visible;
         Show();
 
+        // Red final: si el arrange definitivo no cambió el tamaño (misma medida que el show
+        // anterior) SizeChanged no dispara, pero para entonces ActualWidth YA es el real.
+        // Recentrar en Loaded priority corrige sin depender de que la ventana haya cambiado de
+        // tamaño. Es idempotente: si ya estaba centrada, reescribe el mismo Left.
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => Recenter()));
+
         _hideTimer.Stop();
         _hideTimer.Start();
+    }
+
+    /// <summary>
+    /// Centra horizontalmente en el monitor primario y fija el alto (un poco por encima del
+    /// centro). Con <paramref name="width"/> en null usa el ancho REAL de la ventana.
+    /// </summary>
+    private void Recenter(double? width = null)
+    {
+        double w = width ?? ActualWidth;
+        if (w <= 0) return; // sin ancho útil todavía: lo resuelve el próximo pase
+
+        Left = (SystemParameters.PrimaryScreenWidth - w) / 2;
+        Top = SystemParameters.PrimaryScreenHeight / 2 - 220;
     }
 
     /// <summary>Un dot por desktop: el activo relleno (⬤) y brillante, el resto huecos (○) apagados.</summary>
