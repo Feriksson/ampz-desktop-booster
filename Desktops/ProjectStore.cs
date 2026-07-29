@@ -83,9 +83,21 @@ public sealed class ProjectStore
         _ini.Write("Projects", "desk_" + idx, name);
         _ini.Write("Projects", $"desk_{idx}_module", module);
 
-        if (!_data.History.Any(h => string.Equals(h, name, StringComparison.OrdinalIgnoreCase)))
+        // El historial se mantiene alineado con la forma NORMALIZADA. Antes sólo evitaba duplicados
+        // (comparando case-insensitive) pero dejaba la entrada vieja con su casing original: el
+        // historial quedaba mostrando "Ampz desktop Booster" mientras la sesión, el INI y las keys del
+        // catálogo usaban "Ampz Desktop Booster". Esa divergencia es la que hacía que el picker de
+        // módulos apareciera vacío al llegar desde el setter, y la que dejaría huérfanos al borrar del
+        // historial (DeleteFromHistory borra paths/notas/módulos por string exacto).
+        int at = _data.History.FindIndex(h => string.Equals(h, name, StringComparison.OrdinalIgnoreCase));
+        if (at < 0)
         {
             _data.History.Add(name);
+            Save();
+        }
+        else if (_data.History[at] != name)
+        {
+            _data.History[at] = name; // re-alinea la casing de una entrada vieja
             Save();
         }
     }
@@ -141,9 +153,21 @@ public sealed class ProjectStore
     /// </summary>
     public static string Sanitize(string s) => s.Replace(ScopeSeparator, ' ').Trim();
 
+    /// <summary>
+    /// Key REAL del catálogo de módulos para este proyecto, resolviendo diferencias de mayúsculas.
+    /// Los diccionarios de <see cref="ProjectData"/> son case-SENSITIVE, y el nombre de un proyecto
+    /// puede llegar con otra casing desde el historial (entradas viejas, anteriores al TitleCase).
+    /// Sin esto, "Ampz desktop Booster" y "Ampz Desktop Booster" son dos catálogos distintos: uno
+    /// con tus módulos y otro vacío, según por qué camino hayas entrado. Devuelve el nombre tal cual
+    /// si todavía no existe (para que el alta lo cree con la casing actual).
+    /// </summary>
+    private string ResolveModulesKey(string project) =>
+        _data.Modules.Keys.FirstOrDefault(k => string.Equals(k, project, StringComparison.OrdinalIgnoreCase))
+        ?? project;
+
     /// <summary>Módulos catalogados de un proyecto (lista vacía si no tiene).</summary>
     public IReadOnlyList<ModuleEntry> GetModules(string project) =>
-        _data.Modules.TryGetValue(project, out var list) ? list : new List<ModuleEntry>();
+        _data.Modules.TryGetValue(ResolveModulesKey(project), out var list) ? list : new List<ModuleEntry>();
 
     /// <summary>Color "#RRGGBB" del módulo, o "" si no está catalogado (la UI cae al dorado).</summary>
     public string GetModuleColor(string project, string module) =>
@@ -156,6 +180,7 @@ public sealed class ProjectStore
     /// </summary>
     public ModuleEntry EnsureModule(string project, string module)
     {
+        project = ResolveModulesKey(project); // no crear un catálogo paralelo por diferencia de casing
         if (!_data.Modules.TryGetValue(project, out var list))
         {
             list = new List<ModuleEntry>();
@@ -188,7 +213,7 @@ public sealed class ProjectStore
     /// </summary>
     public void DeleteModule(string project, string module)
     {
-        if (_data.Modules.TryGetValue(project, out var list))
+        if (_data.Modules.TryGetValue(ResolveModulesKey(project), out var list))
             list.RemoveAll(m => string.Equals(m.Name, module, StringComparison.OrdinalIgnoreCase));
 
         string key = ScopeKey(project, module);

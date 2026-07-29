@@ -116,6 +116,14 @@ public partial class ProjectSetterWindow : Window
         _store.SetDeskProject(_deskIdx, name);
         _onChanged();
 
+        // ⚠ El nombre CANÓNICO sale del store, NO de `name`. SetDeskProject normaliza (Sanitize +
+        // TitleCase) antes de guardar, así que el string que veníamos arrastrando puede diferir en
+        // mayúsculas del que quedó en la sesión — y las keys del catálogo (módulos, paths, notas) son
+        // case-sensitive. Ése era el bug: elegir "Ampz desktop Booster" del historial le pasaba ESA
+        // casing al picker, que buscaba módulos bajo una key que no existía y aparecía vacío, mientras
+        // que Win+NumpadDot (que lee el proyecto de la sesión, ya normalizado) sí los encontraba.
+        name = _store.GetDeskProject(_deskIdx);
+
         // ── SEGUNDO PASO: el módulo ──
         // Un proyecto puede tener sub-scopes ("Geocontrol" → "Plataforma" / "App Mobile"). Encadenar
         // el picker acá es lo que hace la feature DESCUBRIBLE: si dependiera sólo del atajo dedicado
