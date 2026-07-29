@@ -404,8 +404,13 @@ public sealed class HotkeyRouter
                      && !string.Equals(p.Label, parentPool?.Label, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
+        // El scope (y el del padre) viajan aparte de las pools: el PREDETERMINADO ya no vive en la
+        // entrada sino en el scope, así que la ventana necesita saber DÓNDE anotar el que marques.
         _pathsWindow = new ProjectPathsWindow(pool, name, globalPool: globalPool,
-                                              otherProjectPools: others, parentPool: parentPool);
+                                              otherProjectPools: others, parentPool: parentPool,
+                                              store: _projects,
+                                              scopeKey: _projects.ResolveScopeKey(name, idx),
+                                              parentScopeKey: _projects.ResolveParentScopeKey(name, idx));
         _pathsWindowDeskIdx = idx; // recordamos el desk: el re-press solo cuenta si seguís acá
         _pathsWindow.Closed += (_, _) => _pathsWindow = null;
         _pathsWindow.ShowFocused();

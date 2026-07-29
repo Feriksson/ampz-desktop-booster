@@ -3,12 +3,22 @@ using System.Text.Json.Serialization;
 
 namespace AmpzDesktopBooster.Persistence;
 
-/// <summary>Una entrada de path/URL de un proyecto. "default" sólo se serializa cuando es true.</summary>
+/// <summary>Una entrada de path/URL de un proyecto.</summary>
 public sealed class PathEntry
 {
     [JsonPropertyName("title")] public string Title { get; set; } = "";
     [JsonPropertyName("path")]  public string Path { get; set; } = "";
 
+    /// <summary>
+    /// LEGACY — el predeterminado ya NO vive en la entrada, vive en el SCOPE (ver
+    /// <see cref="ProjectData.Defaults"/>). Se conserva SÓLO para poder migrar los archivos viejos
+    /// una vez; después de migrar queda en false y no se vuelve a escribir.
+    ///
+    /// Por qué se movió: con módulos, una misma entrada del proyecto la ven TODOS sus módulos. Con
+    /// el flag en la entrada, marcarla como predeterminada desde un módulo se la cambiaba a todos —
+    /// no era propagación, era literalmente el mismo objeto. El predeterminado es una decisión DEL
+    /// CONTEXTO en el que estás parado, no una propiedad de la variable.
+    /// </summary>
     [JsonPropertyName("default")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool Default { get; set; }
@@ -62,4 +72,18 @@ public sealed class ProjectData
     // Sus variables/notas NO viven acá: viven en Paths/Notes bajo la key compuesta "Proyecto/Módulo".
     // Acá vive sólo el CATÁLOGO del módulo (su nombre y su color de identificación).
     [JsonPropertyName("modules")] public Dictionary<string, List<ModuleEntry>> Modules { get; set; } = new();
+
+    /// <summary>
+    /// Predeterminado POR SCOPE: key = scope ("Proyecto" o "Proyecto/Módulo"), value = el PATH de la
+    /// variable elegida. El path puede apuntar a una entrada del PROPIO scope o a una HEREDADA del
+    /// proyecto padre / de la global — de eso se trata: cada scope ELIGE del pool que ve, sin
+    /// duplicar la variable. Así "Geocontrol/App Mobile" y "Geocontrol/Plataforma" pueden tener
+    /// predeterminados distintos apuntando a dos entradas del MISMO pool de "Geocontrol".
+    ///
+    /// Se guarda el path y no el índice porque el índice se corre al borrar/reordenar entradas.
+    /// </summary>
+    [JsonPropertyName("defaults")] public Dictionary<string, string> Defaults { get; set; } = new();
+
+    /// <summary>Predeterminado del scope GLOBAL (desks sin proyecto). Aparte porque no tiene key de scope.</summary>
+    [JsonPropertyName("shared_default")] public string SharedDefault { get; set; } = "";
 }

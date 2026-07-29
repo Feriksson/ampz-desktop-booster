@@ -52,6 +52,14 @@ public partial class ProjectPathsWindow : Window
         /// </summary>
         public required bool IsBroken { get; init; }
 
+        /// <summary>
+        /// El predeterminado de esta fila existe pero está TAPADO por uno más cercano (caso único:
+        /// estás en un módulo, la fila es del proyecto padre y el módulo ya tiene su propio
+        /// predeterminado). Se pinta con estrella HUECA: sigue siendo el predeterminado del proyecto
+        /// — y va a volver a mandar si borrás el del módulo — pero hoy no es el que dispara.
+        /// </summary>
+        public bool IsShadowed { get; init; }
+
         public bool IsProject   => Scope == RowScope.Project;
         public bool IsSeparator => Scope == RowScope.Separator; // rótulo de sección, no seleccionable
 
@@ -59,9 +67,19 @@ public partial class ProjectPathsWindow : Window
         public bool IsReadOnlyRef => Scope is RowScope.Parent or RowScope.Global or RowScope.Other;
 
         /// <summary>
-        /// Columna Título. El ⭐ del predeterminado se muestra SÓLO en las del proyecto: en esta
-        /// vista el re-press del Win+* dispara el predeterminado DEL PROYECTO, así que marcar una
-        /// global confundiría (su predeterminado sólo aplica cuando estás parado en un desk global).
+        /// ¿Se le puede marcar/desmarcar el predeterminado? CUALQUIER fila que veas en tu contexto:
+        /// la del scope primario, la heredada del proyecto padre y la global. Con el predeterminado
+        /// guardado POR SCOPE, marcar una heredada NO toca al padre — sólo anota, en TU scope, cuál
+        /// de las que ves es la tuya. Por eso ya no hay motivo para prohibirlo.
+        ///
+        /// Se excluyen sólo las de OTROS proyectos (el toggle F4): eso es un modo de exploración
+        /// para encontrar algo suelto, no tu contexto de trabajo.
+        /// </summary>
+        public bool IsDefaultable => Scope is RowScope.Project or RowScope.Parent or RowScope.Global;
+
+        /// <summary>
+        /// Columna Título. ⭐ = es el predeterminado de TU scope (el que dispara con el re-press).
+        /// ☆ hueco = es el del proyecto padre pero está tapado por el tuyo (ver <see cref="IsShadowed"/>).
         /// Va al FINAL del nombre (pedido del usuario): así los títulos quedan alineados a la
         /// izquierda y la marca no desplaza el texto de la fila predeterminada respecto de las demás.
         /// El ⚠ de "roto" se antepone a todo: es la señal más importante de la fila.
@@ -70,7 +88,9 @@ public partial class ProjectPathsWindow : Window
         {
             get
             {
-                string t = IsProject && IsDefault ? Title + " ⭐" : Title;
+                string t = Title;
+                if (IsDefaultable && IsDefault)
+                    t += IsShadowed ? " ☆" : " ⭐";
                 return IsBroken ? "⚠ " + t : t;
             }
         }
@@ -108,18 +128,34 @@ public partial class ProjectPathsWindow : Window
     private readonly string _deskName;
     private readonly string _explorerSeed;
 
+    // Predeterminado POR SCOPE. El store es el dueño; la ventana sólo lee/escribe el de SU scope
+    // (y lee el del padre, para la herencia). null en ambos = no hay ninguno elegido.
+    private readonly ProjectStore? _store;
+    private readonly string _scopeKey;        // "" global, "Proyecto", o "Proyecto/Módulo"
+    private readonly string? _parentScopeKey; // el proyecto, cuando estás en un módulo
+
+    private string? OwnDefault => _store?.GetScopeDefault(_scopeKey);
+    private string? ParentDefault => _parentScopeKey is null ? null : _store?.GetScopeDefault(_parentScopeKey);
+
+    /// <summary>El que realmente dispara: el de tu scope y, si no elegiste, el heredado del padre.</summary>
+    private string? EffectiveDefault => OwnDefault ?? ParentDefault;
+
     /// <summary>Toggle "ver todos los proyectos". OFF por default: arrancás en TU contexto y te abrís al resto a pedido.</summary>
     private bool _showAllProjects;
 
     public ProjectPathsWindow(PathPool pool, string deskName, string explorerSeed = "",
                               PathPool? globalPool = null, IReadOnlyList<PathPool>? otherProjectPools = null,
-                              PathPool? parentPool = null)
+                              PathPool? parentPool = null, ProjectStore? store = null,
+                              string scopeKey = "", string? parentScopeKey = null)
     {
         InitializeComponent();
 
         _pool = pool;
         _globalPool = globalPool;
         _parentPool = parentPool;
+        _store = store;
+        _scopeKey = scopeKey;
+        _parentScopeKey = parentScopeKey;
         _otherProjectPools = otherProjectPools ?? System.Array.Empty<PathPool>();
         _deskName = deskName;
         _explorerSeed = explorerSeed;
@@ -170,13 +206,10 @@ public partial class ProjectPathsWindow : Window
     /// </summary>
     public bool FireDefault()
     {
-        var pool = _pool.DefaultIndex >= 0 ? _pool
-                 : _parentPool?.DefaultIndex >= 0 ? _parentPool
-                 : null;
-        if (pool is null)
+        if (EffectiveDefault is not { } path)
             return false;
 
-        OpenValue(pool.Entries[pool.DefaultIndex].Path, claude: false);
+        OpenValue(path, claude: false);
         Close();
         return true;
     }
@@ -263,16 +296,40 @@ public partial class ProjectPathsWindow : Window
         }
     }
 
-    /// <summary>Filas de una pool que matchean el filtro (busca SOLO en el título, como el legacy).</summary>
-    private static IEnumerable<Row> PoolRows(PathPool pool, RowScope scope, string filter)
+    /// <summary>
+    /// Filas de una pool que matchean el filtro (busca SOLO en el título, como el legacy).
+    ///
+    /// La marca de predeterminado NO sale de la entrada (ya no vive ahí): se resuelve comparando el
+    /// PATH de la fila contra el predeterminado de TU scope y el del padre. Por eso la ⭐ puede caer
+    /// en CUALQUIER sección — incluida la heredada: elegir una variable del proyecto como tu
+    /// predeterminado no la mueve ni la duplica, sólo la apunta desde tu scope.
+    /// </summary>
+    private IEnumerable<Row> PoolRows(PathPool pool, RowScope scope, string filter)
     {
+        string? own = OwnDefault;
+        string? parent = ParentDefault;
+
         var entries = pool.Entries;
         for (int i = 0; i < entries.Count; i++)
         {
             var e = entries[i];
             if (filter != "" && !e.Title.Contains(filter, StringComparison.OrdinalIgnoreCase))
                 continue;
-            yield return new Row { Scope = scope, PoolIndex = i, Title = NormalizeTitle(e.Title), Path = e.Path, IsDefault = e.Default, IsBroken = IsBrokenPath(e.Path) };
+
+            bool isOwn = own is not null && e.Path == own;
+            bool isParent = parent is not null && e.Path == parent;
+
+            yield return new Row
+            {
+                Scope = scope,
+                PoolIndex = i,
+                Title = NormalizeTitle(e.Title),
+                Path = e.Path,
+                IsDefault = isOwn || isParent,
+                // Hueco sólo si es el del PADRE y el tuyo (otro) lo está tapando.
+                IsShadowed = !isOwn && isParent && own is not null,
+                IsBroken = IsBrokenPath(e.Path),
+            };
         }
     }
 
@@ -308,6 +365,9 @@ public partial class ProjectPathsWindow : Window
 
     /// <summary>Fila del PROYECTO seleccionada. Las globales son de solo-lectura acá → null (no mutan).</summary>
     private Row? SelectedProject => Selected is { IsProject: true } row ? row : null;
+
+    /// <summary>Fila a la que SÍ se le puede togglear el predeterminado (ver <see cref="Row.IsDefaultable"/>).</summary>
+    private Row? SelectedDefaultable => Selected is { IsDefaultable: true } row ? row : null;
 
     // ── Teclado ─────────────────────────────────────────────────────────────────
 
@@ -377,11 +437,27 @@ public partial class ProjectPathsWindow : Window
         RefreshList();
     }
 
+    /// <summary>
+    /// Marca/desmarca el predeterminado DE TU SCOPE apuntando a la fila seleccionada, venga de donde
+    /// venga (propia, heredada del proyecto o global). NO toca la entrada ni el scope de origen: por
+    /// eso dos módulos del mismo proyecto pueden elegir dos variables distintas del MISMO pool
+    /// heredado sin pisarse. Re-marcar la que ya era la tuya la desmarca; si había una heredada del
+    /// padre, vuelve a mandar sola.
+    /// </summary>
     private void ToggleDefaultSelected()
     {
-        if (SelectedProject is not { } row) return; // globales: solo-lectura
-        _pool.ToggleDefault(row.PoolIndex);
+        if (SelectedDefaultable is not { } row || _store is null) return;
+
+        bool alreadyMine = OwnDefault == row.Path;
+        _store.SetScopeDefault(_scopeKey, alreadyMine ? null : row.Path);
         RefreshList();
+
+        // RefreshList reconstruye las filas y SelectFirstSelectable manda la selección al tope. Sin
+        // esto, marcar en la sección heredada te devolvía arriba y el siguiente F3 caía sobre OTRA
+        // fila — pisabas un predeterminado sin querer. Re-seleccionamos por (scope, índice de pool),
+        // que es la identidad estable de la fila (el título se re-normaliza, el orden se re-ordena).
+        PathList.SelectedItem = PathList.Items.OfType<Row>()
+            .FirstOrDefault(r => r.Scope == row.Scope && r.PoolIndex == row.PoolIndex);
     }
 
     private void RenameSelected()

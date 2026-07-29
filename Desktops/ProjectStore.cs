@@ -40,7 +40,11 @@ public sealed class ProjectStore
 
     public ProjectData Data => _data;
 
-    public ProjectStore() => _data = Load();
+    public ProjectStore()
+    {
+        _data = Load();
+        MigrateLegacyDefaults(); // predeterminados de la entrada → por scope (una sola vez)
+    }
 
     // ── Sesión: proyecto + módulo activos por desk (efímero) ───────────────────
 
@@ -190,6 +194,7 @@ public sealed class ProjectStore
         string key = ScopeKey(project, module);
         _data.Paths.Remove(key);
         _data.Notes.Remove(key);
+        _data.Defaults.Remove(key); // sin scope no hay predeterminado que resolver
 
         foreach (var idx in _session
                      .Where(kv => string.Equals(kv.Value.Project, project, StringComparison.OrdinalIgnoreCase)
@@ -268,6 +273,87 @@ public sealed class ProjectStore
         global = null;
         parent = null;
         return GetSharedPool();
+    }
+
+    // ── Predeterminado POR SCOPE ───────────────────────────────────────────────
+    // El predeterminado NO es una propiedad de la variable, es una decisión del CONTEXTO en el que
+    // estás parado. Con módulos eso se volvió obligatorio: una entrada del proyecto la ven todos sus
+    // módulos, así que un flag en la entrada hacía que marcarla desde "App Mobile" se la cambiara
+    // también a "Plataforma" (mismo objeto, no propagación). Guardamos el PATH elegido por scope.
+
+    /// <summary>Key de scope para la pool GLOBAL. Vacío: un proyecto nunca puede llamarse así.</summary>
+    public const string GlobalScope = "";
+
+    /// <summary>Path predeterminado de un scope, o null si ese scope no eligió ninguno.</summary>
+    public string? GetScopeDefault(string scopeKey)
+    {
+        string v = scopeKey == GlobalScope
+            ? _data.SharedDefault
+            : _data.Defaults.TryGetValue(scopeKey, out var d) ? d : "";
+        return v == "" ? null : v;
+    }
+
+    /// <summary>Fija (o limpia, con null) el predeterminado de un scope y persiste.</summary>
+    public void SetScopeDefault(string scopeKey, string? path)
+    {
+        if (scopeKey == GlobalScope)
+            _data.SharedDefault = path ?? "";
+        else if (path is null)
+            _data.Defaults.Remove(scopeKey);
+        else
+            _data.Defaults[scopeKey] = path;
+        Save();
+    }
+
+    /// <summary>
+    /// Key de scope del desk: "" si es global, el proyecto, o "Proyecto/Módulo". Es lo que la
+    /// ventana de Variables necesita para saber DÓNDE guardar el predeterminado que marques.
+    /// </summary>
+    public string ResolveScopeKey(string deskName, int deskIdx) =>
+        UseProjectScope(deskName, deskIdx, out var project, out var module)
+            ? ScopeKey(project, module)
+            : GlobalScope;
+
+    /// <summary>
+    /// Key del scope PADRE del que se hereda, o null si no hay (sin módulo, o scope global). Sólo
+    /// existe un nivel de herencia de predeterminado: módulo → proyecto.
+    /// </summary>
+    public string? ResolveParentScopeKey(string deskName, int deskIdx) =>
+        UseProjectScope(deskName, deskIdx, out var project, out var module) && module != ""
+            ? project
+            : null;
+
+    /// <summary>
+    /// Migra los archivos anteriores a los predeterminados por scope: el flag vivía en la entrada
+    /// (<see cref="PathEntry.Default"/>). Corre una sola vez — si ya hay predeterminados por scope,
+    /// no toca nada. Después de migrar LIMPIA los flags viejos para no dejar dos fuentes de verdad.
+    /// </summary>
+    private void MigrateLegacyDefaults()
+    {
+        if (_data.Defaults.Count > 0 || _data.SharedDefault != "") return;
+
+        bool migrated = false;
+
+        foreach (var (key, list) in _data.Paths)
+        {
+            var def = list.FirstOrDefault(e => e.Default);
+            if (def is not null && def.Path != "")
+            {
+                _data.Defaults[key] = def.Path;
+                migrated = true;
+            }
+            foreach (var e in list) e.Default = false;
+        }
+
+        var shared = _data.SharedPaths.FirstOrDefault(e => e.Default);
+        if (shared is not null && shared.Path != "")
+        {
+            _data.SharedDefault = shared.Path;
+            migrated = true;
+        }
+        foreach (var e in _data.SharedPaths) e.Default = false;
+
+        if (migrated) Save(); // sólo escribimos si de verdad había algo que migrar
     }
 
     // ── Notas (mismo dual-scope que las variables) ──────────────────────────────
@@ -365,12 +451,15 @@ public sealed class ProjectStore
         _data.Paths.Remove(name);
         _data.Notes.Remove(name);
         _data.Modules.Remove(name);
+        _data.Defaults.Remove(name);
 
         string prefix = name + ScopeSeparator;
         foreach (var key in _data.Paths.Keys.Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList())
             _data.Paths.Remove(key);
         foreach (var key in _data.Notes.Keys.Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList())
             _data.Notes.Remove(key);
+        foreach (var key in _data.Defaults.Keys.Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList())
+            _data.Defaults.Remove(key);
 
         foreach (var idx in _session
                      .Where(kv => string.Equals(kv.Value.Project, name, StringComparison.OrdinalIgnoreCase))

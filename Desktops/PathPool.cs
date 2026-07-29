@@ -65,16 +65,9 @@ public sealed class PathPool
         _save();
     }
 
-    /// <summary>Marca/desmarca el predeterminado (toggle). Sólo 1 por pool: marcar uno limpia el resto.</summary>
-    public void ToggleDefault(int index)
-    {
-        if (index < 0 || index >= _entries.Count) return;
-        bool wasDefault = _entries[index].Default;
-        foreach (var e in _entries) e.Default = false;
-        _entries[index].Default = !wasDefault;
-        _save();
-    }
-
-    /// <summary>Índice del predeterminado, o -1 si no hay.</summary>
-    public int DefaultIndex => _entries.FindIndex(e => e.Default);
+    // OJO: el PREDETERMINADO ya no vive acá. Antes era un flag por entrada (PathEntry.Default), pero
+    // con módulos una misma entrada del proyecto la ven TODOS sus módulos: marcarla desde uno se la
+    // cambiaba a los demás — no era propagación, era el mismo objeto. Ahora el predeterminado es del
+    // SCOPE (ProjectStore.GetScopeDefault/SetScopeDefault) y guarda el PATH elegido, así dos módulos
+    // pueden apuntar a dos entradas distintas del MISMO pool heredado.
 }

@@ -139,8 +139,27 @@ en la sesión** → scope de proyecto. Cualquier otro caso (MAIN/CONSOLES/MISCS,
 Dentro del scope de proyecto, las **variables heredan**: pool primaria = módulo (si hay), y se
 anexan de SOLO-LECTURA el proyecto padre y la global, en ese orden (el orden de la lista ES el orden
 de cercanía). Así el repo raíz y el Jira del cliente se cargan UNA vez en el proyecto y se ven desde
-todos sus módulos. `FireDefault` respeta lo mismo: gana el predeterminado del módulo, y si no tiene
-uno propio cae al del proyecto.
+todos sus módulos.
+
+### ⚠ El PREDETERMINADO vive en el SCOPE, no en la entrada (no lo vuelvas atrás)
+Originalmente era un flag por entrada (`PathEntry.Default`). Con módulos eso ROMPE: una entrada del
+proyecto la ven TODOS sus módulos, así que marcarla desde "App Mobile" se la cambiaba también a
+"Plataforma" — no era propagación, era **el mismo objeto**. Y el requisito desde el día uno era que
+cada módulo pudiera tener una predeterminada DISTINTA.
+
+Hoy: `ProjectData.Defaults` (key = scope, value = **PATH** elegido) + `SharedDefault` para la global.
+Se guarda el path y no el índice porque el índice se corre al borrar/reordenar.
+`ProjectStore.GetScopeDefault` / `SetScopeDefault`, y `ResolveScopeKey` / `ResolveParentScopeKey`
+le dicen a la ventana dónde anotar.
+
+Consecuencia clave: **el predeterminado de un scope puede APUNTAR a una variable heredada** (del
+proyecto padre o de la global) sin moverla ni duplicarla. Por eso `Row.IsDefaultable` acepta filas
+propias, del padre y globales — se excluyen sólo las de "otros proyectos" (el F4 es exploración, no
+tu contexto). `FireDefault` = el de tu scope, y si no elegiste, el del padre (`EffectiveDefault`).
+La ⭐ marca el tuyo; la **☆ hueca** marca el del padre cuando el tuyo lo tapa.
+
+`MigrateLegacyDefaults` convierte los archivos viejos una sola vez y limpia los flags para no dejar
+dos fuentes de verdad. `PathPool` YA NO sabe nada de predeterminados.
 
 Las **notas NO heredan**: con módulo activo ves las del módulo y punto. Es deliberado — una nota es
 una pizarra de trabajo; mezclarle la del proyecto la volvería un cajón de sastre.
