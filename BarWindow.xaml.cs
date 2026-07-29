@@ -505,15 +505,16 @@ public partial class BarWindow : Window
             // es proporcional de verdad, pero "*" en el módulo reservaría su mitad AUNQUE no haya
             // módulo — por eso el ancho no puede ser estático: depende del estado.
             //
-            //   · Con módulo → 50/50 exacto. El proyecto se alinea a la DERECHA de su mitad y el
-            //     módulo a la IZQUIERDA de la suya, así se encuentran en el centro con la barrita de
-            //     color en el medio: se leen como UNA unidad "Proyecto ▍Módulo" y no como dos datos
-            //     sueltos en esquinas opuestas (ése fue el "guión suelto a media barra" de antes).
+            //   · Con módulo → 50/50 exacto y cada título CENTRADO en su mitad. Como las dos columnas
+            //     "*" reparten el sobrante en partes iguales, el divisor (columna Auto del medio)
+            //     cae exactamente en el centro del bloque: quedan dos celdas simétricas, no un texto
+            //     pegado al otro. Centrar en la celda (y no alinear contra el divisor) hace que el
+            //     largo de un nombre NO corra visualmente al otro.
             //   · Sin módulo → la columna del módulo va a 0 y el proyecto se queda con el 100%,
-            //     CENTRADO en todo el ancho para que no quede un hueco muerto a la derecha.
+            //     CENTRADO en todo el ancho para que no quede un hueco muerto a ningún lado.
             DeskProjectCol.Width = new GridLength(1, GridUnitType.Star);
             DeskModuleCol.Width = hasModule ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-            DeskProjectText.TextAlignment = hasModule ? TextAlignment.Right : TextAlignment.Center;
+            DeskProjectText.TextAlignment = TextAlignment.Center; // centrado en su mitad, o en todo si está solo
         }
         else
         {

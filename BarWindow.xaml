@@ -223,12 +223,16 @@
                             <!-- NEUTRAL a propósito, aunque el módulo tenga color: esta barrita está
                                  ENTRE dos datos, o sea que lee como SEPARADOR. Pintarla del color del
                                  módulo confundía de qué lado pertenece. El color identifica al módulo
-                                 en su TEXTO; el separador sólo separa. -->
+                                 en su TEXTO; el separador sólo separa.
+                                 Margen SIMÉTRICO (8 y 8): las dos columnas "*" ya reparten el sobrante
+                                 en partes iguales, así que la columna del divisor cae centrada — pero
+                                 si sus márgenes fueran desparejos la LÍNEA quedaría corrida adentro de
+                                 su propia celda. Con 8/8 el divisor cae exactamente en el medio. -->
                             <Rectangle Grid.Column="1" x:Name="DeskModuleAccent" Width="1" Height="12"
-                                       Fill="{StaticResource Separator}" Margin="9,0,7,0"
+                                       Fill="{StaticResource Separator}" Margin="8,0"
                                        VerticalAlignment="Center" Visibility="Collapsed" />
                             <TextBlock Grid.Column="2" x:Name="DeskModuleText" Style="{StaticResource WidgetValue}"
-                                       TextAlignment="Left" TextTrimming="CharacterEllipsis" Visibility="Collapsed" />
+                                       TextAlignment="Center" TextTrimming="CharacterEllipsis" Visibility="Collapsed" />
                         </Grid>
                     </Grid>
                     </Border>

@@ -33,17 +33,17 @@
                        FontFamily="Segoe UI" FontSize="20" Foreground="#FFD700"
                        HorizontalAlignment="Center" Margin="0,26,0,0" />
 
-            <!-- Módulo (sub-scope del proyecto). Va DEBAJO del proyecto y con su color propio,
-                 en una píldora con barra lateral: el punto de esta feature es distinguir el módulo
-                 de reflejo, sin leer — el color hace ese trabajo, el texto sólo confirma. -->
+            <!-- Módulo (sub-scope del proyecto). Va DEBAJO del proyecto, en su propia línea y con su
+                 color propio: el punto de esta feature es distinguir el módulo de reflejo, sin leer —
+                 el color hace ese trabajo, el texto sólo confirma.
+                 SIN barrita de acento a la izquierda: acá el módulo está solo en su línea, así que
+                 una barra vertical al costado no lee como acento sino como un "|" pegado al nombre.
+                 En la barra y el DeskPicker sí la lleva, porque ahí va INLINE al lado del proyecto y
+                 hace de separador. Mismo dato, distinta necesidad según el contexto. -->
             <Border x:Name="ModuleChip" HorizontalAlignment="Center" Margin="0,12,0,0"
-                    CornerRadius="6" Padding="12,5" Background="#14FFFFFF">
-                <StackPanel Orientation="Horizontal">
-                    <Rectangle x:Name="ModuleAccent" Width="4" RadiusX="2" RadiusY="2"
-                               Margin="0,0,10,0" />
-                    <TextBlock x:Name="ModuleText" FontFamily="Segoe UI" FontSize="18"
-                               FontWeight="SemiBold" VerticalAlignment="Center" />
-                </StackPanel>
+                    CornerRadius="6" Padding="14,5" Background="#14FFFFFF">
+                <TextBlock x:Name="ModuleText" FontFamily="Segoe UI" FontSize="18"
+                           FontWeight="SemiBold" HorizontalAlignment="Center" />
             </Border>
 
         </StackPanel>
