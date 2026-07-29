@@ -33,6 +33,19 @@
                        FontFamily="Segoe UI" FontSize="20" Foreground="#FFD700"
                        HorizontalAlignment="Center" Margin="0,26,0,0" />
 
+            <!-- Módulo (sub-scope del proyecto). Va DEBAJO del proyecto y con su color propio,
+                 en una píldora con barra lateral: el punto de esta feature es distinguir el módulo
+                 de reflejo, sin leer — el color hace ese trabajo, el texto sólo confirma. -->
+            <Border x:Name="ModuleChip" HorizontalAlignment="Center" Margin="0,12,0,0"
+                    CornerRadius="6" Padding="12,5" Background="#14FFFFFF">
+                <StackPanel Orientation="Horizontal">
+                    <Rectangle x:Name="ModuleAccent" Width="4" RadiusX="2" RadiusY="2"
+                               Margin="0,0,10,0" />
+                    <TextBlock x:Name="ModuleText" FontFamily="Segoe UI" FontSize="18"
+                               FontWeight="SemiBold" VerticalAlignment="Center" />
+                </StackPanel>
+            </Border>
+
         </StackPanel>
     </Border>
 </Window>

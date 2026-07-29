@@ -26,6 +26,12 @@ public sealed class DesktopService
     public Func<int, string>? ProjectLookup { get; set; }
 
     /// <summary>
+    /// Resuelve el MÓDULO activo de un desk (nombre + color). Se inyecta igual que
+    /// <see cref="ProjectLookup"/>, por la misma razón: DesktopService no conoce la persistencia.
+    /// </summary>
+    public Func<int, DeskModule>? ModuleLookup { get; set; }
+
+    /// <summary>
     /// Nombre del desktop por índice. La DLL escribe UTF-8 (no PWSTR en la mayoría de builds);
     /// si sale basura o vacío, caemos a "Desktop N" — mismo fallback que el legacy.
     /// </summary>
@@ -109,6 +115,9 @@ public sealed class DesktopService
 
     /// <summary>Proyecto activo del desktop (vía <see cref="ProjectLookup"/>), o "" si no hay.</summary>
     public string GetProject(int index) => ProjectLookup?.Invoke(index) ?? "";
+
+    /// <summary>Módulo activo del desktop (vía <see cref="ModuleLookup"/>), o <see cref="DeskModule.None"/>.</summary>
+    public DeskModule GetModule(int index) => ModuleLookup?.Invoke(index) ?? DeskModule.None;
 
     /// <summary>Envía una ventana ESPECÍFICA a un desktop por índice; si follow=true salta ahí.</summary>
     public bool SendWindowTo(IntPtr hwnd, int index, bool follow = true)

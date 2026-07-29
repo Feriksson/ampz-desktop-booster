@@ -1,0 +1,55 @@
+<Window x:Class="AmpzDesktopBooster.ModulePickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
+        Title="{loc:Translate Key=Modules.Title}"
+        Width="480" SizeToContent="Height"
+        WindowStyle="None" ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False" Topmost="True"
+        Background="#1E1E1E" UseLayoutRounding="True">
+
+    <Window.Resources>
+        <!-- Cada fila lleva su chip de color a la izquierda: es la MISMA señal cromática que
+             después vas a ver en la barra y en el overlay, así al elegir ya asociás color↔módulo. -->
+        <DataTemplate x:Key="ModuleRowTemplate">
+            <StackPanel Orientation="Horizontal">
+                <Border Width="10" Height="10" CornerRadius="3" Margin="0,0,10,0"
+                        VerticalAlignment="Center" Background="{Binding Accent}" />
+                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+            </StackPanel>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Border BorderBrush="#33FFFFFF" BorderThickness="1" Padding="16">
+        <StackPanel>
+            <TextBlock x:Name="HeaderText" Foreground="#F2F2F2" FontFamily="Segoe UI"
+                       FontSize="14" FontWeight="SemiBold" Margin="0,0,2,2" />
+            <TextBlock x:Name="SubHeaderText" Foreground="#9A9A9A" FontFamily="Segoe UI"
+                       FontSize="11" Margin="0,0,0,10" />
+
+            <!-- MaxLength=23: mismo tope que el nombre de proyecto — juntos entran en la barra. -->
+            <TextBox x:Name="FilterBox" FontFamily="Segoe UI" FontSize="13" MaxLength="23"
+                     Background="#2A2A2A" Foreground="#F2F2F2" BorderBrush="#444"
+                     Padding="6,4" Margin="0,0,0,8" />
+
+            <ListBox x:Name="ModuleList" Height="220"
+                     FontFamily="Segoe UI" FontSize="13"
+                     Background="#161616" Foreground="#E6E6EA" BorderBrush="#333"
+                     ItemTemplate="{StaticResource ModuleRowTemplate}"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+
+            <TextBlock x:Name="EmptyHint" Foreground="#6E6E78" FontFamily="Segoe UI" FontSize="11"
+                       Margin="0,8,0,0" TextWrapping="Wrap" Visibility="Collapsed"
+                       Text="{loc:Translate Key=Modules.Empty}" />
+
+            <TextBlock Foreground="#6E6E78" FontFamily="Segoe UI" FontSize="10" Margin="0,8,0,0"
+                       TextWrapping="Wrap" Text="{loc:Translate Key=Modules.Hint}" />
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                <Button x:Name="NoModuleBtn" Content="{loc:Translate Key=Modules.BtnNone}" Width="130" Height="26" Margin="0,0,8,0" />
+                <Button x:Name="CloseBtn"    Content="{loc:Translate Key=Modules.BtnClose}" Width="90" Height="26" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

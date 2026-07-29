@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Services.Localization;
 
@@ -14,10 +15,14 @@ namespace AmpzDesktopBooster;
 /// </summary>
 public partial class DeskPickerWindow : Window
 {
-    /// <summary>Una fila del picker. ToString define lo que muestra el ListBox.</summary>
-    private sealed record Row(int Idx, string Name, string Project)
+    /// <summary>
+    /// Una fila del picker: desk + proyecto + módulo. Las props derivadas (Accent/Visibility) las
+    /// bindea el DataTemplate — así el XAML no necesita converters para pintar el color del módulo.
+    /// </summary>
+    private sealed record Row(int Idx, string Name, string Project, string Module, string ModuleColor)
     {
-        public override string ToString() => $"{Name}   —   {Project}";
+        public Brush ModuleAccent => new SolidColorBrush(ModulePalette.Parse(ModuleColor));
+        public Visibility ModuleVisibility => Module == "" ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private readonly DesktopService _desktops;
@@ -48,7 +53,8 @@ public partial class DeskPickerWindow : Window
     private void LoadRows()
     {
         _all = _store.SessionEntries()
-            .Select(e => new Row(e.Idx, _desktops.GetName(e.Idx), e.Project))
+            .Select(e => new Row(e.Idx, _desktops.GetName(e.Idx), e.Project, e.Module,
+                                 _store.GetModuleColor(e.Project, e.Module)))
             .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
         RefreshList();
@@ -62,7 +68,8 @@ public partial class DeskPickerWindow : Window
         {
             if (filter == ""
                 || r.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
-                || r.Project.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                || r.Project.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                || r.Module.Contains(filter, StringComparison.OrdinalIgnoreCase))
                 DeskList.Items.Add(r);
         }
         EmptyHint.Visibility = _all.Count == 0 ? Visibility.Visible : Visibility.Collapsed;

@@ -33,7 +33,7 @@ public partial class ProjectPathsWindow : Window
     /// pool compartida anexada en scope de proyecto; Other es OTRO proyecto traído por el toggle "ver
     /// todos los proyectos". Separator = rótulo de sección, no seleccionable.
     /// </remarks>
-    private enum RowScope { Project, Global, Other, Separator }
+    private enum RowScope { Project, Parent, Global, Other, Separator }
 
     /// <summary>Fila visible. Indexa a la entry real de SU pool por <see cref="PoolIndex"/>.</summary>
     private sealed class Row
@@ -55,8 +55,8 @@ public partial class ProjectPathsWindow : Window
         public bool IsProject   => Scope == RowScope.Project;
         public bool IsSeparator => Scope == RowScope.Separator; // rótulo de sección, no seleccionable
 
-        /// <summary>Fila de SOLO-LECTURA (global u otro proyecto): se atenúa y no se puede mutar.</summary>
-        public bool IsReadOnlyRef => Scope == RowScope.Global || Scope == RowScope.Other;
+        /// <summary>Fila de SOLO-LECTURA (heredada del proyecto padre, global u otro proyecto).</summary>
+        public bool IsReadOnlyRef => Scope is RowScope.Parent or RowScope.Global or RowScope.Other;
 
         /// <summary>
         /// Columna Título. El ⭐ del predeterminado se muestra SÓLO en las del proyecto: en esta
@@ -103,6 +103,7 @@ public partial class ProjectPathsWindow : Window
 
     private readonly PathPool _pool;
     private readonly PathPool? _globalPool; // no-null en scope de proyecto: se anexa de solo-lectura
+    private readonly PathPool? _parentPool; // no-null en scope de MÓDULO: el proyecto del que hereda
     private readonly IReadOnlyList<PathPool> _otherProjectPools; // los demás proyectos (toggle F4), read-only
     private readonly string _deskName;
     private readonly string _explorerSeed;
@@ -111,12 +112,14 @@ public partial class ProjectPathsWindow : Window
     private bool _showAllProjects;
 
     public ProjectPathsWindow(PathPool pool, string deskName, string explorerSeed = "",
-                              PathPool? globalPool = null, IReadOnlyList<PathPool>? otherProjectPools = null)
+                              PathPool? globalPool = null, IReadOnlyList<PathPool>? otherProjectPools = null,
+                              PathPool? parentPool = null)
     {
         InitializeComponent();
 
         _pool = pool;
         _globalPool = globalPool;
+        _parentPool = parentPool;
         _otherProjectPools = otherProjectPools ?? System.Array.Empty<PathPool>();
         _deskName = deskName;
         _explorerSeed = explorerSeed;
@@ -159,13 +162,21 @@ public partial class ProjectPathsWindow : Window
     private void UpdateAllProjectsBtn() =>
         AllProjectsBtn.Content = Loc.T(_showAllProjects ? "Paths.BtnAllProjectsOn" : "Paths.BtnAllProjectsOff");
 
-    /// <summary>Dispara el predeterminado del pool (lo llama el router al re-presionar Win+*).</summary>
+    /// <summary>
+    /// Dispara el predeterminado (lo llama el router al re-presionar Win+*). Respeta la herencia:
+    /// el predeterminado del scope PRIMARIO gana, y si el módulo no tiene uno propio cae al del
+    /// PROYECTO padre. Así un módulo recién creado ya te abre lo del cliente sin configurar nada,
+    /// y en cuanto le marcás su propio predeterminado (su localhost) el suyo pisa al heredado.
+    /// </summary>
     public bool FireDefault()
     {
-        int di = _pool.DefaultIndex;
-        if (di < 0)
+        var pool = _pool.DefaultIndex >= 0 ? _pool
+                 : _parentPool?.DefaultIndex >= 0 ? _parentPool
+                 : null;
+        if (pool is null)
             return false;
-        OpenValue(_pool.Entries[di].Path, claude: false);
+
+        OpenValue(pool.Entries[pool.DefaultIndex].Path, claude: false);
         Close();
         return true;
     }
@@ -178,7 +189,21 @@ public partial class ProjectPathsWindow : Window
         // 1) Las del proyecto (operables), agrupadas por tipo (carpetas / URLs).
         AddGroupedByType(PoolRows(_pool, RowScope.Project, filter).ToList());
 
-        // 2) En scope de proyecto anexamos las GLOBALES de solo-lectura bajo un separador, para no
+        // 2) En scope de MÓDULO anexamos las del PROYECTO PADRE, de solo-lectura. Es la herencia:
+        //    lo que es del cliente (repo raíz, Jira, VPN) se carga UNA vez en el proyecto y se ve
+        //    desde todos sus módulos, sin duplicarlo en cada uno. Va antes que las globales porque
+        //    está más cerca de tu scope: el orden de la lista ES el orden de cercanía.
+        if (_parentPool is not null)
+        {
+            var parents = PoolRows(_parentPool, RowScope.Parent, filter).ToList();
+            if (parents.Count > 0)
+            {
+                PathList.Items.Add(SeparatorRow(_parentPool.Label));
+                AddGroupedByType(parents);
+            }
+        }
+
+        // 3) En scope de proyecto anexamos las GLOBALES de solo-lectura bajo un separador, para no
         //    quedar ciegos a las compartidas. El separador entra SÓLO si hay alguna que matchee el
         //    filtro (si no, no ensuciamos la lista con un rótulo de sección vacío). También se agrupan
         //    por tipo dentro de su sección.
@@ -192,7 +217,7 @@ public partial class ProjectPathsWindow : Window
             }
         }
 
-        // 3) Toggle "todos los proyectos": cada OTRO proyecto bajo su propio separador (su nombre),
+        // 4) Toggle "todos los proyectos": cada OTRO proyecto bajo su propio separador (su nombre),
         //    de SOLO-LECTURA. El separador entra sólo si ese proyecto tiene alguna fila que matchee
         //    el filtro — así, filtrando, sólo ves los proyectos que realmente tienen algo. Esto es lo
         //    que te deja "encontrar una variable de cualquier proyecto" tipeando un fragmento.

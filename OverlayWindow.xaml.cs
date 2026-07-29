@@ -76,6 +76,21 @@ public partial class OverlayWindow : Window
         ProjectText.Text = project;
         ProjectText.Visibility = string.IsNullOrEmpty(project) ? Visibility.Collapsed : Visibility.Visible;
 
+        // Módulo: sólo tiene sentido con proyecto arriba (sin proyecto no hay sub-scope posible).
+        // El texto va PINTADO con el color del módulo, no sólo la barrita: duplicar la señal en dos
+        // elementos es lo que la hace legible de reflejo, que es todo el punto de la feature.
+        var module = string.IsNullOrEmpty(project) ? DeskModule.None : desktops.GetModule(index);
+        if (module.IsSet)
+        {
+            var accent = new SolidColorBrush(module.Accent);
+            ModuleText.Text = module.Name;
+            ModuleText.Foreground = accent;
+            ModuleAccent.Fill = accent;
+            ModuleChip.Visibility = Visibility.Visible;
+        }
+        else
+            ModuleChip.Visibility = Visibility.Collapsed;
+
         BuildDots(count, index, desktops);
 
         // Posicionamiento tentativo ANTES de mostrar, para que no aparezca en 0,0 y salte.

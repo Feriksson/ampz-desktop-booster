@@ -16,6 +16,7 @@ namespace AmpzDesktopBooster;
 public partial class ProjectSetterWindow : Window
 {
     private readonly int _deskIdx;
+    private readonly string _deskName;
     private readonly ProjectStore _store;
     private readonly Action _onChanged;
 
@@ -24,6 +25,7 @@ public partial class ProjectSetterWindow : Window
         InitializeComponent();
 
         _deskIdx = deskIdx;
+        _deskName = deskName;
         _store = store;
         _onChanged = onChanged;
 
@@ -113,6 +115,18 @@ public partial class ProjectSetterWindow : Window
 
         _store.SetDeskProject(_deskIdx, name);
         _onChanged();
+
+        // ── SEGUNDO PASO: el módulo ──
+        // Un proyecto puede tener sub-scopes ("Geocontrol" → "Plataforma" / "App Mobile"). Encadenar
+        // el picker acá es lo que hace la feature DESCUBRIBLE: si dependiera sólo del atajo dedicado
+        // (Win+NumpadDot), quien no lo conozca nunca sabría que los módulos existen. Es opcional:
+        // Esc en el picker deja el desk en el proyecto pelado, exactamente como antes.
+        //
+        // Abrimos ANTES de cerrarnos a propósito: así el foreground pasa directo de una ventana real
+        // a otra y NO abrimos el hueco de foco huérfano que cuelga el hook de teclado (ver CLAUDE.md,
+        // "el FOCO HUÉRFANO cuelga el hook").
+        var picker = new ModulePickerWindow(_deskIdx, _deskName, name, _store, _onChanged);
+        picker.ShowFocused();
         Close();
     }
 

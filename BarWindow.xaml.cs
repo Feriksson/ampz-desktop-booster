@@ -23,6 +23,12 @@ public partial class BarWindow : Window
 {
     private readonly SystemMonitor _monitor = new();
     private readonly WidgetSettings _settings = WidgetSettings.Load();
+
+    // IPs (LAN + pública). NO va en el tick de 1s como el resto de las métricas: la local es barata
+    // pero la pública es una consulta de RED — se maneja por eventos del SO + un poll largo, todo
+    // adentro del servicio. Corre SIEMPRE, esté el widget prendido o no: el aviso de "te cambió la IP
+    // pública" (VPN, reconexión del ISP) vale por sí solo aunque no tengas el widget a la vista.
+    private IpMonitor? _ips;
     private AppBarManager? _appBar;
     private FullscreenWatcher? _fullscreen;
     private TrayIconService? _tray;
@@ -63,6 +69,11 @@ public partial class BarWindow : Window
 
         // Click en el widget de tarea activa → el detalle (lo rutea App al router).
         TaskWidget.MouseLeftButtonUp += (_, _) => OnTaskWidgetClicked?.Invoke();
+
+        // Click en cada IP → al portapapeles. Mirás una IP para PEGARLA en algún lado; obligarte a
+        // transcribirla a mano desde la barra sería tener el dato y no el uso.
+        IpLocalText.MouseLeftButtonUp += (_, _) => CopyIp(_ips?.Current.Local, Loc.T("Bar.IpLocalTooltip"));
+        IpPublicText.MouseLeftButtonUp += (_, _) => CopyIp(_ips?.Current.Public, Loc.T("Bar.IpPublicTooltip"));
 
         SourceInitialized += OnSourceInitialized;
         Closing += OnClosing;
@@ -129,6 +140,54 @@ public partial class BarWindow : Window
 
         // Primera muestra inmediata (devuelve 0 en CPU/red por el baseline, es esperado).
         UpdateMetrics();
+
+        // Monitor de IPs. Se arranca acá (ya hay Dispatcher y HWND) y se libera en OnClosing.
+        _ips = new IpMonitor(Dispatcher);
+        _ips.Changed += OnIpsChanged;
+        _ips.Start();
+        RenderIps(); // pinta los "···" hasta que resuelva
+    }
+
+    /// <summary>
+    /// Cambió alguna IP: repintamos y, si corresponde, avisamos por toast.
+    ///
+    /// El aviso se filtra a propósito. La PRIMERA resolución (de null a un valor) NO es una novedad,
+    /// es el arranque de la app — toastear ahí sería ruido en cada login. Sólo avisamos cuando había
+    /// un valor ANTERIOR y pasó a ser otro: eso sí es el evento que importa (levantaste la VPN, te
+    /// reconectó el ISP, saltaste de WiFi a cable). La pública lleva más jerarquía que la local
+    /// porque es la que suele romperte accesos remotos sin que te enteres.
+    /// </summary>
+    private void OnIpsChanged(IpSnapshot prev, IpSnapshot now)
+    {
+        RenderIps();
+
+        if (prev.Public is not null && now.Public is not null && prev.Public != now.Public)
+            Toasts.Info($"🌐  {Loc.T("Toast.PublicIpChanged")}", $"{prev.Public}  →  {now.Public}");
+
+        if (prev.Local is not null && now.Local is not null && prev.Local != now.Local)
+            Toasts.Info($"🖧  {Loc.T("Toast.LocalIpChanged")}", $"{prev.Local}  →  {now.Local}");
+    }
+
+    /// <summary>Vuelca el snapshot actual a los dos TextBlock. "···" = todavía sin resolver.</summary>
+    private void RenderIps()
+    {
+        if (!_settings.Ip) return; // widget apagado: el monitor sigue vivo (para los toasts), la UI no
+
+        var s = _ips?.Current ?? IpSnapshot.Empty;
+        IpLocalText.Text = s.Local ?? "···";
+        IpPublicText.Text = s.Public ?? "···";
+    }
+
+    /// <summary>Copia una IP al portapapeles con confirmación. Sin IP resuelta todavía, no hace nada.</summary>
+    private static void CopyIp(string? ip, string what)
+    {
+        if (string.IsNullOrEmpty(ip)) return;
+        try
+        {
+            Clipboard.SetText(ip);
+            Toasts.Info($"📋  {ip}", what);
+        }
+        catch { /* el portapapeles lo puede tener tomado otra app: no vale un crash */ }
     }
 
     /// <summary>Un widget se prendió/apagó desde el tray: persistimos y re-aplicamos.</summary>
@@ -160,7 +219,10 @@ public partial class BarWindow : Window
         CpuWidget.Visibility = Vis(_settings.Cpu);
         RamWidget.Visibility = Vis(_settings.Ram);
         NetworkWidget.Visibility = Vis(_settings.Network);
+        IpWidget.Visibility = Vis(_settings.Ip);
         BatteryWidget.Visibility = Vis(batteryVisible);
+
+        RenderIps(); // al re-prenderlo desde el tray, que muestre el último valor sin esperar red
 
         FixUpSeparators();
     }
@@ -170,7 +232,11 @@ public partial class BarWindow : Window
     {
         var blocks = new (UIElement Widget, Rectangle Separator)[]
         {
+            // ⚠ Este orden debe COINCIDIR con el orden visual del XAML: de él sale qué widget es el
+            // "primero visible" (el único que NO lleva separador a la izquierda). Si movés un bloque
+            // en el XAML, movelo también acá o vas a ver un separador colgando en el borde.
             (CpuWidget, CpuSeparator),
+            (IpWidget, IpSeparator),
             (UsageWidget, UsageSeparator),   // siempre visible: va a la izquierda de la RAM
             (RamWidget, RamSeparator),
             (NetworkWidget, NetworkSeparator),
@@ -399,9 +465,10 @@ public partial class BarWindow : Window
 
     /// <summary>
     /// Actualiza el widget de desktop (a la derecha del todo): dot coloreado por tipo de desk,
-    /// nombre, y proyecto en gold (oculto si no hay). Lo llama el listener al cambiar de desktop.
+    /// nombre, proyecto en gold (oculto si no hay) y, si el desk tiene un MÓDULO activo, su nombre
+    /// pintado con el color propio del módulo. Lo llama el listener al cambiar de desktop.
     /// </summary>
-    public void UpdateDesk(string name, string project)
+    public void UpdateDesk(string name, string project, DeskModule module = default)
     {
         var dot = new SolidColorBrush(DeskPalette.For(name).Active);
 
@@ -418,6 +485,35 @@ public partial class BarWindow : Window
             DeskDotDual.Fill = dot;
             DeskNameDual.Text = name;
             DeskProjectText.Text = project; // puede estar vacío: el espacio queda reservado igual
+
+            // Módulo: sin proyecto no puede haber sub-scope → ni lo evaluamos.
+            bool hasModule = project != "" && module.IsSet;
+            if (hasModule)
+            {
+                // Sólo el TEXTO toma el color del módulo. La barrita de al lado queda neutral (se
+                // pinta en el XAML): está entre dos datos, así que lee como separador — teñirla del
+                // color del módulo confundía a cuál de los dos pertenece.
+                DeskModuleText.Text = module.Name;
+                DeskModuleText.Foreground = new SolidColorBrush(module.Accent);
+            }
+            DeskModuleText.Visibility = hasModule ? Visibility.Visible : Visibility.Collapsed;
+            DeskModuleAccent.Visibility = hasModule ? Visibility.Visible : Visibility.Collapsed;
+
+            // ── Reparto del espacio: se decide ACÁ, no en el XAML ──
+            // Con topes fijos en el XAML el reparto quedaba desparejo (150/110 = 58/42, no 50/50) y
+            // el módulo se cortaba mientras al proyecto le sobraba aire. Con columnas "*" el reparto
+            // es proporcional de verdad, pero "*" en el módulo reservaría su mitad AUNQUE no haya
+            // módulo — por eso el ancho no puede ser estático: depende del estado.
+            //
+            //   · Con módulo → 50/50 exacto. El proyecto se alinea a la DERECHA de su mitad y el
+            //     módulo a la IZQUIERDA de la suya, así se encuentran en el centro con la barrita de
+            //     color en el medio: se leen como UNA unidad "Proyecto ▍Módulo" y no como dos datos
+            //     sueltos en esquinas opuestas (ése fue el "guión suelto a media barra" de antes).
+            //   · Sin módulo → la columna del módulo va a 0 y el proyecto se queda con el 100%,
+            //     CENTRADO en todo el ancho para que no quede un hueco muerto a la derecha.
+            DeskProjectCol.Width = new GridLength(1, GridUnitType.Star);
+            DeskModuleCol.Width = hasModule ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+            DeskProjectText.TextAlignment = hasModule ? TextAlignment.Right : TextAlignment.Center;
         }
         else
         {
@@ -573,6 +669,7 @@ public partial class BarWindow : Window
     {
         _timer?.Stop();
         _fullscreen?.Dispose(); // paramos el poll de fullscreen
+        _ips?.Dispose();        // desuscribe NetworkAddressChanged y frena los timers/HttpClient
         if (_usage is not null) _usage.Updated -= ApplyUsage; // el servicio lo dispone App, acá sólo desuscribimos
         _tray?.Dispose();      // sacamos el ícono de la bandeja
         _appBar?.Unregister(); // CRÍTICO: liberar el espacio reservado en Windows.

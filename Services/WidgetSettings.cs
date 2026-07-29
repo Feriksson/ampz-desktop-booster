@@ -12,6 +12,7 @@ public enum WidgetKind
     Ram,
     Network,
     Battery,
+    Ip,
 }
 
 /// <summary>
@@ -28,6 +29,10 @@ public sealed class WidgetSettings
     public bool Network { get; set; } = false;
     public bool Battery { get; set; } = false;
 
+    // IPs (LAN + pública). Default ON: es info que se consulta a menudo y que hoy obliga a abrir una
+    // terminal o una web. Un widget que hay que ir a descubrir en el tray no resuelve ese problema.
+    public bool Ip { get; set; } = true;
+
     // ---- Acceso genérico por enum: permite que el tray sea agnóstico del orden ----
 
     public bool Get(WidgetKind kind) => kind switch
@@ -38,6 +43,7 @@ public sealed class WidgetSettings
         WidgetKind.Ram => Ram,
         WidgetKind.Network => Network,
         WidgetKind.Battery => Battery,
+        WidgetKind.Ip => Ip,
         _ => false,
     };
 
@@ -51,6 +57,7 @@ public sealed class WidgetSettings
             case WidgetKind.Ram: Ram = value; break;
             case WidgetKind.Network: Network = value; break;
             case WidgetKind.Battery: Battery = value; break;
+            case WidgetKind.Ip: Ip = value; break;
         }
     }
 

@@ -23,6 +23,7 @@ public sealed class TrayIconService : IDisposable
         (WidgetKind.Cpu,     "Tray.WidgetCpu"),
         (WidgetKind.Ram,     "Tray.WidgetRam"),
         (WidgetKind.Network, "Tray.WidgetNetwork"),
+        (WidgetKind.Ip,      "Tray.WidgetIp"),
         (WidgetKind.Battery, "Tray.WidgetBattery"),
     };
 

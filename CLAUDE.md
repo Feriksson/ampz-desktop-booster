@@ -110,12 +110,42 @@ Esto confunde si no lo tenés claro:
 **Regla de oro (del legacy): la sesión NUNCA se rellena del INI al arrancar.** Ver proyectos de ayer
 sin confirmar sería confuso. El INI solo alimenta el setter, no la sesión activa.
 
-### 3. Dual-scope de variables y notas
-`ProjectStore.ResolvePool` / `GetNotes`: si el desk es un `DESK +N` **con proyecto activo en la
-sesión** → usa el pool/notas DE ESE PROYECTO. Cualquier otro caso (MAIN/CONSOLES/MISCS, o DESK+ sin
-proyecto) → usa el pool/notas **GLOBAL compartido**. Mismo criterio en `UseProjectScope`.
+### 3. MÓDULOS: sub-scopes de un proyecto (`ModuleEntry` + `ModulePalette`)
+Un mismo cliente puede ocupar varios desks (Geocontrol → "Plataforma" y "App Mobile"). Un módulo
+**NO es un proyecto hermano**: sus variables/notas viven bajo la key compuesta `"Proyecto/Módulo"`
+(`ProjectStore.ScopeKey`), lo que deja el shape del JSON intacto y hace que TODO lo que ya operaba
+sobre una key de proyecto funcione igual sobre una de módulo, sin ramas nuevas. El `/` está
+prohibido en los nombres (`ProjectStore.Sanitize`) para que la key nunca sea ambigua al partirla.
 
-### 4. Gobierno de ventanas (`WindowGovernor`)
+La sesión pasó de `desk → string` a `desk → DeskAssignment(Project, Module)`. Cambiar de proyecto
+LIMPIA el módulo (arrastrar "Plataforma" al cliente siguiente sería la confusión que vinimos a matar);
+re-confirmar el MISMO proyecto lo conserva. El INI suma la sugerencia `desk_N_module`.
+
+**Cada módulo lleva un COLOR propio** (auto-asignado de `ModulePalette`, ciclable con F3 en el
+picker) y se pinta en overlay, barra y DeskPicker. Esto no es cosmética: la feature nació porque el
+usuario le ERRABA de módulo al cambiar de pantalla — el texto obliga a leer, el color se percibe de
+reflejo. La paleta esquiva a propósito el dorado de `DESK +N` y el verde de MAIN.
+
+Gestión por dos caminos, a propósito: **2do paso del setter** (`Win+NumpadEnter` → confirmás
+proyecto → aparece el picker) lo hace DESCUBRIBLE, y **`Win+NumpadDot`** cambia sólo el módulo sin
+re-elegir proyecto (el uso frecuente). Sólo el atajo dedicado sería invisible; sólo el 2do paso te
+obligaría a re-tipear el proyecto cada vez que rotás.
+
+### 4. Scope de variables y notas — herencia de TRES niveles
+`ProjectStore.ResolvePoolWithGlobal` / `GetNotes`: si el desk es un `DESK +N` **con proyecto activo
+en la sesión** → scope de proyecto. Cualquier otro caso (MAIN/CONSOLES/MISCS, o DESK+ sin proyecto)
+→ pool/notas **GLOBAL compartido**. Criterio único en `UseProjectScope`.
+
+Dentro del scope de proyecto, las **variables heredan**: pool primaria = módulo (si hay), y se
+anexan de SOLO-LECTURA el proyecto padre y la global, en ese orden (el orden de la lista ES el orden
+de cercanía). Así el repo raíz y el Jira del cliente se cargan UNA vez en el proyecto y se ven desde
+todos sus módulos. `FireDefault` respeta lo mismo: gana el predeterminado del módulo, y si no tiene
+uno propio cae al del proyecto.
+
+Las **notas NO heredan**: con módulo activo ves las del módulo y punto. Es deliberado — una nota es
+una pizarra de trabajo; mezclarle la del proyecto la volvería un cajón de sastre.
+
+### 5. Gobierno de ventanas (`WindowGovernor`)
 Motor de enforcement que escucha `EVENT_OBJECT_SHOW` (vía `WinEventHook`) + el cambio de desk:
 - **Pin**: proceso anclado que aparece fuera de su desk → se mueve ahí y se maximiza.
 - **Restricción**: desk restringido solo admite apps de su whitelist; el resto va a MAIN.
@@ -132,11 +162,11 @@ legacy guardaba en `A_ScriptDir`; esto se modernizó para que la app sea compart
 
 | Archivo | Formato | Contenido |
 |---|---|---|
-| `desk_project_data.json` | JSON | Catálogo durable: `history`, `notes`, `paths` (por proyecto), `shared_notes`, `shared_paths`. |
-| `settings.ini` | INI custom | `[Projects]` sugerencias, `[Pins]` `proc.exe=idx`, `[Restricted]` `idx=1`, `[Whitelist_IDX]` `proc.exe=1`. |
+| `desk_project_data.json` | JSON | Catálogo durable: `history`, `notes`, `paths` (key = proyecto **o** `"Proyecto/Módulo"`), `modules` (sub-scopes + color, por proyecto), `shared_notes`, `shared_paths`, `folder_notes`. |
+| `settings.ini` | INI custom | `[Projects]` sugerencias (`desk_N` y `desk_N_module`), `[Pins]` `proc.exe=idx`, `[Restricted]` `idx=1`, `[Whitelist_IDX]` `proc.exe=1`. |
 | `desktops.json` | JSON | `DesktopConfig`: lista `managed` + flag `autoCreate`. |
 | `apps.json` | JSON | `AppsConfig`: apps de usuario (`name`, `exePath`, `args` con `{path}`). |
-| `widgets.json` | JSON | `WidgetSettings`: qué widgets de la barra están activos (defaults: Clock + Ram). |
+| `widgets.json` | JSON | `WidgetSettings`: qué widgets de la barra están activos (defaults: Clock + Ram + Ip). |
 | `ports.json` | JSON | `PortStore`: catálogo GLOBAL de puertos/servicios locales (`title` + `port`). Estado/URL/proceso NO se persisten — se derivan en vivo. |
 | `ampz-crash.log` | texto | Junto al **exe** (no en APPDATA). Log de excepciones no manejadas. |
 
@@ -161,7 +191,8 @@ del hook no se puede bloquear).
 | `Win+Numpad 1/2/3` | Ir a MAIN / CONSOLES / MISCS (fila inferior, la más cómoda) |
 | `Win+Numpad 4..9` | Ir a DESK +1 … +6 |
 | `Win+Shift+`(navegación) | Enviar la ventana activa a ese desk **y seguirla** |
-| `Win+NumpadEnter` | Setear el proyecto del desk actual (solo en `DESK +N`) |
+| `Win+NumpadEnter` | Setear el proyecto del desk actual (solo en `DESK +N`) → encadena el picker de **módulo** |
+| `Win+Numpad .` (Del) | **Módulo** del desk: cambia sólo el sub-scope sin re-elegir proyecto (re-press → sin módulo) |
 | `NumpadClear` (Numpad5, **sin Win**) | Abrir el **DeskPicker** (saltar a un proyecto de la sesión) |
 | `Win+Numpad *` | **Variables** del proyecto/global (Paths Manager); re-press dispara el predeterminado |
 | `Win+Numpad /` | **Notas** del proyecto/global |
@@ -194,6 +225,15 @@ abierta NO abre otra (Variables dispara el path predeterminado; Notas la trae al
 - `SystemMonitor` — snapshot inmutable de CPU/RAM/batería/red vía `NativeMethods`
   (`GetSystemTimes`, `GlobalMemoryStatusEx`, `GetSystemPowerStatus`, `NetworkInterface`).
   No sabe NADA de UI; la barra lo consume. La 1ra muestra de CPU/red da 0 (necesita delta).
+- `IpMonitor` — IP de LAN (`LocalIp`, local y sincrónica) + IP PÚBLICA (GET a un servicio de eco de
+  IP: `api.ipify.org` con dos fallbacks). Dispara `Changed(prev, next)` sólo cuando cambia de verdad.
+  **La cadencia es lo importante**: la pública NO se pollea seguido (sería maleducado con un tercero
+  y te gana un rate-limit; además casi nunca cambia sola). El disparador principal es
+  `NetworkChange.NetworkAddressChanged` — VPN arriba/abajo, cambio de red — **debounceado 4s** porque
+  el SO manda varias notificaciones seguidas y el direccionamiento tarda en asentar (consultar en la
+  primera devuelve la IP VIEJA). El timer de 15min queda sólo de RED, para el caso en que el ISP
+  rote la IP sin que la interfaz local se entere. Valida que la respuesta PARSEE como IP: un portal
+  cautivo de WiFi público devuelve HTML con 200 OK y sin ese chequeo lo pintaríamos en la barra.
 - `Toasts` — notificaciones propias (movido por pin/restricción, pin/unpin, etc.).
 - `AppIcon` — extracción de íconos de exes.
 
@@ -288,6 +328,21 @@ mantenía vivo el hook.
   **`ReinstallHook` DIFERIDO**: reinstalar DESPUÉS de que el cierre se asentó restaura la entrega
   aunque el foco quede huérfano. Reinstalar INMEDIATO en el `Closed` (sin diferir) NO alcanza — fue el
   primer intento fallido.
+
+**3. La red anti-foco-huérfano le ROBABA el foco a la ventana ENCADENADA.**
+Síntoma: el setter de proyecto (`Win+NumpadEnter`) abre el picker de módulo y se cierra; el picker
+aparecía al frente pero SIN foco de teclado — había que clickearlo.
+- **Causa**: `RestoreForegroundOrDesktop` considera inválido CUALQUIER foreground de nuestro propio
+  proceso (así cubre el caso de que sólo quede la barra) → 80ms después del cierre del setter le
+  arrancaba el foreground al picker recién abierto y se lo daba a otra app. La ventana seguía al
+  frente por ser `Topmost`, pero muerta de teclado. **Bug LATENTE desde siempre**: no se veía porque
+  ninguna ventana utilitaria encadenaba a otra — apareció con la primera que lo hizo.
+- **Fix**: guard en `App.HasFocusedUtilityWindow()` — si el foreground YA es una ventana utilitaria
+  nuestra, el foco no está huérfano y la restauración NO corre. Excluye barra y overlay a propósito
+  (ninguna toma foco de teclado: la AppBar no es activable y el overlay es `WS_EX_NOACTIVATE`), así
+  que si el foreground fuera una de ellas el foco sí estaría perdido y la red debe disparar igual.
+  El `ReinstallHook` se mantiene SIEMPRE (es idempotente y cubre el caso del foco realmente en el aire).
+- **NO lo "simplifiques"**: cualquier ventana futura que abra a otra y se cierre depende de este guard.
 
 **Regla transversal**: estos bugs de hook/foco se cazan SIEMPRE con instrumentación a archivo + el
 usuario reproduciendo y observando el PATRÓN, NUNCA con teoría. Las teorías "lindas" fallaron varias

@@ -60,6 +60,8 @@ public sealed class HotkeyRouter
     private HzWindow? _hzWindow;
     // Setter de proyecto abierto (Win+NumpadEnter). Instancia única: re-press RESETEA el desk.
     private ProjectSetterWindow? _setterWindow;
+    // Picker de módulo abierto (Win+NumpadDot). Instancia única: re-press deja el desk SIN módulo.
+    private ModulePickerWindow? _moduleWindow;
     // Popup de puertos/servicios locales abierto (Win+Numpad+). Instancia única, scope GLOBAL (no
     // depende del desk) → re-press SOLO la trae al frente (no dispara nada, como Notas).
     private PortsWindow? _portsWindow;
@@ -257,6 +259,7 @@ public sealed class HotkeyRouter
         {
             case NumpadKey.Subtract: ShowSendWindowPicker();  return; // Win+NumpadSub (antes Win+NumpadDel)
             case NumpadKey.Enter:    ShowProjectSetter();     return;
+            case NumpadKey.Decimal:  ShowModulePicker();      return; // Win+NumpadDel (módulo del desk)
             case NumpadKey.Multiply: ShowProjectPaths();      return;
             case NumpadKey.Divide:   ShowProjectNotes();      return;
             case NumpadKey.Add:      ShowPorts();             return; // Win+Numpad+ (puertos/servicios locales)
@@ -332,6 +335,42 @@ public sealed class HotkeyRouter
         _setterWindow.ShowFocused();
     }
 
+    /// <summary>
+    /// Win+NumpadDot (Del): cambia SÓLO el módulo del desk actual, sin re-elegir proyecto. Es el
+    /// atajo del uso frecuente — rotás de "Plataforma" a "App Mobile" del mismo cliente sin pasar
+    /// por el setter. El camino completo (proyecto → módulo) sigue siendo Win+NumpadEnter.
+    ///
+    /// Sin proyecto en el desk no hay nada que sub-dividir: en vez de abrir una ventana vacía,
+    /// mandamos al setter de proyecto, que es lo que realmente hace falta primero.
+    /// </summary>
+    private void ShowModulePicker()
+    {
+        int idx = _desktops.Current;
+        string name = _desktops.GetName(idx);
+
+        if (!name.Contains("DESK +", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        string project = _projects.GetDeskProject(idx);
+        if (project == "")
+        {
+            ShowProjectSetter(); // no hay proyecto todavía → arrancá por ahí
+            return;
+        }
+
+        // Re-press con el picker abierto → deja el desk en el proyecto PELADO y cierra. Mismo patrón
+        // de instancia única que el setter (re-press = resetear el scope de esta capa).
+        if (_moduleWindow is not null)
+        {
+            _moduleWindow.ClearAndClose();
+            return;
+        }
+
+        _moduleWindow = new ModulePickerWindow(idx, name, project, _projects, _refreshCurrentDesk);
+        _moduleWindow.Closed += (_, _) => _moduleWindow = null;
+        _moduleWindow.ShowFocused();
+    }
+
     private void ShowProjectPaths()
     {
         int idx = _desktops.Current;
@@ -350,18 +389,23 @@ public sealed class HotkeyRouter
         _pathsWindow?.Close();
 
         string name = _desktops.GetName(idx);
-        // dual-scope: pool primaria (proyecto o global) + la global de SOLO-LECTURA para anexar
-        // cuando estamos en scope de proyecto (globalPool == null en scope global → no se anexa nada).
-        var pool = _projects.ResolvePoolWithGlobal(name, idx, out var globalPool);
+        // Herencia de tres niveles: pool primaria (módulo, proyecto o global) + las HEREDADAS de
+        // solo-lectura que se anexan debajo — el proyecto padre (sólo si estás en un módulo) y la
+        // global. Ambas salen null en scope global: ahí la global YA es la primaria.
+        var pool = _projects.ResolvePoolWithGlobal(name, idx, out var globalPool, out var parentPool);
 
         // Toggle "todos los proyectos" (F4 / botón): todas las pools de proyecto MENOS la primaria
         // actual (ya se ve arriba) — la global tampoco, que se anexa por su cuenta. Read-only en la
         // ventana. En scope global pool.Label == "Global" (no es key de proyecto) → se ven todos.
+        // También excluimos el PADRE: ya se ve anexado arriba como sección heredada, listarlo otra vez
+        // en "todos los proyectos" sería la misma variable dos veces en la misma pantalla.
         var others = _projects.GetAllProjectPools()
-            .Where(p => !string.Equals(p.Label, pool.Label, StringComparison.OrdinalIgnoreCase))
+            .Where(p => !string.Equals(p.Label, pool.Label, StringComparison.OrdinalIgnoreCase)
+                     && !string.Equals(p.Label, parentPool?.Label, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        _pathsWindow = new ProjectPathsWindow(pool, name, globalPool: globalPool, otherProjectPools: others);
+        _pathsWindow = new ProjectPathsWindow(pool, name, globalPool: globalPool,
+                                              otherProjectPools: others, parentPool: parentPool);
         _pathsWindowDeskIdx = idx; // recordamos el desk: el re-press solo cuenta si seguís acá
         _pathsWindow.Closed += (_, _) => _pathsWindow = null;
         _pathsWindow.ShowFocused();

@@ -100,7 +100,8 @@ public partial class App : Application
         var pins = new PinStore();
         var restrictions = new RestrictionStore();
         var taskSession = new TaskSessionStore(); // tarea activa por desk (efímera, igual que la sesión de proyectos)
-        desktops.ProjectLookup = projects.GetDeskProject; // el proyecto activo sale de la sesión
+        desktops.ProjectLookup = projects.GetDeskProject;     // el proyecto activo sale de la sesión
+        desktops.ModuleLookup = projects.GetDeskModuleInfo;   // y su módulo (sub-scope) + color, igual
         Apps.Shell.Desktops = desktops; // ventaneo de terminal POR ESCRITORIO (Win+`, "Abrir con")
 
         // Cheatsheets de atajos per-app para el Shortcuts Helper (Win+/). Precarga los defaults
@@ -151,7 +152,7 @@ public partial class App : Application
         bar.OpenConfig = () => ShowConfig(desktops, restrictions, pins, () =>
         {
             int c = desktops.Current;
-            bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c));
+            bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c), desktops.GetModule(c));
         });
         bar.AttachUsage(_usage); // la barra se suscribe y pinta el snapshot apenas llega
         bar.Show();
@@ -165,7 +166,7 @@ public partial class App : Application
             appShortcuts, () =>
         {
             int c = desktops.Current;
-            bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c));
+            bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c), desktops.GetModule(c));
         },
             taskSession,
             // Refresca el widget de tarea del desk ACTUAL (tras pickear o desanclar).
@@ -205,13 +206,24 @@ public partial class App : Application
         // versiones viejas). Diferimos un toque para que el cierre se complete y Windows intente (y
         // falle) resolver el foreground; recién ahí lo corregimos. El ReinstallHook va de RED, por
         // si el ForceForeground tocó la entrega del hook.
+        //
+        // ⚠ EXCEPCIÓN OBLIGATORIA — ventanas ENCADENADAS (una utilitaria abre a la siguiente y se
+        // cierra: el setter de proyecto → el picker de módulo). RestoreForegroundOrDesktop considera
+        // inválido CUALQUIER foreground de nuestro propio proceso (así cubre el caso de que sólo
+        // quede la barra) → sin este guard le arrancaba el foco al picker recién abierto y se lo daba
+        // a otra app: la ventana quedaba al frente (es Topmost) pero MUERTA de teclado, había que
+        // clickearla. No es un problema del picker: era un bug latente que aparece con la PRIMERA
+        // ventana que encadena a otra. Si ya tenemos una utilitaria enfocada, el foco NO está
+        // huérfano y no hay nada que restaurar. El ReinstallHook igual va SIEMPRE: es idempotente y
+        // es la red que cubre el caso en que el foco sí quedó en el aire.
         WindowActivation.OnUtilityWindowClosed = () =>
         {
             var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
             t.Tick += (_, _) =>
             {
                 t.Stop();
-                Interop.WindowMethods.RestoreForegroundOrDesktop("AmpzDesktopBooster.exe");
+                if (!HasFocusedUtilityWindow())
+                    Interop.WindowMethods.RestoreForegroundOrDesktop("AmpzDesktopBooster.exe");
                 _hotkeys?.ReinstallHook();
             };
             t.Start();
@@ -257,7 +269,7 @@ public partial class App : Application
         _vdListener.DesktopChanged += idx =>
         {
             bar.EnsurePinned(); // insurance: re-pin por si el del arranque no prendió
-            bar.UpdateDesk(desktops.GetName(idx), desktops.GetProject(idx));
+            bar.UpdateDesk(desktops.GetName(idx), desktops.GetProject(idx), desktops.GetModule(idx));
             bar.UpdateDeskTask(taskSession.GetDeskTask(idx)); // tarea activa de ESTE desk (o se oculta)
             _pendingOverlayIdx = idx;
             _overlayDebounce!.Stop();
@@ -272,13 +284,32 @@ public partial class App : Application
         // Estado inicial del widget (sin overlay — no hubo "cambio"). El widget de tarea arranca
         // oculto: la sesión es efímera, no hay tarea activa hasta que el usuario pickee una.
         int current = desktops.Current;
-        bar.UpdateDesk(desktops.GetName(current), desktops.GetProject(current));
+        bar.UpdateDesk(desktops.GetName(current), desktops.GetProject(current), desktops.GetModule(current));
         bar.UpdateDeskTask(taskSession.GetDeskTask(current));
 
         // Caso "app cerrada + click en link": Windows nos lanzó CON la URL y somos la primaria.
         // Ya está todo montado → la abrimos en el navegador real, en el desk actual.
         if (urlArg is not null)
             BrowserShim.OpenInBrave(urlArg, BrowserSettings.Load().RealBrowserPath);
+    }
+
+    /// <summary>
+    /// ¿El foreground actual es una ventana UTILITARIA nuestra (y por lo tanto el foco NO está
+    /// huérfano)? Se excluyen la barra y el overlay a propósito: ninguna de las dos toma foco de
+    /// teclado (la AppBar es no-activable y el overlay es WS_EX_NOACTIVATE), así que si el foreground
+    /// fuera una de ellas el foco SÍ estaría efectivamente perdido y la restauración debe correr.
+    /// </summary>
+    private static bool HasFocusedUtilityWindow()
+    {
+        IntPtr fg = Interop.WindowMethods.GetForegroundWindow();
+        if (fg == IntPtr.Zero) return false;
+
+        foreach (Window w in Current.Windows)
+        {
+            if (w is BarWindow or OverlayWindow) continue;
+            if (new System.Windows.Interop.WindowInteropHelper(w).Handle == fg) return true;
+        }
+        return false;
     }
 
     /// <summary>
