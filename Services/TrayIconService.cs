@@ -92,8 +92,12 @@ public sealed class TrayIconService : IDisposable
             ContextMenuStrip = menu,
         };
 
-        // Doble click en el ícono también reposiciona (atajo cómodo).
-        _icon.DoubleClick += (_, _) => onReposition();
+        // Doble click en el ícono → CONFIGURACIÓN. Antes reposicionaba la barra, pero reposicionar
+        // es una acción de rescate que se usa cada muerte de obispo; la config es a donde de verdad
+        // vas cuando le apuntás al ícono. El doble click es el gesto más accesible del tray: se lo
+        // queda la acción frecuente, no la excepcional. "Reposicionar barra" no se pierde — sigue
+        // en el menú contextual, que es un click derecho de distancia.
+        _icon.DoubleClick += (_, _) => onOpenConfig();
     }
 
     /// <summary>Actualiza el tooltip del ícono con métricas en vivo (máx 63 chars).</summary>
