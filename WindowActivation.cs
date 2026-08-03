@@ -97,7 +97,14 @@ internal static class WindowActivation
         var hwnd = new WindowInteropHelper(window).Handle;
         if (hwnd == System.IntPtr.Zero) return;
 
-        WindowMethods.ForceForeground(hwnd); // intento inmediato: cubre el caso común (no-racy)
+        // preserveMaximized: SIEMPRE. ForceForeground manda SW_RESTORE, que des-MAXIMIZA la ventana
+        // (ver WindowMethods). Como acá machacamos hasta 11 veces en ~600ms, una ventana que abre
+        // maximizada (ConfigWindow) se veía maximizarse y volver sola a tamaño normal — el "blink".
+        // Con el flag sólo des-minimizamos si la ventana vino ICONIZADA, que es lo único que este
+        // camino necesitaba de SW_RESTORE (el re-press de un singleton minimizado). Para las demás
+        // utilitarias no cambia nada: son ventanas Normal, y SW_RESTORE sobre una Normal no hacía
+        // nada de todos modos.
+        WindowMethods.ForceForeground(hwnd, preserveMaximized: true); // inmediato: caso común (no-racy)
 
         int attempts = 0;
         var timer = new DispatcherTimer { Interval = System.TimeSpan.FromMilliseconds(60) };
@@ -111,7 +118,7 @@ internal static class WindowActivation
                 timer.Stop();
                 return;
             }
-            WindowMethods.ForceForeground(hwnd);
+            WindowMethods.ForceForeground(hwnd, preserveMaximized: true);
         };
         timer.Start();
     }
