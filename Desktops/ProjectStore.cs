@@ -12,6 +12,29 @@ namespace AmpzDesktopBooster.Desktops;
 public readonly record struct DeskAssignment(string Project, string Module);
 
 /// <summary>
+/// Por qué salió (o no salió) una operación de reorganización de espacios/contextos.
+///
+/// Devuelve un MOTIVO y no un bool a propósito: estas operaciones se disparan desde botones, y un
+/// botón que no hace nada se lee IGUAL que un botón roto. Con el motivo, la ventana puede decir
+/// exactamente qué pasó ("ya hay un contexto con ese nombre", "primero movés sus contextos") en vez
+/// de un "no se pudo" que no orienta a nadie.
+/// </summary>
+public enum ScopeOpResult
+{
+    Ok,
+    /// <summary>El origen o el destino ya no existe (catálogo cambiado por otra vía).</summary>
+    NotFound,
+    /// <summary>Ya hay un espacio/contexto hermano con ese nombre.</summary>
+    NameTaken,
+    /// <summary>El nombre quedó vacío después de sanitizar.</summary>
+    EmptyName,
+    /// <summary>Degradar este espacio anidaría un TERCER nivel: tiene contextos propios.</summary>
+    WouldNest,
+    /// <summary>Origen y destino son el mismo — no hay nada que mover.</summary>
+    SameTarget,
+}
+
+/// <summary>
 /// Orquesta las TRES capas de "proyectos por desk" del legacy (ver CLAUDE.md del legacy):
 ///   1. Sesión (_session)      — qué proyecto/módulo está en qué desk HOY. Efímero, se pierde al cerrar.
 ///   2. Sugerencias (INI)      — última asignación por desk, para pre-llenar el setter el próximo día.
@@ -492,6 +515,217 @@ public sealed class ProjectStore
             _session.Remove(idx);
 
         Save();
+    }
+
+    // ── Gestión de Espacios y Contextos (la pestaña de config) ─────────────────────────────────
+    //
+    // Hasta acá el catálogo sólo sabía CREAR (setter / picker) y BORRAR en cascada. Reorganizar
+    // —renombrar, mover un contexto a otro espacio, promoverlo, degradar un espacio— había que
+    // hacerlo editando el JSON a mano. Y no es un caso raro: la estructura mental del usuario cambia
+    // (todo este bloque nace de que 11 "proyectos" resultaron ser contextos de dos espacios).
+    //
+    // Disciplina común a TODAS: si una key de scope se mueve, se mueve en TODOS lados —variables,
+    // notas, predeterminados, catálogo de contextos, sesión y sugerencias del INI— o no se mueve en
+    // ninguno. Media migración deja variables huérfanas que el usuario NO puede encontrar ni borrar
+    // desde la UI: quedan vivas en el JSON, colgando de un scope que ya no existe.
+
+    /// <summary>Cuántos desks escanea al reescribir sugerencias. Cubre de sobra el set gestionado.</summary>
+    private const int SuggestionScanRange = 32;
+
+    /// <summary>Comparación de nombres del dominio: SIEMPRE case-insensitive (el usuario los tipea).</summary>
+    private static bool Same(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// La key REAL del diccionario que coincide (case-insensitive), o null. Los dicts de ProjectData
+    /// son case-SENSITIVE: sin esto, "Synxs" y "synxs" son dos scopes distintos y una operación
+    /// movería uno dejando vivo al otro.
+    /// </summary>
+    private static string? FindKey<T>(Dictionary<string, T> dict, string key) =>
+        dict.Keys.FirstOrDefault(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Mueve el valor de una key a otra. No-op si el origen no existe.</summary>
+    private static void MoveKey<T>(Dictionary<string, T> dict, string from, string to)
+    {
+        string? src = FindKey(dict, from);
+        if (src is null) return;
+        var value = dict[src];
+        dict.Remove(src);
+        if (FindKey(dict, to) is string clash) dict.Remove(clash);
+        dict[to] = value;
+    }
+
+    /// <summary>Re-prefija TODAS las keys compuestas que cuelgan de un espacio ("Viejo/X" → "Nuevo/X").</summary>
+    private static void MovePrefix<T>(Dictionary<string, T> dict, string oldPrefix, string newPrefix)
+    {
+        foreach (var key in dict.Keys
+                     .Where(k => k.StartsWith(oldPrefix, StringComparison.OrdinalIgnoreCase)).ToList())
+            MoveKey(dict, key, newPrefix + key[oldPrefix.Length..]);
+    }
+
+    /// <summary>Mueve una key de scope en los TRES diccionarios que la usan. Un solo lugar, sin olvidos.</summary>
+    private void MoveScope(string fromKey, string toKey)
+    {
+        MoveKey(_data.Paths, fromKey, toKey);
+        MoveKey(_data.Notes, fromKey, toKey);
+        MoveKey(_data.Defaults, fromKey, toKey);
+    }
+
+    /// <summary>Reescribe la sesión en vivo: los desks que apuntaban al scope viejo siguen al nuevo.</summary>
+    private void MapSession(Func<string, string, DeskAssignment> map)
+    {
+        foreach (var idx in _session.Keys.ToList())
+        {
+            var a = _session[idx];
+            _session[idx] = map(a.Project, a.Module);
+        }
+    }
+
+    /// <summary>
+    /// Idem para las sugerencias del INI. Si no se tocan, mañana el setter te pre-llena con un nombre
+    /// que ya no existe — y el picker de contextos aparece vacío sin que se entienda por qué.
+    /// </summary>
+    private void MapSuggestions(Func<string, string, (string Project, string Module)> map)
+    {
+        for (int i = 0; i < SuggestionScanRange; i++)
+        {
+            string p = _ini.Read("Projects", "desk_" + i, "");
+            if (p == "") continue;
+            string m = _ini.Read("Projects", $"desk_{i}_module", "");
+            var (np, nm) = map(p, m);
+            if (np != p) _ini.Write("Projects", "desk_" + i, np);
+            if (nm != m) _ini.Write("Projects", $"desk_{i}_module", nm);
+        }
+    }
+
+    /// <summary>true si ya existe un espacio con ese nombre.</summary>
+    public bool ProjectExists(string name) => _data.History.Any(h => Same(h, name));
+
+    /// <summary>true si el espacio ya tiene un contexto con ese nombre.</summary>
+    public bool ModuleExists(string project, string module) => GetModules(project).Any(m => Same(m.Name, module));
+
+    /// <summary>Renombra un espacio y arrastra TODO: sus variables, notas, predeterminados y contextos.</summary>
+    public ScopeOpResult RenameProject(string oldName, string newName)
+    {
+        newName = TitleCase(Sanitize(newName));
+        if (newName == "") return ScopeOpResult.EmptyName;
+        if (!ProjectExists(oldName)) return ScopeOpResult.NotFound;
+        if (!Same(oldName, newName) && ProjectExists(newName)) return ScopeOpResult.NameTaken;
+
+        int at = _data.History.FindIndex(h => Same(h, oldName));
+        if (at >= 0) _data.History[at] = newName;
+
+        MoveScope(oldName, newName);                 // la key propia del espacio
+        MoveKey(_data.Modules, oldName, newName);    // su catálogo de contextos
+
+        // …y las compuestas de CADA contexto: si esto falta, todas sus variables quedan huérfanas.
+        string oldPrefix = oldName + ScopeSeparator, newPrefix = newName + ScopeSeparator;
+        MovePrefix(_data.Paths, oldPrefix, newPrefix);
+        MovePrefix(_data.Notes, oldPrefix, newPrefix);
+        MovePrefix(_data.Defaults, oldPrefix, newPrefix);
+
+        MapSession((p, m) => new DeskAssignment(Same(p, oldName) ? newName : p, m));
+        MapSuggestions((p, m) => (Same(p, oldName) ? newName : p, m));
+        Save();
+        return ScopeOpResult.Ok;
+    }
+
+    /// <summary>Renombra un contexto dentro de su espacio. Conserva color, variables y notas.</summary>
+    public ScopeOpResult RenameModule(string project, string oldName, string newName)
+    {
+        newName = TitleCase(Sanitize(newName));
+        if (newName == "") return ScopeOpResult.EmptyName;
+        if (!ModuleExists(project, oldName)) return ScopeOpResult.NotFound;
+        if (!Same(oldName, newName) && ModuleExists(project, newName)) return ScopeOpResult.NameTaken;
+
+        var entry = GetModules(project).First(m => Same(m.Name, oldName));
+        entry.Name = newName; // la entrada es la MISMA referencia que vive en el catálogo
+
+        MoveScope(ScopeKey(project, oldName), ScopeKey(project, newName));
+        MapSession((p, m) => Same(p, project) && Same(m, oldName)
+            ? new DeskAssignment(p, newName) : new DeskAssignment(p, m));
+        MapSuggestions((p, m) => Same(p, project) && Same(m, oldName) ? (p, newName) : (p, m));
+        Save();
+        return ScopeOpResult.Ok;
+    }
+
+    /// <summary>
+    /// Mueve un contexto a OTRO espacio. Ojo con lo que NO viaja: sus variables propias sí, pero las
+    /// que HEREDABA del espacio viejo no — pasan a ser las del nuevo. Es lo correcto (heredar del
+    /// padre anterior sería arrastrar el contexto del cliente que dejaste), pero hay que avisarlo.
+    /// </summary>
+    public ScopeOpResult MoveModule(string fromProject, string module, string toProject)
+    {
+        if (Same(fromProject, toProject)) return ScopeOpResult.SameTarget;
+        if (!ModuleExists(fromProject, module)) return ScopeOpResult.NotFound;
+        if (!ProjectExists(toProject)) return ScopeOpResult.NotFound;
+        if (ModuleExists(toProject, module)) return ScopeOpResult.NameTaken;
+
+        var src = _data.Modules[ResolveModulesKey(fromProject)];
+        var entry = src.First(m => Same(m.Name, module));
+        src.Remove(entry);
+
+        string dstKey = ResolveModulesKey(toProject);
+        if (!_data.Modules.TryGetValue(dstKey, out var dst))
+        {
+            dst = new List<ModuleEntry>();
+            _data.Modules[dstKey] = dst;
+        }
+        // Si un hermano del destino ya usa ese color, se le da el primer libre: dos contextos del
+        // MISMO espacio con el mismo color es exactamente la confusión que el color vino a matar.
+        if (dst.Any(m => Same(m.Color, entry.Color)))
+            entry.Color = ModulePalette.NextFree(dst.Select(m => m.Color));
+        dst.Add(entry);
+
+        MoveScope(ScopeKey(fromProject, module), ScopeKey(toProject, module));
+        MapSession((p, m) => Same(p, fromProject) && Same(m, module)
+            ? new DeskAssignment(toProject, module) : new DeskAssignment(p, m));
+        MapSuggestions((p, m) => Same(p, fromProject) && Same(m, module) ? (toProject, module) : (p, m));
+        Save();
+        return ScopeOpResult.Ok;
+    }
+
+    /// <summary>
+    /// Promueve un contexto a espacio propio. PIERDE el color: los colores identifican contextos
+    /// DENTRO de un espacio; un espacio no tiene color (decisión explícita del modelo).
+    /// </summary>
+    public ScopeOpResult PromoteModule(string project, string module)
+    {
+        if (!ModuleExists(project, module)) return ScopeOpResult.NotFound;
+        if (ProjectExists(module)) return ScopeOpResult.NameTaken;
+
+        _data.Modules[ResolveModulesKey(project)].RemoveAll(m => Same(m.Name, module));
+        MoveScope(ScopeKey(project, module), module);
+        _data.History.Add(module);
+
+        MapSession((p, m) => Same(p, project) && Same(m, module)
+            ? new DeskAssignment(module, "") : new DeskAssignment(p, m));
+        MapSuggestions((p, m) => Same(p, project) && Same(m, module) ? (module, "") : (p, m));
+        Save();
+        return ScopeOpResult.Ok;
+    }
+
+    /// <summary>
+    /// Degrada un espacio a contexto de otro. Se RECHAZA si el espacio tiene contextos propios:
+    /// serían un tercer nivel ("A/B/C"), que el modelo no tiene — y aplanarlos en silencio sería
+    /// destruir su jerarquía sin avisar. El usuario primero mueve o promueve esos contextos.
+    /// </summary>
+    public ScopeOpResult DemoteProject(string project, string toProject)
+    {
+        if (Same(project, toProject)) return ScopeOpResult.SameTarget;
+        if (!ProjectExists(project) || !ProjectExists(toProject)) return ScopeOpResult.NotFound;
+        if (GetModules(project).Count > 0) return ScopeOpResult.WouldNest;
+        if (ModuleExists(toProject, project)) return ScopeOpResult.NameTaken;
+
+        _data.History.RemoveAll(h => Same(h, project));
+        if (FindKey(_data.Modules, project) is string emptyCatalog) _data.Modules.Remove(emptyCatalog);
+
+        MoveScope(project, ScopeKey(toProject, project));
+        EnsureModule(toProject, project); // alta en el catálogo del destino, con color libre
+
+        MapSession((p, m) => Same(p, project) ? new DeskAssignment(toProject, project) : new DeskAssignment(p, m));
+        MapSuggestions((p, m) => Same(p, project) ? (toProject, project) : (p, m));
+        Save();
+        return ScopeOpResult.Ok;
     }
 
     /// <summary>

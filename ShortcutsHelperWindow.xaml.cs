@@ -68,6 +68,7 @@ public partial class ShortcutsHelperWindow : Window
         ("", ""),
         ($"§{Loc.T("Helper.SectionProjects")}", ""),
         ("Win + NumpadEnter",     Loc.T("Helper.SetProject")),
+        ("Win + Numpad .",        Loc.T("Helper.SetModule")),
         ("Win + Numpad *",        Loc.T("Helper.Variables")),
         ("Win + Numpad /",        Loc.T("Helper.Notes")),
         ("", ""),

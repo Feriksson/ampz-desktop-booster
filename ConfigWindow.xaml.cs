@@ -25,6 +25,7 @@ public partial class ConfigWindow : Window
     private readonly DesktopConfig _config;
     private readonly Apps.AppsConfig _apps;
     private readonly DesktopService _desktops;
+    private readonly ProjectStore _projects;
     private readonly RestrictionStore _restrictions;
     private readonly PinStore _pins;
     private readonly Action _onApplied;
@@ -34,13 +35,14 @@ public partial class ConfigWindow : Window
     private readonly TasksSettings _tasks;
 
     public ConfigWindow(DesktopConfig config, Apps.AppsConfig apps, DesktopService desktops,
-        RestrictionStore restrictions, PinStore pins, Action onApplied)
+        ProjectStore projects, RestrictionStore restrictions, PinStore pins, Action onApplied)
     {
         InitializeComponent();
 
         _config = config;
         _apps = apps;
         _desktops = desktops;
+        _projects = projects;
         _restrictions = restrictions;
         _pins = pins;
         _onApplied = onApplied;
@@ -84,6 +86,9 @@ public partial class ConfigWindow : Window
         PinAddFromRunningBtn.Click += (_, _) => PinFromRunning();
         PinRunningRefreshBtn.Click += (_, _) => RefreshPinRunning();
         PinAddManualBtn.Click += (_, _) => PinManual();
+
+        // ── Pestaña Espacios y Contextos ──
+        InitScopesTab();
 
         // ── Pestaña General ──
         DataPathText.Text = AppPaths.DataDir;
@@ -819,6 +824,290 @@ public partial class ConfigWindow : Window
             RefreshFields();
         }
         UpdateEditorVisibility();
+    }
+
+    // ── Pestaña Espacios y Contextos ───────────────────────────────────────────────────────────
+    //
+    // La única superficie donde se puede REORGANIZAR el catálogo. El setter y el picker sólo saben
+    // crear; borrar existía sin dónde verlo. Mover un contexto de espacio, promoverlo o degradar un
+    // espacio no se podía hacer de ninguna forma que no fuera editar el JSON a mano.
+
+    /// <summary>Una fila de la lista: un ESPACIO (<c>Context</c> null) o un CONTEXTO suyo.</summary>
+    private sealed record ScopeRow(string Space, string? Context)
+    {
+        public bool IsContext => Context is not null;
+        public string Name => Context ?? Space;
+    }
+
+    /// <summary>La fila seleccionada, o null (los separadores "(sin contextos)" no son seleccionables).</summary>
+    private ScopeRow? SelectedScope => (ScopeList.SelectedItem as ListBoxItem)?.Tag as ScopeRow;
+
+    private void InitScopesTab()
+    {
+        ScopeList.SelectionChanged += (_, _) => UpdateScopeButtons();
+        ScopeRenameBtn.Click  += (_, _) => RenameScope();
+        ScopeColorBtn.Click   += (_, _) => CycleScopeColor();
+        ScopePromoteBtn.Click += (_, _) => PromoteScope();
+        ScopeMoveBtn.Click    += (_, _) => MoveScopeToTarget();
+        ScopeDemoteBtn.Click  += (_, _) => DemoteScopeToTarget();
+        ScopeDeleteBtn.Click  += (_, _) => DeleteScope();
+        RefreshScopes();
+    }
+
+    /// <summary>
+    /// Repinta la lista entera y REPONE la selección en el scope indicado. Reponerla no es cosmético:
+    /// después de mover o renombrar, perder la selección te obliga a buscar de nuevo la fila que
+    /// acabás de tocar — justo cuando querés encadenar otra operación sobre ella.
+    /// </summary>
+    private void RefreshScopes(string? selectSpace = null, string? selectContext = null)
+    {
+        ScopeList.Items.Clear();
+
+        var session = _projects.SessionEntries().ToList();
+        var spaces = _projects.GetHistory()
+            .OrderBy(s => s, StringComparer.CurrentCultureIgnoreCase).ToList();
+
+        foreach (var space in spaces)
+        {
+            bool spaceInUse = session.Any(e => string.Equals(e.Project, space, StringComparison.OrdinalIgnoreCase));
+            ScopeList.Items.Add(BuildScopeRow(new ScopeRow(space, null), "", spaceInUse));
+
+            var mods = _projects.GetModules(space);
+            if (mods.Count == 0)
+            {
+                ScopeList.Items.Add(BuildNoContextsRow());
+                continue;
+            }
+
+            foreach (var m in mods.OrderBy(m => m.Name, StringComparer.CurrentCultureIgnoreCase))
+            {
+                bool inUse = session.Any(e =>
+                    string.Equals(e.Project, space, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(e.Module, m.Name, StringComparison.OrdinalIgnoreCase));
+                ScopeList.Items.Add(BuildScopeRow(new ScopeRow(space, m.Name), m.Color, inUse));
+            }
+        }
+
+        ScopeEmptyHint.Visibility = spaces.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        RefreshScopeTargets();
+
+        if (selectSpace is not null)
+        {
+            foreach (var item in ScopeList.Items.OfType<ListBoxItem>())
+            {
+                if (item.Tag is ScopeRow r
+                    && string.Equals(r.Space, selectSpace, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(r.Context ?? "", selectContext ?? "", StringComparison.OrdinalIgnoreCase))
+                {
+                    ScopeList.SelectedItem = item;
+                    break;
+                }
+            }
+        }
+
+        UpdateScopeButtons();
+    }
+
+    /// <summary>Fila de espacio o de contexto. El contexto va indentado y con su chip de color.</summary>
+    private ListBoxItem BuildScopeRow(ScopeRow row, string color, bool inUse)
+    {
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+
+        if (row.IsContext)
+            panel.Children.Add(new Border
+            {
+                Width = 10,
+                Height = 10,
+                CornerRadius = new CornerRadius(3),
+                Margin = new Thickness(22, 0, 10, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = new System.Windows.Media.SolidColorBrush(ModulePalette.Parse(color)),
+            });
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = row.Name,
+            VerticalAlignment = VerticalAlignment.Center,
+            FontWeight = row.IsContext ? FontWeights.Normal : FontWeights.SemiBold,
+        });
+
+        // "en uso" = hay un desk con este scope cargado AHORA. Avisa antes de borrar algo que estás usando.
+        if (inUse)
+            panel.Children.Add(new TextBlock
+            {
+                Text = "· " + Loc.T("Config.ScopesInUse"),
+                Margin = new Thickness(8, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                FontSize = 10,
+                Foreground = (System.Windows.Media.Brush)FindResource("Accent"),
+            });
+
+        return new ListBoxItem { Content = panel, Tag = row };
+    }
+
+    /// <summary>
+    /// Marca de "este espacio no tiene contextos". NO es seleccionable: no representa ninguna entidad,
+    /// y dejar que se seleccione haría que los botones actuaran sobre algo que no existe.
+    /// </summary>
+    private ListBoxItem BuildNoContextsRow() => new()
+    {
+        Content = new TextBlock
+        {
+            Text = Loc.T("Config.ScopesNoContexts"),
+            Margin = new Thickness(42, 0, 0, 0),
+            FontSize = 11,
+            FontStyle = FontStyles.Italic,
+            Foreground = (System.Windows.Media.Brush)FindResource("FgMuted"),
+        },
+        IsHitTestVisible = false,
+        Focusable = false,
+    };
+
+    /// <summary>Llena el combo de destino con los espacios, conservando el elegido si sigue existiendo.</summary>
+    private void RefreshScopeTargets()
+    {
+        string? prev = ScopeTargetCombo.SelectedItem as string;
+        ScopeTargetCombo.Items.Clear();
+        foreach (var s in _projects.GetHistory().OrderBy(s => s, StringComparer.CurrentCultureIgnoreCase))
+            ScopeTargetCombo.Items.Add(s);
+
+        if (prev is not null && ScopeTargetCombo.Items.Contains(prev)) ScopeTargetCombo.SelectedItem = prev;
+        else if (ScopeTargetCombo.Items.Count > 0) ScopeTargetCombo.SelectedIndex = 0;
+    }
+
+    /// <summary>
+    /// Habilita sólo lo que APLICA al tipo de fila seleccionada. Un botón que significara una cosa
+    /// sobre un espacio y otra sobre un contexto sería ambiguo por diseño: promover y degradar son
+    /// operaciones OPUESTAS y viven en niveles distintos.
+    /// </summary>
+    private void UpdateScopeButtons()
+    {
+        var row = SelectedScope;
+        bool isContext = row?.IsContext == true;
+        bool isSpace = row is not null && !row.IsContext;
+
+        ScopeRenameBtn.IsEnabled  = row is not null;
+        ScopeDeleteBtn.IsEnabled  = row is not null;
+        ScopeColorBtn.IsEnabled   = isContext;
+        ScopePromoteBtn.IsEnabled = isContext;
+        ScopeMoveBtn.IsEnabled    = isContext;
+        ScopeDemoteBtn.IsEnabled  = isSpace;
+    }
+
+    /// <summary>
+    /// Traduce el motivo del store a un mensaje que ORIENTA. Una operación que no puede avanzar
+    /// NUNCA se queda muda: un botón que no hace nada se lee igual que un botón roto.
+    /// </summary>
+    private bool ReportScopeResult(ScopeOpResult result, string subject)
+    {
+        if (result == ScopeOpResult.Ok) return true;
+
+        string msg = result switch
+        {
+            ScopeOpResult.NameTaken  => string.Format(Loc.T("Config.ScopeErrNameTaken"), subject),
+            ScopeOpResult.EmptyName  => Loc.T("Config.ScopeErrEmptyName"),
+            ScopeOpResult.WouldNest  => string.Format(Loc.T("Config.ScopeErrWouldNest"), subject),
+            ScopeOpResult.SameTarget => Loc.T("Config.ScopeErrSameTarget"),
+            _                        => Loc.T("Config.ScopeErrNotFound"),
+        };
+        MessageBox.Show(this, msg, Loc.T("Config.ScopeErrTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
+        return false;
+    }
+
+    private void RenameScope()
+    {
+        var row = SelectedScope;
+        if (row is null) return;
+
+        string? name = PromptDialog.Show(this,
+            row.IsContext ? Loc.T("Config.ScopesRenameContextTitle") : Loc.T("Config.ScopesRenameSpaceTitle"),
+            Loc.T("Config.ScopesNameLabel"), row.Name);
+        if (name is null || name.Trim() == row.Name) return;
+
+        var res = row.IsContext
+            ? _projects.RenameModule(row.Space, row.Context!, name)
+            : _projects.RenameProject(row.Space, name);
+        if (!ReportScopeResult(res, name)) return;
+
+        string final = ProjectStore.TitleCase(ProjectStore.Sanitize(name));
+        RefreshScopes(row.IsContext ? row.Space : final, row.IsContext ? final : null);
+        _onApplied();
+    }
+
+    /// <summary>Cicla la paleta — mismo gesto que el F3 del picker de contextos, misma fuente de verdad.</summary>
+    private void CycleScopeColor()
+    {
+        var row = SelectedScope;
+        if (row?.Context is null) return;
+
+        _projects.SetModuleColor(row.Space, row.Context,
+            ModulePalette.Next(_projects.GetModuleColor(row.Space, row.Context)));
+        RefreshScopes(row.Space, row.Context);
+        _onApplied();
+    }
+
+    private void MoveScopeToTarget()
+    {
+        var row = SelectedScope;
+        if (row?.Context is null || ScopeTargetCombo.SelectedItem is not string target) return;
+
+        if (MessageBox.Show(this,
+                string.Format(Loc.T("Config.ScopesMoveConfirm"), row.Context, target, row.Space),
+                Loc.T("Config.ScopesMoveTitle"),
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+
+        if (!ReportScopeResult(_projects.MoveModule(row.Space, row.Context, target), row.Context)) return;
+        RefreshScopes(target, row.Context);
+        _onApplied();
+    }
+
+    private void PromoteScope()
+    {
+        var row = SelectedScope;
+        if (row?.Context is null) return;
+
+        if (MessageBox.Show(this,
+                string.Format(Loc.T("Config.ScopesPromoteConfirm"), row.Context, row.Space),
+                Loc.T("Config.ScopesPromoteTitle"),
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+
+        if (!ReportScopeResult(_projects.PromoteModule(row.Space, row.Context), row.Context)) return;
+        RefreshScopes(row.Context);
+        _onApplied();
+    }
+
+    private void DemoteScopeToTarget()
+    {
+        var row = SelectedScope;
+        if (row is null || row.IsContext || ScopeTargetCombo.SelectedItem is not string target) return;
+
+        if (MessageBox.Show(this,
+                string.Format(Loc.T("Config.ScopesDemoteConfirm"), row.Space, target),
+                Loc.T("Config.ScopesDemoteTitle"),
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+
+        if (!ReportScopeResult(_projects.DemoteProject(row.Space, target), row.Space)) return;
+        RefreshScopes(target, row.Space);
+        _onApplied();
+    }
+
+    private void DeleteScope()
+    {
+        var row = SelectedScope;
+        if (row is null) return;
+
+        string msg = row.IsContext
+            ? string.Format(Loc.T("Config.ScopesDeleteContextConfirm"), row.Context)
+            : string.Format(Loc.T("Config.ScopesDeleteSpaceConfirm"), row.Space);
+
+        if (MessageBox.Show(this, msg, Loc.T("Config.ScopesDeleteTitle"),
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+
+        if (row.IsContext) _projects.DeleteModule(row.Space, row.Context!);
+        else _projects.DeleteFromHistory(row.Space);
+
+        RefreshScopes(row.IsContext ? row.Space : null);
+        _onApplied();
     }
 
     /// <summary>Materializa el sub-objeto de credenciales del Kind activo si está null.</summary>

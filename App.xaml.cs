@@ -149,7 +149,7 @@ public partial class App : Application
 
         // La barra: AppBar real + tray + widget de desktop a la derecha.
         var bar = new BarWindow();
-        bar.OpenConfig = () => ShowConfig(desktops, restrictions, pins, () =>
+        bar.OpenConfig = () => ShowConfig(desktops, projects, restrictions, pins, () =>
         {
             int c = desktops.Current;
             bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c), desktops.GetModule(c));
@@ -321,7 +321,7 @@ public partial class App : Application
             a.StartsWith("http", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Abre la ventana de configuración (instancia única — si ya está, la trae al frente).</summary>
-    private void ShowConfig(DesktopService desktops, RestrictionStore restrictions, PinStore pins, Action onApplied)
+    private void ShowConfig(DesktopService desktops, ProjectStore projects, RestrictionStore restrictions, PinStore pins, Action onApplied)
     {
         if (_configWindow is not null)
         {
@@ -329,7 +329,7 @@ public partial class App : Application
             return;
         }
 
-        _configWindow = new ConfigWindow(_desktopConfig, _appsConfig, desktops, restrictions, pins, onApplied);
+        _configWindow = new ConfigWindow(_desktopConfig, _appsConfig, desktops, projects, restrictions, pins, onApplied);
         _configWindow.Closed += (_, _) => _configWindow = null;
         _configWindow.ShowFocused();
     }
