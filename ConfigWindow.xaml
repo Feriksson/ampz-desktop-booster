@@ -5,6 +5,7 @@
         Title="{loc:Translate Config.WindowTitle}"
         Width="1029" Height="840"
         WindowStartupLocation="CenterScreen"
+        WindowState="Maximized"
         Background="#1E1E1E" UseLayoutRounding="True"
         FontFamily="Segoe UI">
 
@@ -191,38 +192,93 @@
             </Setter>
         </Style>
 
-        <!-- TabControl: sin borde, fondo neutro -->
+        <!-- TabControl: navegación VERTICAL a la izquierda (sidebar), no la tira horizontal de
+             arriba. Se retemplatea entero en vez de usar TabStripPlacement="Left" porque el
+             template default no deja pintarle fondo/borde propios a la tira: con 8 secciones el
+             sidebar necesita leerse como una SUPERFICIE aparte del contenido, no como pestañas
+             giradas. Ese fue justamente el problema de la barra horizontal — creció tanto que las
+             pestañas se apretaban y dejaba de leerse dónde estabas parado.
+             La tira va dentro de un ScrollViewer: si mañana entran más secciones que alto de
+             pantalla, scrollea el sidebar SOLO (un scroller por eje, el contenido tiene el suyo). -->
         <Style TargetType="TabControl">
             <Setter Property="Background"       Value="#1E1E1E" />
             <Setter Property="BorderThickness"  Value="0" />
             <Setter Property="Padding"          Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <Grid Background="{TemplateBinding Background}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border Grid.Column="0" Background="#161616"
+                                    BorderBrush="#2A2A2A" BorderThickness="0,0,1,0">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled"
+                                              Padding="0,0,2,0">
+                                    <StackPanel IsItemsHost="True" Margin="6,10,6,10" />
+                                </ScrollViewer>
+                            </Border>
+
+                            <ContentPresenter Grid.Column="1" ContentSource="SelectedContent" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
-        <!-- TabItem: underline accent en pestaña activa -->
+        <!-- TabItem: fila del sidebar — ícono + etiqueta, barra de acento a la IZQUIERDA.
+             El acento se mudó de abajo (underline) al costado izquierdo porque en una lista
+             vertical el borde inferior se lee como SEPARADOR entre filas, no como "estás acá".
+             El ícono sale del Tag del TabItem para no meterle markup a cada Header (que sigue
+             siendo la key de traducción, intacta) y va en una columna de ancho FIJO: así las
+             etiquetas arrancan todas alineadas aunque los glifos midan distinto. -->
         <Style TargetType="TabItem">
             <Setter Property="Foreground" Value="{StaticResource FgMuted}" />
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Padding"    Value="14,9" />
+            <Setter Property="Padding"    Value="10,9" />
             <Setter Property="FontSize"   Value="12" />
             <Setter Property="Cursor"     Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TabItem">
                         <Border x:Name="bd" Background="Transparent"
-                                BorderThickness="0,0,0,2" BorderBrush="Transparent"
-                                Padding="{TemplateBinding Padding}" Margin="0,0,2,0">
-                            <ContentPresenter x:Name="cp"
-                                              ContentSource="Header"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"
-                                              TextBlock.Foreground="{TemplateBinding Foreground}" />
+                                BorderThickness="3,0,0,0" BorderBrush="Transparent"
+                                CornerRadius="0,4,4,0" Margin="0,1"
+                                MinWidth="196"
+                                Padding="{TemplateBinding Padding}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="26" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="ic" Grid.Column="0" FontSize="14"
+                                           VerticalAlignment="Center" HorizontalAlignment="Left"
+                                           Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" />
+                                <ContentPresenter x:Name="cp" Grid.Column="1"
+                                                  ContentSource="Header"
+                                                  HorizontalAlignment="Left"
+                                                  VerticalAlignment="Center"
+                                                  TextBlock.Foreground="{TemplateBinding Foreground}" />
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#232323" />
+                                <Setter TargetName="cp" Property="TextBlock.Foreground"
+                                        Value="{StaticResource Fg}" />
+                            </Trigger>
+                            <!-- Foco por TECLADO visible aparte del hover: navegar el sidebar con
+                                 flechas no puede dejarte sin saber dónde está el cursor. -->
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#26333A" />
                                 <Setter TargetName="cp" Property="TextBlock.Foreground"
                                         Value="{StaticResource Fg}" />
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#1A3A4A" />
                                 <Setter TargetName="bd" Property="BorderBrush"
                                         Value="{StaticResource Accent}" />
                                 <Setter TargetName="cp" Property="TextBlock.Foreground"
@@ -236,10 +292,70 @@
         </Style>
     </Window.Resources>
 
-    <TabControl x:Name="Tabs" Background="#1E1E1E" BorderThickness="0" Margin="8" HorizontalContentAlignment="Center" UseLayoutRounding="False">
+    <TabControl x:Name="Tabs" Background="#1E1E1E" BorderThickness="0" UseLayoutRounding="False">
+
+        <!-- ===== Pestaña ESPACIOS Y CONTEXTOS =====
+             Lista PLANA con indentación en vez de un TreeView: el ListBox ya tiene el estilo oscuro
+             de esta ventana (hover, selección en acento, foco) y lo comparten todas las demás
+             pestañas. Un TreeView traería su propio template blanco y habría que reconstruirle el
+             piso entero — una segunda implementación del mismo componente, que es justo lo que no
+             hay que hacer. Con dos niveles fijos, la indentación alcanza y sobra. -->
+        <TabItem Tag="🗂️" Header="{loc:Translate Config.ScopesTab}">
+            <Grid Margin="14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold"
+                           Text="{loc:Translate Config.ScopesTitle}" />
+                <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,10"
+                           Text="{loc:Translate Config.ScopesHint}" />
+
+                <Border Grid.Row="2" Background="{StaticResource Panel}" CornerRadius="4" Padding="2">
+                    <Grid>
+                        <ListBox x:Name="ScopeList" Background="Transparent" BorderThickness="0"
+                                 Foreground="{StaticResource Fg}" FontSize="13"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                        <!-- Estado vacío: nunca una lista en blanco sin explicar qué falta ni cómo salir. -->
+                        <TextBlock x:Name="ScopeEmptyHint" Visibility="Collapsed"
+                                   Foreground="{StaticResource FgMuted}" FontSize="12"
+                                   TextWrapping="Wrap" MaxWidth="420"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center"
+                                   Text="{loc:Translate Config.ScopesEmpty}" />
+                    </Grid>
+                </Border>
+
+                <!-- Acciones sobre lo seleccionado. Se habilitan/deshabilitan según el tipo de fila:
+                     un botón cuyo significado cambiaría según la selección sería ambiguo. -->
+                <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8,0,0">
+                    <Button x:Name="ScopeRenameBtn"  Content="{loc:Translate Config.ScopesRename}"  MinWidth="120" />
+                    <Button x:Name="ScopeColorBtn"   Content="{loc:Translate Config.ScopesColor}"   MinWidth="140" />
+                    <Button x:Name="ScopePromoteBtn" Content="{loc:Translate Config.ScopesPromote}" MinWidth="160" />
+                    <Button x:Name="ScopeDeleteBtn"  Content="{loc:Translate Config.ScopesDelete}"  MinWidth="90"
+                            Foreground="{StaticResource Danger}" />
+                </StackPanel>
+
+                <!-- Reasignación: el destino se elige UNA vez y lo comparten Mover (contexto→otro
+                     espacio) y Degradar (espacio→contexto de otro). Son la misma pregunta —"¿adónde
+                     va esto?"— así que comparten el control en vez de duplicarlo. -->
+                <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,10,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="{loc:Translate Config.ScopesTargetLabel}" VerticalAlignment="Center"
+                               Foreground="{StaticResource FgMuted}" FontSize="12" Margin="0,0,8,0" />
+                    <ComboBox x:Name="ScopeTargetCombo" Width="240" Margin="0,0,10,0" />
+                    <Button x:Name="ScopeMoveBtn"   Content="{loc:Translate Config.ScopesMove}"   MinWidth="150" />
+                    <Button x:Name="ScopeDemoteBtn" Content="{loc:Translate Config.ScopesDemote}" MinWidth="160" />
+                </StackPanel>
+            </Grid>
+        </TabItem>
 
         <!-- ===== Pestaña DESKTOPS ===== -->
-        <TabItem Header="{loc:Translate Config.DesktopsTab}">
+        <TabItem Tag="🖥️" Header="{loc:Translate Config.DesktopsTab}">
             <Grid Margin="14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -296,7 +412,7 @@
         </TabItem>
 
         <!-- ===== Pestaña APLICACIONES ===== -->
-        <TabItem Header="{loc:Translate Config.AppsTab}">
+        <TabItem Tag="🧩" Header="{loc:Translate Config.AppsTab}">
             <Grid Margin="14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -344,7 +460,7 @@
         </TabItem>
 
         <!-- ===== Pestaña PROTECCIONES ===== -->
-        <TabItem Header="{loc:Translate Config.ProtectionsTab}">
+        <TabItem Tag="🛡️" Header="{loc:Translate Config.ProtectionsTab}">
             <Grid Margin="14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -436,7 +552,7 @@
         </TabItem>
 
         <!-- ===== Pestaña ANCLAJES ===== -->
-        <TabItem Header="{loc:Translate Config.PinsTab}">
+        <TabItem Tag="📌" Header="{loc:Translate Config.PinsTab}">
             <Grid Margin="14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -521,7 +637,7 @@
         </TabItem>
 
         <!-- ===== Pestaña TAREAS ===== -->
-        <TabItem Header="{loc:Translate Config.TasksTab}">
+        <TabItem Tag="📋" Header="{loc:Translate Config.TasksTab}">
             <Grid Margin="14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -705,7 +821,7 @@
         </TabItem>
 
         <!-- ===== Pestaña ATENCIÓN ===== -->
-        <TabItem Header="{loc:Translate Config.AttentionTab}">
+        <TabItem Tag="🔔" Header="{loc:Translate Config.AttentionTab}">
             <Grid Margin="14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -800,7 +916,7 @@
         </TabItem>
 
         <!-- ===== Pestaña NAVEGADOR ===== -->
-        <TabItem Header="{loc:Translate Config.BrowserTab}">
+        <TabItem Tag="🌐" Header="{loc:Translate Config.BrowserTab}">
             <Grid Margin="14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -862,7 +978,7 @@
         </TabItem>
 
         <!-- ===== Pestaña GENERAL ===== -->
-        <TabItem Header="{loc:Translate General.Title}">
+        <TabItem Tag="⚙️" Header="{loc:Translate General.Title}">
             <Grid Margin="14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
