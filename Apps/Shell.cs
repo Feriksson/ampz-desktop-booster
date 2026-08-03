@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Interop;
@@ -98,6 +99,7 @@ public static class Shell
         // (ArgumentList se pierde) → wt arranca pelado, le habla al monarca y muere sin abrir nada.
         // Por CreateProcess (UseShellExecute=false) el alias se resuelve por PATH y SÍ recibe args.
         var psi = new ProcessStartInfo("wt.exe") { UseShellExecute = false };
+        ScrubInheritedEditorEnv(psi);
         psi.ArgumentList.Add("-w");
         psi.ArgumentList.Add(target);
         psi.ArgumentList.Add("-d");
@@ -149,8 +151,36 @@ public static class Shell
         WindowMethods.FindVisible(hwnd => IsTerminalOn(hwnd, desktop));
 
     /// <summary>
-    /// Fallback sin Windows Terminal: lanza el .exe directo (UseShellExecute hereda nuestro token
-    /// no-admin). En esa máquina el host es conhost, que abre ventana nueva en el escritorio actual.
+    /// Saca del entorno del hijo las env vars que VS Code inyecta en TODOS sus descendientes. Si esta
+    /// app fue spawneada desde un proceso hijo de VS Code (terminal integrado, agente, F5), las hereda
+    /// — y se las pasaría a todo lo que lancemos. La asesina es <c>ELECTRON_RUN_AS_NODE=1</c>, que
+    /// convierte cualquier binario Electron en un intérprete Node sin UI (exit code 9, sin ventana, sin
+    /// rastro); <c>VSCODE_IPC_HOOK</c> apunta al pipe del VS Code PADRE y rompe el handshake.
+    ///
+    /// Se aplica acá —y no sólo en "Abrir con"— porque desde que se lanzan SERVICIOS (npm/php/expo) el
+    /// shell pasó a ser la puerta por la que sale cualquier cosa: un `npm run dev` que arranque un
+    /// Electron, o un script que invoque `code`, moriría igual. Replica el entorno LIMPIO que tendría
+    /// el mismo comando lanzado desde el shortcut del Start Menu (parent = explorer.exe).
+    /// Ver el bloque de Electron en el CLAUDE.md: el bug se cazó con instrumentación a archivo.
+    /// </summary>
+    private static void ScrubInheritedEditorEnv(ProcessStartInfo psi)
+    {
+        foreach (var k in psi.Environment.Keys.ToList())
+        {
+            if (k.StartsWith("VSCODE_", StringComparison.OrdinalIgnoreCase) ||
+                k.StartsWith("ELECTRON_", StringComparison.OrdinalIgnoreCase))
+            {
+                psi.Environment.Remove(k);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Fallback sin Windows Terminal: lanza el .exe directo. OJO: acá NO podemos limpiar el entorno
+    /// heredado como en el camino de wt — <see cref="ProcessStartInfo.Environment"/> sólo se puede
+    /// tocar con <c>UseShellExecute=false</c>, y lo necesitamos en true para heredar nuestro token
+    /// no-admin. Es un mal menor consciente: este camino sólo corre en máquinas SIN Windows Terminal.
+    /// En esa máquina el host es conhost, que abre ventana nueva en el escritorio actual.
     /// </summary>
     private static void LaunchDirect(string workingDir, string? command)
     {
