@@ -16,7 +16,7 @@
             <TextBlock x:Name="SubHeaderText" Foreground="#9A9A9A" FontFamily="Segoe UI"
                        FontSize="11" Margin="0,0,0,10" />
 
-            <!-- MaxLength=23: el nombre de proyecto no puede pasar de 23 chars (frena al tipear;
+            <!-- MaxLength=23: el nombre de espacio no puede pasar de 23 chars (frena al tipear;
                  el guard de Confirm cubre las filas viejas del historial que ya lo superen). -->
             <TextBox x:Name="FilterBox" FontFamily="Segoe UI" FontSize="13" MaxLength="23"
                      Background="#2A2A2A" Foreground="#F2F2F2" BorderBrush="#444"

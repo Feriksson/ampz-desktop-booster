@@ -16,7 +16,7 @@ namespace AmpzDesktopBooster;
 
 /// <summary>
 /// La barra: una AppBar real de Windows con widgets modulares (hora, fecha, CPU,
-/// RAM, red, batería) + ícono en la bandeja. Era el MainWindow del proyecto "bar";
+/// RAM, red, batería) + ícono en la bandeja. Era el MainWindow del espacio "bar";
 /// acá pasa a ser BarWindow para convivir con el resto de la app (hook de teclado).
 /// </summary>
 public partial class BarWindow : Window
@@ -465,17 +465,17 @@ public partial class BarWindow : Window
 
     /// <summary>
     /// Actualiza el widget de desktop (a la derecha del todo): dot coloreado por tipo de desk,
-    /// nombre, proyecto en gold (oculto si no hay) y, si el desk tiene un MÓDULO activo, su nombre
-    /// pintado con el color propio del módulo. Lo llama el listener al cambiar de desktop.
+    /// nombre, espacio en gold (oculto si no hay) y, si el desk tiene un CONTEXTO activo, su nombre
+    /// pintado con el color propio del contexto. Lo llama el listener al cambiar de desktop.
     /// </summary>
     public void UpdateDesk(string name, string project, DeskModule module = default)
     {
         var dot = new SolidColorBrush(DeskPalette.For(name).Active);
 
-        // El modo lo decide el TIPO de desk, no si hay proyecto cargado:
-        //   · DESK +N  → SIEMPRE modo DUAL (es un desk de proyecto: le reservamos el espacio
-        //                del nombre del proyecto aunque hoy esté vacío).
-        //   · MAIN/CONSOLES/MISCS → modo SOLO centrado (nunca aceptan proyecto).
+        // El modo lo decide el TIPO de desk, no si hay espacio cargado:
+        //   · DESK +N  → SIEMPRE modo DUAL (es un desk de espacio: le reservamos el espacio
+        //                del nombre del espacio aunque hoy esté vacío).
+        //   · MAIN/CONSOLES/MISCS → modo SOLO centrado (nunca aceptan espacio).
         bool isProjectDesk = name.Contains("DESK +", StringComparison.OrdinalIgnoreCase);
 
         if (isProjectDesk)
@@ -486,13 +486,13 @@ public partial class BarWindow : Window
             DeskNameDual.Text = name;
             DeskProjectText.Text = project; // puede estar vacío: el espacio queda reservado igual
 
-            // Módulo: sin proyecto no puede haber sub-scope → ni lo evaluamos.
+            // Contexto: sin espacio no puede haber sub-scope → ni lo evaluamos.
             bool hasModule = project != "" && module.IsSet;
             if (hasModule)
             {
-                // Sólo el TEXTO toma el color del módulo. La barrita de al lado queda neutral (se
+                // Sólo el TEXTO toma el color del contexto. La barrita de al lado queda neutral (se
                 // pinta en el XAML): está entre dos datos, así que lee como separador — teñirla del
-                // color del módulo confundía a cuál de los dos pertenece.
+                // color del contexto confundía a cuál de los dos pertenece.
                 DeskModuleText.Text = module.Name;
                 DeskModuleText.Foreground = new SolidColorBrush(module.Accent);
             }
@@ -501,16 +501,16 @@ public partial class BarWindow : Window
 
             // ── Reparto del espacio: se decide ACÁ, no en el XAML ──
             // Con topes fijos en el XAML el reparto quedaba desparejo (150/110 = 58/42, no 50/50) y
-            // el módulo se cortaba mientras al proyecto le sobraba aire. Con columnas "*" el reparto
-            // es proporcional de verdad, pero "*" en el módulo reservaría su mitad AUNQUE no haya
-            // módulo — por eso el ancho no puede ser estático: depende del estado.
+            // el contexto se cortaba mientras al espacio le sobraba aire. Con columnas "*" el reparto
+            // es proporcional de verdad, pero "*" en el contexto reservaría su mitad AUNQUE no haya
+            // contexto — por eso el ancho no puede ser estático: depende del estado.
             //
-            //   · Con módulo → 50/50 exacto y cada título CENTRADO en su mitad. Como las dos columnas
+            //   · Con contexto → 50/50 exacto y cada título CENTRADO en su mitad. Como las dos columnas
             //     "*" reparten el sobrante en partes iguales, el divisor (columna Auto del medio)
             //     cae exactamente en el centro del bloque: quedan dos celdas simétricas, no un texto
             //     pegado al otro. Centrar en la celda (y no alinear contra el divisor) hace que el
             //     largo de un nombre NO corra visualmente al otro.
-            //   · Sin módulo → la columna del módulo va a 0 y el proyecto se queda con el 100%,
+            //   · Sin contexto → la columna del contexto va a 0 y el espacio se queda con el 100%,
             //     CENTRADO en todo el ancho para que no quede un hueco muerto a ningún lado.
             DeskProjectCol.Width = new GridLength(1, GridUnitType.Star);
             DeskModuleCol.Width = hasModule ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
@@ -640,7 +640,7 @@ public partial class BarWindow : Window
         return name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
     }
 
-    /// <summary>Tooltip del dot: qué pasa en ese desk + el proyecto (si tiene), en su línea.</summary>
+    /// <summary>Tooltip del dot: qué pasa en ese desk + el espacio (si tiene), en su línea.</summary>
     private static string AttentionTip(string deskName, bool urgent, string project)
     {
         string head = urgent ? $"{deskName} {Loc.T("Bar.AttentionNeedsYou")}" : $"{deskName}: {Loc.T("Bar.AttentionTaskDone")}";

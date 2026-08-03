@@ -13,7 +13,7 @@ using AmpzDesktopBooster.Services.Localization;
 namespace AmpzDesktopBooster;
 
 /// <summary>
-/// Variables del proyecto / globales — la Win+Numpad* del legacy (Paths Manager).
+/// Variables del espacio / globales — la Win+Numpad* del legacy (Paths Manager).
 /// Lista de paths/URLs con título, filtrable. Acciones:
 ///   Enter / doble-clic → abrir (URL al browser, path al explorer)
 ///   Shift+Enter        → abrir el directorio en Claude CLI
@@ -23,15 +23,15 @@ namespace AmpzDesktopBooster;
 ///   Supr               → borrar la variable
 ///   re-presionar Win+* con la ventana abierta → dispara el predeterminado (lo maneja el router)
 ///
-/// El dual-scope (proyecto vs global) ya viene resuelto: el caller pasa la PathPool correcta.
+/// El dual-scope (espacio vs global) ya viene resuelto: el caller pasa la PathPool correcta.
 /// </summary>
 public partial class ProjectPathsWindow : Window
 {
     /// <summary>De qué pool viene la fila — define si es operable o sólo referencia, y cómo se pinta.</summary>
     /// <remarks>
     /// Project = operable (mutás). Global y Other = SOLO-LECTURA (abrís/copiás, no mutás): Global es la
-    /// pool compartida anexada en scope de proyecto; Other es OTRO proyecto traído por el toggle "ver
-    /// todos los proyectos". Separator = rótulo de sección, no seleccionable.
+    /// pool compartida anexada en scope de espacio; Other es OTRO espacio traído por el toggle "ver
+    /// todos los espacios". Separator = rótulo de sección, no seleccionable.
     /// </remarks>
     private enum RowScope { Project, Parent, Global, Other, Separator }
 
@@ -54,32 +54,32 @@ public partial class ProjectPathsWindow : Window
 
         /// <summary>
         /// El predeterminado de esta fila existe pero está TAPADO por uno más cercano (caso único:
-        /// estás en un módulo, la fila es del proyecto padre y el módulo ya tiene su propio
-        /// predeterminado). Se pinta con estrella HUECA: sigue siendo el predeterminado del proyecto
-        /// — y va a volver a mandar si borrás el del módulo — pero hoy no es el que dispara.
+        /// estás en un contexto, la fila es del espacio padre y el contexto ya tiene su propio
+        /// predeterminado). Se pinta con estrella HUECA: sigue siendo el predeterminado del espacio
+        /// — y va a volver a mandar si borrás el del contexto — pero hoy no es el que dispara.
         /// </summary>
         public bool IsShadowed { get; init; }
 
         public bool IsProject   => Scope == RowScope.Project;
         public bool IsSeparator => Scope == RowScope.Separator; // rótulo de sección, no seleccionable
 
-        /// <summary>Fila de SOLO-LECTURA (heredada del proyecto padre, global u otro proyecto).</summary>
+        /// <summary>Fila de SOLO-LECTURA (heredada del espacio padre, global u otro espacio).</summary>
         public bool IsReadOnlyRef => Scope is RowScope.Parent or RowScope.Global or RowScope.Other;
 
         /// <summary>
         /// ¿Se le puede marcar/desmarcar el predeterminado? CUALQUIER fila que veas en tu contexto:
-        /// la del scope primario, la heredada del proyecto padre y la global. Con el predeterminado
+        /// la del scope primario, la heredada del espacio padre y la global. Con el predeterminado
         /// guardado POR SCOPE, marcar una heredada NO toca al padre — sólo anota, en TU scope, cuál
         /// de las que ves es la tuya. Por eso ya no hay motivo para prohibirlo.
         ///
-        /// Se excluyen sólo las de OTROS proyectos (el toggle F4): eso es un modo de exploración
+        /// Se excluyen sólo las de OTROS espacios (el toggle F4): eso es un modo de exploración
         /// para encontrar algo suelto, no tu contexto de trabajo.
         /// </summary>
         public bool IsDefaultable => Scope is RowScope.Project or RowScope.Parent or RowScope.Global;
 
         /// <summary>
         /// Columna Título. ⭐ = es el predeterminado de TU scope (el que dispara con el re-press).
-        /// ☆ hueco = es el del proyecto padre pero está tapado por el tuyo (ver <see cref="IsShadowed"/>).
+        /// ☆ hueco = es el del espacio padre pero está tapado por el tuyo (ver <see cref="IsShadowed"/>).
         /// Va al FINAL del nombre (pedido del usuario): así los títulos quedan alineados a la
         /// izquierda y la marca no desplaza el texto de la fila predeterminada respecto de las demás.
         /// El ⚠ de "roto" se antepone a todo: es la señal más importante de la fila.
@@ -122,17 +122,17 @@ public partial class ProjectPathsWindow : Window
     }
 
     private readonly PathPool _pool;
-    private readonly PathPool? _globalPool; // no-null en scope de proyecto: se anexa de solo-lectura
-    private readonly PathPool? _parentPool; // no-null en scope de MÓDULO: el proyecto del que hereda
-    private readonly IReadOnlyList<PathPool> _otherProjectPools; // los demás proyectos (toggle F4), read-only
+    private readonly PathPool? _globalPool; // no-null en scope de espacio: se anexa de solo-lectura
+    private readonly PathPool? _parentPool; // no-null en scope de CONTEXTO: el espacio del que hereda
+    private readonly IReadOnlyList<PathPool> _otherProjectPools; // los demás espacios (toggle F4), read-only
     private readonly string _deskName;
     private readonly string _explorerSeed;
 
     // Predeterminado POR SCOPE. El store es el dueño; la ventana sólo lee/escribe el de SU scope
     // (y lee el del padre, para la herencia). null en ambos = no hay ninguno elegido.
     private readonly ProjectStore? _store;
-    private readonly string _scopeKey;        // "" global, "Proyecto", o "Proyecto/Módulo"
-    private readonly string? _parentScopeKey; // el proyecto, cuando estás en un módulo
+    private readonly string _scopeKey;        // "" global, "Espacio", o "Espacio/Contexto"
+    private readonly string? _parentScopeKey; // el espacio, cuando estás en un contexto
 
     private string? OwnDefault => _store?.GetScopeDefault(_scopeKey);
     private string? ParentDefault => _parentScopeKey is null ? null : _store?.GetScopeDefault(_parentScopeKey);
@@ -140,7 +140,7 @@ public partial class ProjectPathsWindow : Window
     /// <summary>El que realmente dispara: el de tu scope y, si no elegiste, el heredado del padre.</summary>
     private string? EffectiveDefault => OwnDefault ?? ParentDefault;
 
-    /// <summary>Toggle "ver todos los proyectos". OFF por default: arrancás en TU contexto y te abrís al resto a pedido.</summary>
+    /// <summary>Toggle "ver todos los espacios". OFF por default: arrancás en TU contexto y te abrís al resto a pedido.</summary>
     private bool _showAllProjects;
 
     public ProjectPathsWindow(PathPool pool, string deskName, string explorerSeed = "",
@@ -164,7 +164,7 @@ public partial class ProjectPathsWindow : Window
         HeaderText.Text = $"{pool.Label} — {Loc.T("Paths.HeaderSuffix")}";
         SubHeaderText.Text = deskName;
 
-        // Sin otros proyectos en el catálogo no hay nada que togglear → ocultamos el botón.
+        // Sin otros espacios en el catálogo no hay nada que togglear → ocultamos el botón.
         AllProjectsBtn.Visibility = _otherProjectPools.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         UpdateAllProjectsBtn();
 
@@ -186,7 +186,7 @@ public partial class ProjectPathsWindow : Window
         Loaded += (_, _) => FilterBox.Focus();
     }
 
-    /// <summary>Alterna la vista "todos los proyectos" y repinta. Lo dispara el botón y F4.</summary>
+    /// <summary>Alterna la vista "todos los espacios" y repinta. Lo dispara el botón y F4.</summary>
     private void ToggleAllProjects()
     {
         if (_otherProjectPools.Count == 0) return; // nada que mostrar
@@ -200,8 +200,8 @@ public partial class ProjectPathsWindow : Window
 
     /// <summary>
     /// Dispara el predeterminado (lo llama el router al re-presionar Win+*). Respeta la herencia:
-    /// el predeterminado del scope PRIMARIO gana, y si el módulo no tiene uno propio cae al del
-    /// PROYECTO padre. Así un módulo recién creado ya te abre lo del cliente sin configurar nada,
+    /// el predeterminado del scope PRIMARIO gana, y si el contexto no tiene uno propio cae al del
+    /// ESPACIO padre. Así un contexto recién creado ya te abre lo del cliente sin configurar nada,
     /// y en cuanto le marcás su propio predeterminado (su localhost) el suyo pisa al heredado.
     /// </summary>
     public bool FireDefault()
@@ -219,12 +219,12 @@ public partial class ProjectPathsWindow : Window
         string filter = FilterBox.Text.Trim();
         PathList.Items.Clear();
 
-        // 1) Las del proyecto (operables), agrupadas por tipo (carpetas / URLs).
+        // 1) Las del espacio (operables), agrupadas por tipo (carpetas / URLs).
         AddGroupedByType(PoolRows(_pool, RowScope.Project, filter).ToList());
 
-        // 2) En scope de MÓDULO anexamos las del PROYECTO PADRE, de solo-lectura. Es la herencia:
-        //    lo que es del cliente (repo raíz, Jira, VPN) se carga UNA vez en el proyecto y se ve
-        //    desde todos sus módulos, sin duplicarlo en cada uno. Va antes que las globales porque
+        // 2) En scope de CONTEXTO anexamos las del ESPACIO PADRE, de solo-lectura. Es la herencia:
+        //    lo que es del cliente (repo raíz, Jira, VPN) se carga UNA vez en el espacio y se ve
+        //    desde todos sus contextos, sin duplicarlo en cada uno. Va antes que las globales porque
         //    está más cerca de tu scope: el orden de la lista ES el orden de cercanía.
         if (_parentPool is not null)
         {
@@ -236,7 +236,7 @@ public partial class ProjectPathsWindow : Window
             }
         }
 
-        // 3) En scope de proyecto anexamos las GLOBALES de solo-lectura bajo un separador, para no
+        // 3) En scope de espacio anexamos las GLOBALES de solo-lectura bajo un separador, para no
         //    quedar ciegos a las compartidas. El separador entra SÓLO si hay alguna que matchee el
         //    filtro (si no, no ensuciamos la lista con un rótulo de sección vacío). También se agrupan
         //    por tipo dentro de su sección.
@@ -250,10 +250,10 @@ public partial class ProjectPathsWindow : Window
             }
         }
 
-        // 4) Toggle "todos los proyectos": cada OTRO proyecto bajo su propio separador (su nombre),
-        //    de SOLO-LECTURA. El separador entra sólo si ese proyecto tiene alguna fila que matchee
-        //    el filtro — así, filtrando, sólo ves los proyectos que realmente tienen algo. Esto es lo
-        //    que te deja "encontrar una variable de cualquier proyecto" tipeando un fragmento.
+        // 4) Toggle "todos los espacios": cada OTRO espacio bajo su propio separador (su nombre),
+        //    de SOLO-LECTURA. El separador entra sólo si ese espacio tiene alguna fila que matchee
+        //    el filtro — así, filtrando, sólo ves los espacios que realmente tienen algo. Esto es lo
+        //    que te deja "encontrar una variable de cualquier espacio" tipeando un fragmento.
         if (_showAllProjects)
         {
             foreach (var other in _otherProjectPools)
@@ -301,7 +301,7 @@ public partial class ProjectPathsWindow : Window
     ///
     /// La marca de predeterminado NO sale de la entrada (ya no vive ahí): se resuelve comparando el
     /// PATH de la fila contra el predeterminado de TU scope y el del padre. Por eso la ⭐ puede caer
-    /// en CUALQUIER sección — incluida la heredada: elegir una variable del proyecto como tu
+    /// en CUALQUIER sección — incluida la heredada: elegir una variable del espacio como tu
     /// predeterminado no la mueve ni la duplica, sólo la apunta desde tu scope.
     /// </summary>
     private IEnumerable<Row> PoolRows(PathPool pool, RowScope scope, string filter)
@@ -363,7 +363,7 @@ public partial class ProjectPathsWindow : Window
         }
     }
 
-    /// <summary>Fila del PROYECTO seleccionada. Las globales son de solo-lectura acá → null (no mutan).</summary>
+    /// <summary>Fila del ESPACIO seleccionada. Las globales son de solo-lectura acá → null (no mutan).</summary>
     private Row? SelectedProject => Selected is { IsProject: true } row ? row : null;
 
     /// <summary>Fila a la que SÍ se le puede togglear el predeterminado (ver <see cref="Row.IsDefaultable"/>).</summary>
@@ -439,8 +439,8 @@ public partial class ProjectPathsWindow : Window
 
     /// <summary>
     /// Marca/desmarca el predeterminado DE TU SCOPE apuntando a la fila seleccionada, venga de donde
-    /// venga (propia, heredada del proyecto o global). NO toca la entrada ni el scope de origen: por
-    /// eso dos módulos del mismo proyecto pueden elegir dos variables distintas del MISMO pool
+    /// venga (propia, heredada del espacio o global). NO toca la entrada ni el scope de origen: por
+    /// eso dos contextos del mismo espacio pueden elegir dos variables distintas del MISMO pool
     /// heredado sin pisarse. Re-marcar la que ya era la tuya la desmarca; si había una heredada del
     /// padre, vuelve a mandar sola.
     /// </summary>
@@ -471,7 +471,7 @@ public partial class ProjectPathsWindow : Window
 
     /// <summary>
     /// Borra de un saque todos los paths ROTOS del pool OPERABLE (<see cref="_pool"/>). Las globales
-    /// en la vista de proyecto son solo-lectura (igual que Delete/Rename) → no se purgan desde acá:
+    /// en la vista de espacio son solo-lectura (igual que Delete/Rename) → no se purgan desde acá:
     /// para limpiarlas hay que pararse en un desk global, donde el pool global ES el operable.
     /// Pide confirmación con el conteo: borrar variables es destructivo y no hay undo.
     /// </summary>

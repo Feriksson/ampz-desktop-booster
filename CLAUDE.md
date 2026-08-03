@@ -1,8 +1,8 @@
 # Ampz Desktop Booster
 
 App de productividad para Windows que gestiona los **escritorios virtuales** del SO y los liga a
-"proyectos" con variables (paths/URLs), notas, pins y restricciones de ventanas. Todo manejado
-desde el teclado (numpad) para que un dev no toque el mouse.
+**espacios** de trabajo (y sus **contextos**) con variables (paths/URLs), notas, pins y restricciones
+de ventanas. Todo manejado desde el teclado (numpad) para que un dev no toque el mouse.
 
 Es la **versión moderna en WPF / .NET 10** de un script legacy de AutoHotkey v2
 (`ampzWinTunner.ahk`) ubicado en `C:/Users/ampz/Desktop/Repos personales/desktop booster -dev`.
@@ -80,10 +80,10 @@ que `WH_KEYBOARD_LL` y el `PostMessage` de la DLL necesitan.
 
 | Carpeta | Qué vive ahí |
 |---|---|
-| `Desktops/` | Núcleo: escritorios virtuales, proyectos, pins, restricciones, gobierno de ventanas. |
+| `Desktops/` | Núcleo: escritorios virtuales, espacios/contextos, pins, restricciones, gobierno de ventanas. |
 | `Hotkeys/` | Captura de teclado de bajo nivel y ruteo de atajos a acciones. |
 | `Interop/` | Todo el P/Invoke nativo: la DLL, hooks (`WH_KEYBOARD_LL`, `WinEvent`), métodos de ventana. |
-| `Persistence/` | Rutas de datos, lector INI custom, modelo del catálogo de proyectos. |
+| `Persistence/` | Rutas de datos, lector INI custom, modelo del catálogo de espacios/contextos. |
 | `Apps/` | Apps externas: detección, "Abrir con", Docker, quick actions, contexto de Explorer. |
 | `Services/` | AppBar, tray, autostart, monitor de sistema, toasts, extracción de íconos. |
 | `Providers/` | Logos PNG de proveedores de IA (embebidos como Resource). |
@@ -99,53 +99,117 @@ Los desks se identifican por **fragmento de nombre** (case-insensitive), no por 
 `MAIN`, `CONSOLES`, `MISCS`, `DESK +1` … `DESK +6` (ver `DesktopConfig.DefaultManaged`).
 `DesktopService` es la capa alta sobre la DLL — **nadie más toca P/Invoke de desktops directo**.
 
-### 2. Las TRES capas de "proyecto por desk" (clave — `ProjectStore`)
+### ⚠ VOCABULARIO: en la UI son ESPACIO y CONTEXTO; en el código, `project` y `module`
+Leé esto antes que nada o vas a creer que hay dos modelos, y hay uno solo.
+
+| Nivel | En la UI (y al hablar con el usuario) | En el código | Ejemplo |
+|---|---|---|---|
+| 1 | **Espacio** | `project`, `ProjectStore`, `History` | Geocontrol, Synxs, Ampz |
+| 2 | **Contexto** | `module`, `ModuleEntry`, `ModulePalette` | Plataforma, App Mobile, Soporte |
+
+El nombre viejo era "proyecto"/"módulo" y quedó obsoleto **por uso real**: el nivel 1 terminaba
+siendo el CLIENTE o el ámbito (llegó a haber 3 desks con el mismo "proyecto") y el nivel 2 el
+proyecto de verdad. La jerarquía de dos niveles estaba BIEN; la etiqueta no.
+
+Se descartó "Cliente/Proyecto" por dos motivos: "Cliente" no banca un espacio propio ni lo personal,
+y "Proyecto" en el nivel 2 repetiría el MISMO error el día que aparezca un `Geocontrol/Soporte`.
+
+**Los identificadores del código NO se renombraron a propósito.** Son nombres ESTRUCTURALES, neutros
+respecto del dominio; renombrarlos habría sido un diff enorme sin ganar una línea de claridad, y la
+persistencia no los usa (las keys del JSON se componen con lo que TIPEA el usuario, por eso el
+renombre costó migración CERO). Regla operativa: **al escribir texto de UI, siempre Espacio/Contexto;
+al leer código, `project`/`module` son lo mismo.** Las keys de traducción (`Setter.*`, `Modules.*`)
+también quedaron con el nombre viejo por la misma razón.
+
+Y NO metas un tercer nivel. Se evaluó y se descartó: no resuelve ningún dolor actual y suma un picker,
+una key más larga y otra rama de herencia. Si hace falta granularidad, el nombre del Contexto la
+absorbe ("App Mobile — Auth").
+
+### 2. Las TRES capas de "espacio por desk" (clave — `ProjectStore`)
 Esto confunde si no lo tenés claro:
 
-1. **Sesión** (`_session`, en memoria) — qué proyecto está en qué desk HOY. **Efímero**, se pierde al cerrar.
+1. **Sesión** (`_session`, en memoria) — qué espacio está en qué desk HOY. **Efímero**, se pierde al cerrar.
 2. **Sugerencias** (`settings.ini` `[Projects]` `desk_N=...`) — última asignación por desk; solo
    sirve para **pre-llenar** el textbox del setter el próximo día.
 3. **Catálogo** (`desk_project_data.json`) — `history` + `paths` + `notes` durables.
 
-**Regla de oro (del legacy): la sesión NUNCA se rellena del INI al arrancar.** Ver proyectos de ayer
+**Regla de oro (del legacy): la sesión NUNCA se rellena del INI al arrancar.** Ver espacios de ayer
 sin confirmar sería confuso. El INI solo alimenta el setter, no la sesión activa.
 
-### 3. MÓDULOS: sub-scopes de un proyecto (`ModuleEntry` + `ModulePalette`)
-Un mismo cliente puede ocupar varios desks (Geocontrol → "Plataforma" y "App Mobile"). Un módulo
-**NO es un proyecto hermano**: sus variables/notas viven bajo la key compuesta `"Proyecto/Módulo"`
+### 3. CONTEXTOS: sub-scopes de un espacio (`ModuleEntry` + `ModulePalette`)
+Un mismo espacio puede ocupar varios desks (Geocontrol → "Plataforma" y "App Mobile"). Un contexto
+**NO es un espacio hermano**: sus variables/notas viven bajo la key compuesta `"Espacio/Contexto"`
 (`ProjectStore.ScopeKey`), lo que deja el shape del JSON intacto y hace que TODO lo que ya operaba
-sobre una key de proyecto funcione igual sobre una de módulo, sin ramas nuevas. El `/` está
+sobre una key de espacio funcione igual sobre una de contexto, sin ramas nuevas. El `/` está
 prohibido en los nombres (`ProjectStore.Sanitize`) para que la key nunca sea ambigua al partirla.
 
-La sesión pasó de `desk → string` a `desk → DeskAssignment(Project, Module)`. Cambiar de proyecto
-LIMPIA el módulo (arrastrar "Plataforma" al cliente siguiente sería la confusión que vinimos a matar);
-re-confirmar el MISMO proyecto lo conserva. El INI suma la sugerencia `desk_N_module`.
+La sesión pasó de `desk → string` a `desk → DeskAssignment(Project, Module)`. Cambiar de espacio
+LIMPIA el contexto (arrastrar "Plataforma" al espacio siguiente sería la confusión que vinimos a
+matar); re-confirmar el MISMO espacio lo conserva. El INI suma la sugerencia `desk_N_module`.
 
-**Cada módulo lleva un COLOR propio** (auto-asignado de `ModulePalette`, ciclable con F3 en el
+**Cada contexto lleva un COLOR propio** (auto-asignado de `ModulePalette`, ciclable con F3 en el
 picker) y se pinta en overlay, barra y DeskPicker. Esto no es cosmética: la feature nació porque el
-usuario le ERRABA de módulo al cambiar de pantalla — el texto obliga a leer, el color se percibe de
+usuario le ERRABA de contexto al cambiar de pantalla — el texto obliga a leer, el color se percibe de
 reflejo. La paleta esquiva a propósito el dorado de `DESK +N` y el verde de MAIN.
 
-Gestión por dos caminos, a propósito: **2do paso del setter** (`Win+NumpadEnter` → confirmás
-proyecto → aparece el picker) lo hace DESCUBRIBLE, y **`Win+NumpadDot`** cambia sólo el módulo sin
-re-elegir proyecto (el uso frecuente). Sólo el atajo dedicado sería invisible; sólo el 2do paso te
-obligaría a re-tipear el proyecto cada vez que rotás.
+**El color vive SÓLO en el contexto; el espacio NO tiene color** (decisión explícita). Costo aceptado:
+los N desks de un mismo espacio no se agrupan visualmente. Se eligió así porque el espacio lo elegís
+al sentarte y el contexto es el que rotás — la señal de reflejo le sirve al que rota.
+
+Gestión por tres caminos, a propósito: **2do paso del setter** (`Win+NumpadEnter` → confirmás
+espacio → aparece el picker) lo hace DESCUBRIBLE; **`Win+NumpadDot`** cambia sólo el contexto sin
+re-elegir espacio (el uso frecuente); y la **pestaña Espacios de la config** (ver sección 4-bis) es la
+única superficie donde se REORGANIZA. Sólo el atajo dedicado sería invisible; sólo el 2do paso te
+obligaría a re-tipear el espacio cada vez que rotás.
 
 ### 4. Scope de variables y notas — herencia de TRES niveles
-`ProjectStore.ResolvePoolWithGlobal` / `GetNotes`: si el desk es un `DESK +N` **con proyecto activo
-en la sesión** → scope de proyecto. Cualquier otro caso (MAIN/CONSOLES/MISCS, o DESK+ sin proyecto)
+`ProjectStore.ResolvePoolWithGlobal` / `GetNotes`: si el desk es un `DESK +N` **con espacio activo
+en la sesión** → scope de espacio. Cualquier otro caso (MAIN/CONSOLES/MISCS, o DESK+ sin espacio)
 → pool/notas **GLOBAL compartido**. Criterio único en `UseProjectScope`.
 
-Dentro del scope de proyecto, las **variables heredan**: pool primaria = módulo (si hay), y se
-anexan de SOLO-LECTURA el proyecto padre y la global, en ese orden (el orden de la lista ES el orden
-de cercanía). Así el repo raíz y el Jira del cliente se cargan UNA vez en el proyecto y se ven desde
-todos sus módulos.
+Dentro del scope de espacio, las **variables heredan**: pool primaria = contexto (si hay), y se
+anexan de SOLO-LECTURA el espacio padre y la global, en ese orden (el orden de la lista ES el orden
+de cercanía). Así el repo raíz y el Jira del cliente se cargan UNA vez en el espacio y se ven desde
+todos sus contextos.
+
+> Esta herencia es la PRUEBA de que el renombre no fue cosmético: `contexto → espacio → global`
+> describe el modelo mejor de lo que lo hacía `módulo → proyecto → global`.
+
+### 4-bis. Reorganizar el catálogo (pestaña **Espacios** de la config)
+Durante mucho tiempo el catálogo sólo supo **crear** (setter/picker) y **borrar** en cascada.
+Reorganizar había que hacerlo editando el JSON A MANO — y no es un caso raro: la estructura mental
+del usuario cambia (todo el renombre nació de descubrir que 11 "proyectos" eran contextos de dos
+espacios). Las operaciones viven en `ProjectStore` y la UI en `ConfigWindow`:
+
+| Operación | Sobre | Nota |
+|---|---|---|
+| `RenameProject` | Espacio | Arrastra sus variables, notas, predeterminados y TODOS sus contextos |
+| `RenameModule` | Contexto | Conserva color, variables y notas |
+| `MoveModule` | Contexto | A otro espacio. Recolorea si choca con un hermano del destino |
+| `PromoteModule` | Contexto | Pasa a espacio propio. **PIERDE el color** (un espacio no tiene) |
+| `DemoteProject` | Espacio | Pasa a contexto de otro |
+
+**Disciplina no negociable**: si una key de scope se mueve, se mueve en TODOS lados — `paths`,
+`notes`, `defaults`, catálogo `modules`, sesión en vivo Y sugerencias del INI — o no se mueve en
+ninguno. Media migración deja variables huérfanas colgando de un scope inexistente: invisibles desde
+la UI e imposibles de borrar. Por eso existen los helpers `MoveScope` / `MovePrefix` / `MapSession` /
+`MapSuggestions`: el barrido está en UN lugar y ninguna operación puede olvidarse una capa.
+
+Dos reglas de dominio que NO hay que "simplificar":
+- **Degradar un espacio que TIENE contextos se RECHAZA** (`ScopeOpResult.WouldNest`). Sería un tercer
+  nivel (`A/B/C`), que el modelo no tiene; aplanarlos en silencio destruiría la jerarquía sin avisar.
+- **Mover un contexto NO se lleva lo heredado** del espacio viejo: pasa a heredar del nuevo. Es lo
+  correcto (arrastrar el Jira del cliente anterior sería peor), pero SORPRENDE — el diálogo lo avisa.
+
+Las operaciones devuelven `ScopeOpResult` (un MOTIVO) y no un `bool`: se disparan desde botones, y un
+botón que no hace nada se lee IGUAL que un botón roto. La ventana traduce el motivo a un mensaje que
+orienta ("ya hay un contexto con ese nombre", "primero movés sus contextos").
 
 ### ⚠ El PREDETERMINADO vive en el SCOPE, no en la entrada (no lo vuelvas atrás)
-Originalmente era un flag por entrada (`PathEntry.Default`). Con módulos eso ROMPE: una entrada del
-proyecto la ven TODOS sus módulos, así que marcarla desde "App Mobile" se la cambiaba también a
+Originalmente era un flag por entrada (`PathEntry.Default`). Con contextos eso ROMPE: una entrada del
+espacio la ven TODOS sus contextos, así que marcarla desde "App Mobile" se la cambiaba también a
 "Plataforma" — no era propagación, era **el mismo objeto**. Y el requisito desde el día uno era que
-cada módulo pudiera tener una predeterminada DISTINTA.
+cada contexto pudiera tener una predeterminada DISTINTA.
 
 Hoy: `ProjectData.Defaults` (key = scope, value = **PATH** elegido) + `SharedDefault` para la global.
 Se guarda el path y no el índice porque el índice se corre al borrar/reordenar.
@@ -153,16 +217,16 @@ Se guarda el path y no el índice porque el índice se corre al borrar/reordenar
 le dicen a la ventana dónde anotar.
 
 Consecuencia clave: **el predeterminado de un scope puede APUNTAR a una variable heredada** (del
-proyecto padre o de la global) sin moverla ni duplicarla. Por eso `Row.IsDefaultable` acepta filas
-propias, del padre y globales — se excluyen sólo las de "otros proyectos" (el F4 es exploración, no
+espacio padre o de la global) sin moverla ni duplicarla. Por eso `Row.IsDefaultable` acepta filas
+propias, del padre y globales — se excluyen sólo las de "otros espacios" (el F4 es exploración, no
 tu contexto). `FireDefault` = el de tu scope, y si no elegiste, el del padre (`EffectiveDefault`).
 La ⭐ marca el tuyo; la **☆ hueca** marca el del padre cuando el tuyo lo tapa.
 
 `MigrateLegacyDefaults` convierte los archivos viejos una sola vez y limpia los flags para no dejar
 dos fuentes de verdad. `PathPool` YA NO sabe nada de predeterminados.
 
-Las **notas NO heredan**: con módulo activo ves las del módulo y punto. Es deliberado — una nota es
-una pizarra de trabajo; mezclarle la del proyecto la volvería un cajón de sastre.
+Las **notas NO heredan**: con contexto activo ves las del contexto y punto. Es deliberado — una nota
+es una pizarra de trabajo; mezclarle la del espacio la volvería un cajón de sastre.
 
 ### 5. Gobierno de ventanas (`WindowGovernor`)
 Motor de enforcement que escucha `EVENT_OBJECT_SHOW` (vía `WinEventHook`) + el cambio de desk:
@@ -181,7 +245,7 @@ legacy guardaba en `A_ScriptDir`; esto se modernizó para que la app sea compart
 
 | Archivo | Formato | Contenido |
 |---|---|---|
-| `desk_project_data.json` | JSON | Catálogo durable: `history`, `notes`, `paths` (key = proyecto **o** `"Proyecto/Módulo"`), `modules` (sub-scopes + color, por proyecto), `shared_notes`, `shared_paths`, `folder_notes`. |
+| `desk_project_data.json` | JSON | Catálogo durable: `history` (los ESPACIOS), `notes`, `paths` (key = espacio **o** `"Espacio/Contexto"`), `modules` (los CONTEXTOS + su color, por espacio), `defaults` (predeterminado por scope), `shared_notes`, `shared_paths`, `shared_default`, `folder_notes`. |
 | `settings.ini` | INI custom | `[Projects]` sugerencias (`desk_N` y `desk_N_module`), `[Pins]` `proc.exe=idx`, `[Restricted]` `idx=1`, `[Whitelist_IDX]` `proc.exe=1`. |
 | `desktops.json` | JSON | `DesktopConfig`: lista `managed` + flag `autoCreate`. |
 | `apps.json` | JSON | `AppsConfig`: apps de usuario (`name`, `exePath`, `args` con `{path}`). |
@@ -210,11 +274,11 @@ del hook no se puede bloquear).
 | `Win+Numpad 1/2/3` | Ir a MAIN / CONSOLES / MISCS (fila inferior, la más cómoda) |
 | `Win+Numpad 4..9` | Ir a DESK +1 … +6 |
 | `Win+Shift+`(navegación) | Enviar la ventana activa a ese desk **y seguirla** |
-| `Win+NumpadEnter` | Setear el proyecto del desk actual (solo en `DESK +N`) → encadena el picker de **módulo** |
-| `Win+Numpad .` (Del) | **Módulo** del desk: cambia sólo el sub-scope sin re-elegir proyecto (re-press → sin módulo) |
-| `NumpadClear` (Numpad5, **sin Win**) | Abrir el **DeskPicker** (saltar a un proyecto de la sesión) |
-| `Win+Numpad *` | **Variables** del proyecto/global (Paths Manager); re-press dispara el predeterminado |
-| `Win+Numpad /` | **Notas** del proyecto/global |
+| `Win+NumpadEnter` | Setear el **espacio** del desk actual (solo en `DESK +N`) → encadena el picker de **contexto** |
+| `Win+Numpad .` (Del) | **Contexto** del desk: cambia sólo el sub-scope sin re-elegir espacio (re-press → sin contexto) |
+| `NumpadClear` (Numpad5, **sin Win**) | Abrir el **DeskPicker** (saltar a un espacio de la sesión) |
+| `Win+Numpad *` | **Variables** del espacio/contexto/global (Paths Manager); re-press dispara el predeterminado |
+| `Win+Numpad /` | **Notas** del espacio/contexto/global |
 | `Win+Numpad −` (Sub) | **Send-window picker** (mandar la ventana activa a un desk elegido) |
 | `Win+Numpad +` (Add) | **Puertos / Servicios locales** (lista global de apps web por puerto; estado vivo 🟢/⚪, copiar localhost / IP de red, QR) |
 | `Win+F2` | "Abrir con" (sobre el path activo del Explorer) |
@@ -349,7 +413,7 @@ mantenía vivo el hook.
   primer intento fallido.
 
 **3. La red anti-foco-huérfano le ROBABA el foco a la ventana ENCADENADA.**
-Síntoma: el setter de proyecto (`Win+NumpadEnter`) abre el picker de módulo y se cierra; el picker
+Síntoma: el setter de espacio (`Win+NumpadEnter`) abre el picker de contexto y se cierra; el picker
 aparecía al frente pero SIN foco de teclado — había que clickearlo.
 - **Causa**: `RestoreForegroundOrDesktop` considera inválido CUALQUIER foreground de nuestro propio
   proceso (así cubre el caso de que sólo quede la barra) → 80ms después del cierre del setter le

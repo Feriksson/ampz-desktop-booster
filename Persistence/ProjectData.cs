@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace AmpzDesktopBooster.Persistence;
 
-/// <summary>Una entrada de path/URL de un proyecto.</summary>
+/// <summary>Una entrada de path/URL de un espacio.</summary>
 public sealed class PathEntry
 {
     [JsonPropertyName("title")] public string Title { get; set; } = "";
@@ -14,8 +14,8 @@ public sealed class PathEntry
     /// <see cref="ProjectData.Defaults"/>). Se conserva SÓLO para poder migrar los archivos viejos
     /// una vez; después de migrar queda en false y no se vuelve a escribir.
     ///
-    /// Por qué se movió: con módulos, una misma entrada del proyecto la ven TODOS sus módulos. Con
-    /// el flag en la entrada, marcarla como predeterminada desde un módulo se la cambiaba a todos —
+    /// Por qué se movió: con contextos, una misma entrada del espacio la ven TODOS sus contextos. Con
+    /// el flag en la entrada, marcarla como predeterminada desde un contexto se la cambiaba a todos —
     /// no era propagación, era literalmente el mismo objeto. El predeterminado es una decisión DEL
     /// CONTEXTO en el que estás parado, no una propiedad de la variable.
     /// </summary>
@@ -25,14 +25,14 @@ public sealed class PathEntry
 }
 
 /// <summary>
-/// Un MÓDULO (sub-scope) de un proyecto: "Plataforma" y "App Mobile" dentro de "Geocontrol".
+/// Un CONTEXTO (sub-scope) de un espacio: "Plataforma" y "App Mobile" dentro de "Geocontrol".
 /// Nace del problema real de tener varios desks del MISMO cliente y confundirlos al cambiar de
-/// pantalla — por eso cada módulo lleva su propio <see cref="Color"/>: la señal de identificación
+/// pantalla — por eso cada contexto lleva su propio <see cref="Color"/>: la señal de identificación
 /// es CROMÁTICA (se percibe sin leer), no textual.
 ///
-/// OJO: un módulo NO es un proyecto hermano. Sus variables/notas viven bajo la key compuesta
-/// "Proyecto/Módulo" (ver <c>ProjectStore.ScopeKey</c>) y HEREDAN de las del proyecto — así lo
-/// que es del cliente (repo raíz, Jira) se carga UNA vez y se ve desde todos sus módulos.
+/// OJO: un contexto NO es un espacio hermano. Sus variables/notas viven bajo la key compuesta
+/// "Espacio/Contexto" (ver <c>ProjectStore.ScopeKey</c>) y HEREDAN de las del espacio — así lo
+/// que es del cliente (repo raíz, Jira) se carga UNA vez y se ve desde todos sus contextos.
 /// </summary>
 public sealed class ModuleEntry
 {
@@ -43,16 +43,16 @@ public sealed class ModuleEntry
 }
 
 /// <summary>
-/// El catálogo persistente de proyectos — mismo shape que el desk_project_data.json del legacy:
-///   history       — todos los proyectos conocidos (para autocompletar el setter)
-///   notes         — pizarra de texto por proyecto (o por módulo, con key "Proyecto/Módulo")
-///   paths         — paths/URLs por proyecto (idem: la key puede ser compuesta)
-///   shared_notes  — pizarra GLOBAL (desks sin proyecto)
-///   shared_paths  — pool de paths GLOBAL (desks sin proyecto)
-///   folder_notes  — pizarra ligada a una CARPETA del disco (independiente de desk/proyecto)
-///   modules       — sub-scopes por proyecto (key = nombre del proyecto)
+/// El catálogo persistente de espacios — mismo shape que el desk_project_data.json del legacy:
+///   history       — todos los espacios conocidos (para autocompletar el setter)
+///   notes         — pizarra de texto por espacio (o por contexto, con key "Espacio/Contexto")
+///   paths         — paths/URLs por espacio (idem: la key puede ser compuesta)
+///   shared_notes  — pizarra GLOBAL (desks sin espacio)
+///   shared_paths  — pool de paths GLOBAL (desks sin espacio)
+///   folder_notes  — pizarra ligada a una CARPETA del disco (independiente de desk/espacio)
+///   modules       — sub-scopes por espacio (key = nombre del espacio)
 ///
-/// OJO: este catálogo NO es lo mismo que "qué proyecto está en qué desk HOY" — eso es la sesión
+/// OJO: este catálogo NO es lo mismo que "qué espacio está en qué desk HOY" — eso es la sesión
 /// (efímera, en memoria, en <see cref="Desktops.ProjectStore"/>). Acá vive sólo el catálogo durable.
 /// </summary>
 public sealed class ProjectData
@@ -68,15 +68,15 @@ public sealed class ProjectData
     // Ver ProjectStore.FolderKey para el criterio y el porqué de la decisión.
     [JsonPropertyName("folder_notes")] public Dictionary<string, string> FolderNotes { get; set; } = new();
 
-    // Módulos (sub-scopes) por proyecto. Key = nombre del proyecto tal cual está en History.
-    // Sus variables/notas NO viven acá: viven en Paths/Notes bajo la key compuesta "Proyecto/Módulo".
-    // Acá vive sólo el CATÁLOGO del módulo (su nombre y su color de identificación).
+    // Contextos (sub-scopes) por espacio. Key = nombre del espacio tal cual está en History.
+    // Sus variables/notas NO viven acá: viven en Paths/Notes bajo la key compuesta "Espacio/Contexto".
+    // Acá vive sólo el CATÁLOGO del contexto (su nombre y su color de identificación).
     [JsonPropertyName("modules")] public Dictionary<string, List<ModuleEntry>> Modules { get; set; } = new();
 
     /// <summary>
-    /// Predeterminado POR SCOPE: key = scope ("Proyecto" o "Proyecto/Módulo"), value = el PATH de la
+    /// Predeterminado POR SCOPE: key = scope ("Espacio" o "Espacio/Contexto"), value = el PATH de la
     /// variable elegida. El path puede apuntar a una entrada del PROPIO scope o a una HEREDADA del
-    /// proyecto padre / de la global — de eso se trata: cada scope ELIGE del pool que ve, sin
+    /// espacio padre / de la global — de eso se trata: cada scope ELIGE del pool que ve, sin
     /// duplicar la variable. Así "Geocontrol/App Mobile" y "Geocontrol/Plataforma" pueden tener
     /// predeterminados distintos apuntando a dos entradas del MISMO pool de "Geocontrol".
     ///
@@ -84,6 +84,6 @@ public sealed class ProjectData
     /// </summary>
     [JsonPropertyName("defaults")] public Dictionary<string, string> Defaults { get; set; } = new();
 
-    /// <summary>Predeterminado del scope GLOBAL (desks sin proyecto). Aparte porque no tiene key de scope.</summary>
+    /// <summary>Predeterminado del scope GLOBAL (desks sin espacio). Aparte porque no tiene key de scope.</summary>
     [JsonPropertyName("shared_default")] public string SharedDefault { get; set; } = "";
 }

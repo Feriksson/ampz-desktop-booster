@@ -178,11 +178,11 @@
                 <!-- Desktop actual: ancho FIJO para que la barra NO se desplace al cambiar de
                      desktop (invariante: si fuera Auto, los widgets de la izquierda bailarían en
                      cada salto). Adentro, dos modos sobre el mismo espacio (como el legacy):
-                       · DUAL  → con proyecto: dot + nombre a la izquierda + proyecto/módulo a la derecha
-                       · SOLO  → sin proyecto: dot + nombre CENTRADOS
+                       · DUAL  → con espacio: dot + nombre a la izquierda + espacio/contexto a la derecha
+                       · SOLO  → sin espacio: dot + nombre CENTRADOS
                      Sólo uno está visible a la vez; el ancho total no cambia nunca.
 
-                     480: con 288 no entraban proyecto Y módulo (descontando separador 29, padding 16,
+                     480: con 288 no entraban espacio Y contexto (descontando separador 29, padding 16,
                      dot 14 y nombre 70 quedaban ~159px para los dos) y 400 seguía apretando; 576 se
                      comía media barra. 480 deja ~351px para el par → ~166px a cada uno al 50/50. -->
                 <Grid x:Name="DeskWidget" VerticalAlignment="Center" Width="480">
@@ -193,36 +193,36 @@
 
                     <Rectangle Grid.Column="0" Width="1" Height="16" Fill="{StaticResource Separator}" Margin="14,0" />
 
-                    <!-- Modo DUAL: desk CON proyecto -->
+                    <!-- Modo DUAL: desk CON espacio -->
                     <Border Grid.Column="1" Background="#0CFFFFFF" CornerRadius="10" Padding="8,2">
                     <Grid x:Name="DeskDualPanel" VerticalAlignment="Center">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />  <!-- dot -->
                             <ColumnDefinition Width="70" />    <!-- nombre (fijo) -->
-                            <ColumnDefinition Width="*" />     <!-- proyecto (resto, con elipsis) -->
+                            <ColumnDefinition Width="*" />     <!-- espacio (resto, con elipsis) -->
                         </Grid.ColumnDefinitions>
                         <Ellipse Grid.Column="0" x:Name="DeskDotDual" Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center" />
                         <TextBlock Grid.Column="1" x:Name="DeskNameDual" Style="{StaticResource WidgetValue}" />
-                        <!-- Proyecto + módulo. El módulo lleva su color propio y una barrita: en la
+                        <!-- Espacio + contexto. El contexto lleva su color propio y una barrita: en la
                              barra, que es lo que mirás de reojo todo el día, el color es la señal. -->
                         <!-- Grid y no StackPanel: en un StackPanel horizontal los hijos reciben ancho
-                             INFINITO y el TextTrimming nunca dispara → un proyecto largo se comería
-                             al módulo (justo lo que no puede pasar).
+                             INFINITO y el TextTrimming nunca dispara → un espacio largo se comería
+                             al contexto (justo lo que no puede pasar).
                              Los anchos NO son fijos acá: los setea UpdateDesk en el code-behind, porque
-                             el reparto correcto depende de si hay módulo o no (ver el comentario allá).
-                             Topes fijos era el bug anterior: 150 proyecto / 110 módulo daba 58/42, no
-                             50/50, y el módulo se cortaba mientras al proyecto le sobraba. -->
+                             el reparto correcto depende de si hay contexto o no (ver el comentario allá).
+                             Topes fijos era el bug anterior: 150 espacio / 110 contexto daba 58/42, no
+                             50/50, y el contexto se cortaba mientras al espacio le sobraba. -->
                         <Grid Grid.Column="2" VerticalAlignment="Center">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition x:Name="DeskProjectCol" Width="*" />    <!-- proyecto -->
+                                <ColumnDefinition x:Name="DeskProjectCol" Width="*" />    <!-- espacio -->
                                 <ColumnDefinition Width="Auto" />                          <!-- barrita de color -->
-                                <ColumnDefinition x:Name="DeskModuleCol" Width="0" />      <!-- módulo -->
+                                <ColumnDefinition x:Name="DeskModuleCol" Width="0" />      <!-- contexto -->
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" x:Name="DeskProjectText" Style="{StaticResource WidgetValue}"
                                        Foreground="#FFD700" TextTrimming="CharacterEllipsis" />
-                            <!-- NEUTRAL a propósito, aunque el módulo tenga color: esta barrita está
+                            <!-- NEUTRAL a propósito, aunque el contexto tenga color: esta barrita está
                                  ENTRE dos datos, o sea que lee como SEPARADOR. Pintarla del color del
-                                 módulo confundía de qué lado pertenece. El color identifica al módulo
+                                 contexto confundía de qué lado pertenece. El color identifica al contexto
                                  en su TEXTO; el separador sólo separa.
                                  Margen SIMÉTRICO (8 y 8): las dos columnas "*" ya reparten el sobrante
                                  en partes iguales, así que la columna del divisor cae centrada — pero
@@ -237,7 +237,7 @@
                     </Grid>
                     </Border>
 
-                    <!-- Modo SOLO: desk SIN proyecto (centrado) -->
+                    <!-- Modo SOLO: desk SIN espacio (centrado) -->
                     <Border Grid.Column="1" Background="#0CFFFFFF" CornerRadius="10" Padding="8,2">
                     <StackPanel x:Name="DeskSoloPanel" Orientation="Horizontal"
                                 HorizontalAlignment="Center" VerticalAlignment="Center">

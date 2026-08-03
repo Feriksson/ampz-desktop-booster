@@ -15,8 +15,8 @@
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
 
-    <!-- Popup central al cambiar de desktop: nombre del desk, dots de navegación, y proyecto.
-         Orden: título arriba, círculos al medio, proyecto en la última línea. -->
+    <!-- Popup central al cambiar de desktop: nombre del desk, dots de navegación, y espacio.
+         Orden: título arriba, círculos al medio, espacio en la última línea. -->
     <Border Background="#F21A1A1A" CornerRadius="12" Padding="60,34">
         <StackPanel HorizontalAlignment="Center">
 
@@ -28,17 +28,17 @@
             <StackPanel x:Name="DotsPanel" Orientation="Horizontal"
                         HorizontalAlignment="Center" Margin="0,26,0,0" />
 
-            <!-- Proyecto: última línea, después de los círculos -->
+            <!-- Espacio: última línea, después de los círculos -->
             <TextBlock x:Name="ProjectText"
                        FontFamily="Segoe UI" FontSize="20" Foreground="#FFD700"
                        HorizontalAlignment="Center" Margin="0,26,0,0" />
 
-            <!-- Módulo (sub-scope del proyecto). Va DEBAJO del proyecto, en su propia línea y con su
-                 color propio: el punto de esta feature es distinguir el módulo de reflejo, sin leer —
+            <!-- Contexto (sub-scope del espacio). Va DEBAJO del espacio, en su propia línea y con su
+                 color propio: el punto de esta feature es distinguir el contexto de reflejo, sin leer —
                  el color hace ese trabajo, el texto sólo confirma.
-                 SIN barrita de acento a la izquierda: acá el módulo está solo en su línea, así que
+                 SIN barrita de acento a la izquierda: acá el contexto está solo en su línea, así que
                  una barra vertical al costado no lee como acento sino como un "|" pegado al nombre.
-                 En la barra y el DeskPicker sí la lleva, porque ahí va INLINE al lado del proyecto y
+                 En la barra y el DeskPicker sí la lleva, porque ahí va INLINE al lado del espacio y
                  hace de separador. Mismo dato, distinta necesidad según el contexto. -->
             <Border x:Name="ModuleChip" HorizontalAlignment="Center" Margin="0,12,0,0"
                     CornerRadius="6" Padding="14,5" Background="#14FFFFFF">

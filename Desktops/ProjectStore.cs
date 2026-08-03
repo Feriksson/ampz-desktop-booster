@@ -8,7 +8,7 @@ using AmpzDesktopBooster.Persistence;
 
 namespace AmpzDesktopBooster.Desktops;
 
-/// <summary>Qué hay cargado en un desk HOY: el proyecto y, opcionalmente, su MÓDULO (sub-scope).</summary>
+/// <summary>Qué hay cargado en un desk HOY: el espacio y, opcionalmente, su CONTEXTO (sub-scope).</summary>
 public readonly record struct DeskAssignment(string Project, string Module);
 
 /// <summary>
@@ -35,23 +35,23 @@ public enum ScopeOpResult
 }
 
 /// <summary>
-/// Orquesta las TRES capas de "proyectos por desk" del legacy (ver CLAUDE.md del legacy):
-///   1. Sesión (_session)      — qué proyecto/módulo está en qué desk HOY. Efímero, se pierde al cerrar.
+/// Orquesta las TRES capas de "espacios por desk" del legacy (ver CLAUDE.md del legacy):
+///   1. Sesión (_session)      — qué espacio/contexto está en qué desk HOY. Efímero, se pierde al cerrar.
 ///   2. Sugerencias (INI)      — última asignación por desk, para pre-llenar el setter el próximo día.
 ///   3. Catálogo (JSON)        — history + modules + paths + notes durables. Se carga al arrancar.
 ///
 /// Regla de oro del legacy: la sesión NUNCA se rellena del INI al arrancar (sería confuso ver
-/// proyectos de ayer sin confirmar). El INI sólo pre-llena el textbox del setter.
+/// espacios de ayer sin confirmar). El INI sólo pre-llena el textbox del setter.
 ///
-/// MÓDULOS (sub-scope, agregado sobre el legacy): un proyecto puede tener módulos ("Geocontrol" →
-/// "Plataforma" / "App Mobile"). Sus variables y notas viven bajo la key compuesta "Proyecto/Módulo"
+/// CONTEXTOS (sub-scope, agregado sobre el legacy): un espacio puede tener contextos ("Geocontrol" →
+/// "Plataforma" / "App Mobile"). Sus variables y notas viven bajo la key compuesta "Espacio/Contexto"
 /// (<see cref="ScopeKey"/>), lo que deja el shape del JSON intacto y hace que TODO lo que ya operaba
-/// sobre una key de proyecto siga funcionando tal cual sobre una de módulo.
+/// sobre una key de espacio siga funcionando tal cual sobre una de contexto.
 /// </summary>
 public sealed class ProjectStore
 {
     /// <summary>
-    /// Separador de la key compuesta "Proyecto/Módulo". El "/" está PROHIBIDO en los nombres
+    /// Separador de la key compuesta "Espacio/Contexto". El "/" está PROHIBIDO en los nombres
     /// (<see cref="Sanitize"/> lo saca al confirmar), así la key nunca es ambigua al partirla.
     /// </summary>
     public const char ScopeSeparator = '/';
@@ -69,15 +69,15 @@ public sealed class ProjectStore
         MigrateLegacyDefaults(); // predeterminados de la entrada → por scope (una sola vez)
     }
 
-    // ── Sesión: proyecto + módulo activos por desk (efímero) ───────────────────
+    // ── Sesión: espacio + contexto activos por desk (efímero) ───────────────────
 
     public string GetDeskProject(int idx) => _session.TryGetValue(idx, out var a) ? a.Project : "";
 
-    /// <summary>Módulo activo del desk, o "" si el proyecto está cargado sin módulo.</summary>
+    /// <summary>Contexto activo del desk, o "" si el espacio está cargado sin contexto.</summary>
     public string GetDeskModule(int idx) => _session.TryGetValue(idx, out var a) ? a.Module : "";
 
     /// <summary>
-    /// Módulo del desk resuelto para la UI: nombre + color. Es lo que consumen la barra, el overlay
+    /// Contexto del desk resuelto para la UI: nombre + color. Es lo que consumen la barra, el overlay
     /// y los pickers — resolver el color acá (y no en cada ventana) mantiene UNA sola fuente de verdad.
     /// </summary>
     public DeskModule GetDeskModuleInfo(int idx)
@@ -88,10 +88,10 @@ public sealed class ProjectStore
     }
 
     /// <summary>
-    /// Confirma el proyecto del desk: lo guarda en sesión, en sugerencias (INI) e historial.
-    /// CAMBIAR de proyecto LIMPIA el módulo: un módulo pertenece a SU proyecto, arrastrar
+    /// Confirma el espacio del desk: lo guarda en sesión, en sugerencias (INI) e historial.
+    /// CAMBIAR de espacio LIMPIA el contexto: un contexto pertenece a SU espacio, arrastrar
     /// "Plataforma" de un cliente al siguiente sería exactamente la confusión que vinimos a matar.
-    /// Re-confirmar el MISMO proyecto conserva el módulo (no es un cambio de contexto).
+    /// Re-confirmar el MISMO espacio conserva el contexto (no es un cambio de contexto).
     /// </summary>
     public void SetDeskProject(int idx, string name)
     {
@@ -110,8 +110,8 @@ public sealed class ProjectStore
         // (comparando case-insensitive) pero dejaba la entrada vieja con su casing original: el
         // historial quedaba mostrando "Ampz desktop Booster" mientras la sesión, el INI y las keys del
         // catálogo usaban "Ampz Desktop Booster". Esa divergencia es la que hacía que el picker de
-        // módulos apareciera vacío al llegar desde el setter, y la que dejaría huérfanos al borrar del
-        // historial (DeleteFromHistory borra paths/notas/módulos por string exacto).
+        // contextos apareciera vacío al llegar desde el setter, y la que dejaría huérfanos al borrar del
+        // historial (DeleteFromHistory borra paths/notas/contextos por string exacto).
         int at = _data.History.FindIndex(h => string.Equals(h, name, StringComparison.OrdinalIgnoreCase));
         if (at < 0)
         {
@@ -126,9 +126,9 @@ public sealed class ProjectStore
     }
 
     /// <summary>
-    /// Setea (o limpia, con "") el módulo del desk. No-op si el desk no tiene proyecto: un módulo
-    /// SIN proyecto padre no significa nada — el scope compuesto no se podría resolver.
-    /// Da de alta el módulo en el catálogo del proyecto si es nuevo (con color auto-asignado).
+    /// Setea (o limpia, con "") el contexto del desk. No-op si el desk no tiene espacio: un contexto
+    /// SIN espacio padre no significa nada — el scope compuesto no se podría resolver.
+    /// Da de alta el contexto en el catálogo del espacio si es nuevo (con color auto-asignado).
     /// </summary>
     public void SetDeskModule(int idx, string module)
     {
@@ -142,7 +142,7 @@ public sealed class ProjectStore
         _ini.Write("Projects", $"desk_{idx}_module", module);
     }
 
-    /// <summary>Saca proyecto Y módulo del desk SÓLO en la sesión (no toca historial ni catálogo).</summary>
+    /// <summary>Saca espacio Y contexto del desk SÓLO en la sesión (no toca historial ni catálogo).</summary>
     public void RemoveDeskProject(int idx) => _session.Remove(idx);
 
     public void ClearAllSession() => _session.Clear();
@@ -153,16 +153,16 @@ public sealed class ProjectStore
     /// <summary>Sugerencia persistida para pre-llenar el setter de este desk (o "").</summary>
     public string GetSuggestion(int idx) => _ini.Read("Projects", "desk_" + idx, "");
 
-    /// <summary>Sugerencia de MÓDULO del desk — pre-llena el picker igual que la de proyecto.</summary>
+    /// <summary>Sugerencia de CONTEXTO del desk — pre-llena el picker igual que la de espacio.</summary>
     public string GetModuleSuggestion(int idx) => _ini.Read("Projects", $"desk_{idx}_module", "");
 
     // ── Historial / catálogo ───────────────────────────────────────────────────
 
     public IReadOnlyList<string> GetHistory() => _data.History;
 
-    // ── Módulos (sub-scopes de un proyecto) ────────────────────────────────────
+    // ── Contextos (sub-scopes de un espacio) ────────────────────────────────────
 
-    /// <summary>Key de catálogo de un scope: el proyecto solo, o "Proyecto/Módulo" si hay módulo.</summary>
+    /// <summary>Key de catálogo de un scope: el espacio solo, o "Espacio/Contexto" si hay contexto.</summary>
     public static string ScopeKey(string project, string module) =>
         string.IsNullOrEmpty(module) ? project : project + ScopeSeparator + module;
 
@@ -172,33 +172,33 @@ public sealed class ProjectStore
 
     /// <summary>
     /// Saca el separador de scope y colapsa espacios de un nombre tipeado por el usuario. Sin esto,
-    /// un proyecto llamado "A/B" generaría una key compuesta FALSA e indistinguible de un módulo real.
+    /// un espacio llamado "A/B" generaría una key compuesta FALSA e indistinguible de un contexto real.
     /// </summary>
     public static string Sanitize(string s) => s.Replace(ScopeSeparator, ' ').Trim();
 
     /// <summary>
-    /// Key REAL del catálogo de módulos para este proyecto, resolviendo diferencias de mayúsculas.
-    /// Los diccionarios de <see cref="ProjectData"/> son case-SENSITIVE, y el nombre de un proyecto
+    /// Key REAL del catálogo de contextos para este espacio, resolviendo diferencias de mayúsculas.
+    /// Los diccionarios de <see cref="ProjectData"/> son case-SENSITIVE, y el nombre de un espacio
     /// puede llegar con otra casing desde el historial (entradas viejas, anteriores al TitleCase).
     /// Sin esto, "Ampz desktop Booster" y "Ampz Desktop Booster" son dos catálogos distintos: uno
-    /// con tus módulos y otro vacío, según por qué camino hayas entrado. Devuelve el nombre tal cual
+    /// con tus contextos y otro vacío, según por qué camino hayas entrado. Devuelve el nombre tal cual
     /// si todavía no existe (para que el alta lo cree con la casing actual).
     /// </summary>
     private string ResolveModulesKey(string project) =>
         _data.Modules.Keys.FirstOrDefault(k => string.Equals(k, project, StringComparison.OrdinalIgnoreCase))
         ?? project;
 
-    /// <summary>Módulos catalogados de un proyecto (lista vacía si no tiene).</summary>
+    /// <summary>Contextos catalogados de un espacio (lista vacía si no tiene).</summary>
     public IReadOnlyList<ModuleEntry> GetModules(string project) =>
         _data.Modules.TryGetValue(ResolveModulesKey(project), out var list) ? list : new List<ModuleEntry>();
 
-    /// <summary>Color "#RRGGBB" del módulo, o "" si no está catalogado (la UI cae al dorado).</summary>
+    /// <summary>Color "#RRGGBB" del contexto, o "" si no está catalogado (la UI cae al dorado).</summary>
     public string GetModuleColor(string project, string module) =>
         GetModules(project).FirstOrDefault(m =>
             string.Equals(m.Name, module, StringComparison.OrdinalIgnoreCase))?.Color ?? "";
 
     /// <summary>
-    /// Da de alta el módulo en el catálogo del proyecto si no existía, con el primer color LIBRE de
+    /// Da de alta el contexto en el catálogo del espacio si no existía, con el primer color LIBRE de
     /// la paleta (ver <see cref="ModulePalette.NextFree"/>). Idempotente: si ya existe, no toca nada.
     /// </summary>
     public ModuleEntry EnsureModule(string project, string module)
@@ -219,7 +219,7 @@ public sealed class ProjectStore
         return entry;
     }
 
-    /// <summary>Cambia el color de un módulo (el F3 del picker cicla la paleta).</summary>
+    /// <summary>Cambia el color de un contexto (el F3 del picker cicla la paleta).</summary>
     public void SetModuleColor(string project, string module, string color)
     {
         var entry = GetModules(project).FirstOrDefault(m =>
@@ -230,9 +230,9 @@ public sealed class ProjectStore
     }
 
     /// <summary>
-    /// Borra un módulo EN CASCADA, con el mismo criterio que <see cref="DeleteFromHistory"/>: lo saca
+    /// Borra un contexto EN CASCADA, con el mismo criterio que <see cref="DeleteFromHistory"/>: lo saca
     /// del catálogo, borra sus variables y notas (la key compuesta) y limpia cualquier desk de la
-    /// sesión que lo tuviera activo — ese desk queda en el proyecto pelado, no huérfano.
+    /// sesión que lo tuviera activo — ese desk queda en el espacio pelado, no huérfano.
     /// </summary>
     public void DeleteModule(string project, string module)
     {
@@ -257,8 +257,8 @@ public sealed class ProjectStore
 
     /// <summary>
     /// Pool de variables de un scope (crea la lista si no existía). <paramref name="project"/> puede
-    /// ser un proyecto pelado o una key compuesta "Proyecto/Módulo" (<see cref="ScopeKey"/>) — de ahí
-    /// que todo lo que ya operaba sobre proyectos funcione igual sobre módulos, sin ramas nuevas.
+    /// ser un espacio pelado o una key compuesta "Espacio/Contexto" (<see cref="ScopeKey"/>) — de ahí
+    /// que todo lo que ya operaba sobre espacios funcione igual sobre contextos, sin ramas nuevas.
     /// El Label sale SIEMPRE por <see cref="PrettyScope"/> para que coincida con el de
     /// <see cref="GetAllProjectPools"/> (el caller compara pools por Label para no duplicarlas).
     /// </summary>
@@ -272,14 +272,14 @@ public sealed class ProjectStore
         return new PathPool(list, Save, PrettyScope(project));
     }
 
-    /// <summary>Pool GLOBAL compartida — la usan los desks sin proyecto (MAIN/CONSOLES/MISCS/DESK+ vacío).</summary>
+    /// <summary>Pool GLOBAL compartida — la usan los desks sin espacio (MAIN/CONSOLES/MISCS/DESK+ vacío).</summary>
     public PathPool GetSharedPool() => new(_data.SharedPaths, Save, "Global");
 
     /// <summary>
-    /// TODAS las pools de proyecto del catálogo (una por key de <c>_data.Paths</c>), para el toggle
-    /// "ver todos los proyectos" del Paths Manager. NO incluye la global (esa se anexa por su lado) ni
-    /// excluye el proyecto actual — eso queda a cargo del caller, que es quien conoce el contexto del
-    /// desk. El Label de cada pool es el nombre del proyecto (sirve de rótulo de sección en la vista).
+    /// TODAS las pools de espacio del catálogo (una por key de <c>_data.Paths</c>), para el toggle
+    /// "ver todos los espacios" del Paths Manager. NO incluye la global (esa se anexa por su lado) ni
+    /// excluye el espacio actual — eso queda a cargo del caller, que es quien conoce el contexto del
+    /// desk. El Label de cada pool es el nombre del espacio (sirve de rótulo de sección en la vista).
     /// </summary>
     public IReadOnlyList<PathPool> GetAllProjectPools()
     {
@@ -290,8 +290,8 @@ public sealed class ProjectStore
     }
 
     /// <summary>
-    /// Resuelve QUÉ pool corresponde según el desk actual. Con módulo activo la pool primaria es la
-    /// DEL MÓDULO (key compuesta); si no, la del proyecto; y en cualquier otro caso, la global.
+    /// Resuelve QUÉ pool corresponde según el desk actual. Con contexto activo la pool primaria es la
+    /// DEL CONTEXTO (key compuesta); si no, la del espacio; y en cualquier otro caso, la global.
     /// </summary>
     public PathPool ResolvePool(string deskName, int deskIdx)
     {
@@ -303,9 +303,9 @@ public sealed class ProjectStore
     /// <summary>
     /// Como <see cref="ResolvePool"/>, pero además expone las pools HEREDADAS que la ventana anexa
     /// de SOLO-LECTURA, para no quedar ciego a lo que no es de tu scope exacto. Es la herencia de
-    /// tres niveles: <b>módulo → proyecto → global</b>.
-    ///   · Con módulo:      primaria = módulo, <paramref name="parent"/> = proyecto, global = global.
-    ///   · Sin módulo:      primaria = proyecto, parent = null, global = global.
+    /// tres niveles: <b>contexto → espacio → global</b>.
+    ///   · Con contexto:      primaria = contexto, <paramref name="parent"/> = espacio, global = global.
+    ///   · Sin contexto:      primaria = espacio, parent = null, global = global.
     ///   · Scope global:    primaria = global, parent y global = null (ya la estás viendo como primaria).
     /// La regla vive acá, en la capa que la conoce — la ventana no la re-implementa.
     /// </summary>
@@ -314,7 +314,7 @@ public sealed class ProjectStore
         if (UseProjectScope(deskName, deskIdx, out var project, out var module))
         {
             global = GetSharedPool();
-            // Con módulo, el proyecto es el "padre" del que se hereda; sin módulo no hay nada arriba.
+            // Con contexto, el espacio es el "padre" del que se hereda; sin contexto no hay nada arriba.
             parent = module == "" ? null : GetProjectPool(project);
             return GetProjectPool(ScopeKey(project, module));
         }
@@ -325,11 +325,11 @@ public sealed class ProjectStore
 
     // ── Predeterminado POR SCOPE ───────────────────────────────────────────────
     // El predeterminado NO es una propiedad de la variable, es una decisión del CONTEXTO en el que
-    // estás parado. Con módulos eso se volvió obligatorio: una entrada del proyecto la ven todos sus
-    // módulos, así que un flag en la entrada hacía que marcarla desde "App Mobile" se la cambiara
+    // estás parado. Con contextos eso se volvió obligatorio: una entrada del espacio la ven todos sus
+    // contextos, así que un flag en la entrada hacía que marcarla desde "App Mobile" se la cambiara
     // también a "Plataforma" (mismo objeto, no propagación). Guardamos el PATH elegido por scope.
 
-    /// <summary>Key de scope para la pool GLOBAL. Vacío: un proyecto nunca puede llamarse así.</summary>
+    /// <summary>Key de scope para la pool GLOBAL. Vacío: un espacio nunca puede llamarse así.</summary>
     public const string GlobalScope = "";
 
     /// <summary>Path predeterminado de un scope, o null si ese scope no eligió ninguno.</summary>
@@ -354,7 +354,7 @@ public sealed class ProjectStore
     }
 
     /// <summary>
-    /// Key de scope del desk: "" si es global, el proyecto, o "Proyecto/Módulo". Es lo que la
+    /// Key de scope del desk: "" si es global, el espacio, o "Espacio/Contexto". Es lo que la
     /// ventana de Variables necesita para saber DÓNDE guardar el predeterminado que marques.
     /// </summary>
     public string ResolveScopeKey(string deskName, int deskIdx) =>
@@ -363,8 +363,8 @@ public sealed class ProjectStore
             : GlobalScope;
 
     /// <summary>
-    /// Key del scope PADRE del que se hereda, o null si no hay (sin módulo, o scope global). Sólo
-    /// existe un nivel de herencia de predeterminado: módulo → proyecto.
+    /// Key del scope PADRE del que se hereda, o null si no hay (sin contexto, o scope global). Sólo
+    /// existe un nivel de herencia de predeterminado: contexto → espacio.
     /// </summary>
     public string? ResolveParentScopeKey(string deskName, int deskIdx) =>
         UseProjectScope(deskName, deskIdx, out var project, out var module) && module != ""
@@ -408,8 +408,8 @@ public sealed class ProjectStore
 
     /// <summary>
     /// Lee las notas que correspondan al desk. A diferencia de las variables, las notas NO heredan:
-    /// con módulo activo ves las DEL MÓDULO y punto. Es deliberado — una nota es una pizarra de
-    /// trabajo, y mezclarle la del proyecto la volvería un cajón de sastre imposible de escanear.
+    /// con contexto activo ves las DEL CONTEXTO y punto. Es deliberado — una nota es una pizarra de
+    /// trabajo, y mezclarle la del espacio la volvería un cajón de sastre imposible de escanear.
     /// </summary>
     public string GetNotes(string deskName, int deskIdx)
     {
@@ -418,7 +418,7 @@ public sealed class ProjectStore
         return _data.SharedNotes;
     }
 
-    /// <summary>Guarda las notas en el scope que corresponda (módulo, proyecto o global) y persiste.</summary>
+    /// <summary>Guarda las notas en el scope que corresponda (contexto, espacio o global) y persiste.</summary>
     public void SetNotes(string deskName, int deskIdx, string text)
     {
         if (UseProjectScope(deskName, deskIdx, out var project, out var module))
@@ -428,7 +428,7 @@ public sealed class ProjectStore
         Save();
     }
 
-    // ── Notas de CARPETA (ligadas al disco, no al desk/proyecto) ────────────────
+    // ── Notas de CARPETA (ligadas al disco, no al desk/espacio) ────────────────
 
     /// <summary>
     /// Key estable de una carpeta para sus notas: el NOMBRE de la carpeta hoja, en minúsculas.
@@ -469,15 +469,15 @@ public sealed class ProjectStore
         Save();
     }
 
-    /// <summary>Etiqueta del scope para el header: "Proyecto", "Proyecto / Módulo" o "Global".</summary>
+    /// <summary>Etiqueta del scope para el header: "Espacio", "Espacio / Contexto" o "Global".</summary>
     public string ScopeLabel(string deskName, int deskIdx) =>
         UseProjectScope(deskName, deskIdx, out var project, out var module)
             ? PrettyScope(ScopeKey(project, module))
             : "Global";
 
     /// <summary>
-    /// true si el desk usa scope de proyecto (DESK +N con proyecto activo). <paramref name="module"/>
-    /// sale "" cuando el proyecto está cargado sin módulo — la key compuesta degrada sola al proyecto.
+    /// true si el desk usa scope de espacio (DESK +N con espacio activo). <paramref name="module"/>
+    /// sale "" cuando el espacio está cargado sin contexto — la key compuesta degrada sola al espacio.
     /// </summary>
     private bool UseProjectScope(string deskName, int deskIdx, out string project, out string module)
     {
@@ -488,9 +488,9 @@ public sealed class ProjectStore
     }
 
     /// <summary>
-    /// Borra un proyecto del historial EN CASCADA: lo saca de history, paths, notes y del catálogo de
-    /// módulos, limpia cualquier sesión que apuntara a él, y persiste. Sin huérfanos (igual que el
-    /// legacy). Los MÓDULOS del proyecto se van con él: sus keys compuestas arrancan con "Proyecto/",
+    /// Borra un espacio del historial EN CASCADA: lo saca de history, paths, notes y del catálogo de
+    /// contextos, limpia cualquier sesión que apuntara a él, y persiste. Sin huérfanos (igual que el
+    /// legacy). Los CONTEXTOS del espacio se van con él: sus keys compuestas arrancan con "Espacio/",
     /// así que se barren por prefijo — si no, quedarían pools fantasma sin dueño en el JSON.
     /// </summary>
     public void DeleteFromHistory(string name)
@@ -522,7 +522,7 @@ public sealed class ProjectStore
     // Hasta acá el catálogo sólo sabía CREAR (setter / picker) y BORRAR en cascada. Reorganizar
     // —renombrar, mover un contexto a otro espacio, promoverlo, degradar un espacio— había que
     // hacerlo editando el JSON a mano. Y no es un caso raro: la estructura mental del usuario cambia
-    // (todo este bloque nace de que 11 "proyectos" resultaron ser contextos de dos espacios).
+    // (todo este bloque nace de que 11 "espacios" resultaron ser contextos de dos espacios).
     //
     // Disciplina común a TODAS: si una key de scope se mueve, se mueve en TODOS lados —variables,
     // notas, predeterminados, catálogo de contextos, sesión y sugerencias del INI— o no se mueve en
@@ -730,7 +730,7 @@ public sealed class ProjectStore
 
     /// <summary>
     /// Capitaliza la primera letra de cada palabra: "space consortium" → "Space Consortium".
-    /// Se aplica al confirmar un proyecto nuevo, así el nombre queda normalizado en TODAS las
+    /// Se aplica al confirmar un espacio nuevo, así el nombre queda normalizado en TODAS las
     /// capas (sesión, historial, INI) — un solo punto de verdad, sin sorpresas de mayúsculas.
     /// Respeta espacios múltiples y separadores; sólo toca la 1ra letra de cada token.
     /// </summary>

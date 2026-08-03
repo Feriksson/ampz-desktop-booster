@@ -10,12 +10,12 @@ using AmpzDesktopBooster.Services.Localization;
 namespace AmpzDesktopBooster;
 
 /// <summary>
-/// Selector de MÓDULO (sub-scope) del proyecto cargado en el desk. Se llega por dos caminos:
-///   · 2do paso del setter (Win+NumpadEnter): confirmás proyecto → aparece esta ventana.
-///   · Win+NumpadDot (Del): cambia SÓLO el módulo, sin re-elegir proyecto. El flujo rápido.
+/// Selector de CONTEXTO (sub-scope) del espacio cargado en el desk. Se llega por dos caminos:
+///   · 2do paso del setter (Win+NumpadEnter): confirmás espacio → aparece esta ventana.
+///   · Win+NumpadDot (Del): cambia SÓLO el contexto, sin re-elegir espacio. El flujo rápido.
 ///
-/// Mismo lenguaje que el setter de proyecto (textbox filtro + lista + Enter confirma / Supr borra),
-/// para que no haya nada nuevo que aprender. Lo único propio es el COLOR: cada módulo nace con uno
+/// Mismo lenguaje que el setter de espacio (textbox filtro + lista + Enter confirma / Supr borra),
+/// para que no haya nada nuevo que aprender. Lo único propio es el COLOR: cada contexto nace con uno
 /// de la paleta y F3 lo cicla — la señal cromática es el motivo de existir de toda la feature.
 /// </summary>
 public partial class ModulePickerWindow : Window
@@ -44,8 +44,8 @@ public partial class ModulePickerWindow : Window
         HeaderText.Text = string.Format(Loc.T("Modules.Header"), project);
         SubHeaderText.Text = deskName;
 
-        // Pre-cargar con el módulo activo o, si no hay, la sugerencia persistida — misma regla que
-        // el setter de proyecto: la sesión manda, el INI sólo pre-llena.
+        // Pre-cargar con el contexto activo o, si no hay, la sugerencia persistida — misma regla que
+        // el setter de espacio: la sesión manda, el INI sólo pre-llena.
         string seed = store.GetDeskModule(deskIdx);
         if (seed == "") seed = store.GetModuleSuggestion(deskIdx);
         FilterBox.Text = seed;
@@ -63,7 +63,7 @@ public partial class ModulePickerWindow : Window
     }
 
     /// <summary>
-    /// Deja el desk en el proyecto PELADO (sin módulo) y cierra. Lo disparan el botón "Sin módulo"
+    /// Deja el desk en el espacio PELADO (sin contexto) y cierra. Lo disparan el botón "Sin contexto"
     /// y el re-press del hotkey — un solo camino, igual que el ResetAndClose del setter.
     /// </summary>
     public void ClearAndClose()
@@ -83,8 +83,8 @@ public partial class ModulePickerWindow : Window
             if (filter == "" || m.Name.Contains(filter, StringComparison.OrdinalIgnoreCase))
                 ModuleList.Items.Add(new Row(m.Name, m.Color));
 
-        // El hint de "todavía no hay módulos" mira el CATÁLOGO, no el filtro: si tenés módulos pero
-        // el filtro no matchea, no hace falta explicarte qué es un módulo — ya lo sabés.
+        // El hint de "todavía no hay contextos" mira el CATÁLOGO, no el filtro: si tenés contextos pero
+        // el filtro no matchea, no hace falta explicarte qué es un contexto — ya lo sabés.
         EmptyHint.Visibility = modules.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -112,10 +112,10 @@ public partial class ModulePickerWindow : Window
     }
 
     /// <summary>
-    /// Confirma el módulo. Misma prioridad que el setter de proyecto: fila seleccionada → único
-    /// resultado visible → texto del textbox (módulo NUEVO, que se da de alta con color automático).
-    /// Con el textbox vacío y nada seleccionado equivale a "sin módulo": no te obliga a apuntarle
-    /// al botón para volver al proyecto pelado.
+    /// Confirma el contexto. Misma prioridad que el setter de espacio: fila seleccionada → único
+    /// resultado visible → texto del textbox (contexto NUEVO, que se da de alta con color automático).
+    /// Con el textbox vacío y nada seleccionado equivale a "sin contexto": no te obliga a apuntarle
+    /// al botón para volver al espacio pelado.
     /// </summary>
     private void Confirm()
     {
@@ -130,7 +130,7 @@ public partial class ModulePickerWindow : Window
         Close();
     }
 
-    /// <summary>F3: cicla el color del módulo seleccionado por la paleta y repinta sin cerrar.</summary>
+    /// <summary>F3: cicla el color del contexto seleccionado por la paleta y repinta sin cerrar.</summary>
     private void CycleColor()
     {
         if (ModuleList.SelectedItem is not Row row) return;
@@ -143,11 +143,11 @@ public partial class ModulePickerWindow : Window
         ModuleList.SelectedItem = ModuleList.Items.OfType<Row>()
             .FirstOrDefault(r => string.Equals(r.Name, row.Name, StringComparison.OrdinalIgnoreCase));
 
-        // El feedback ya lo da la barra/overlay del desk actual si este módulo está activo ahí.
+        // El feedback ya lo da la barra/overlay del desk actual si este contexto está activo ahí.
         _onChanged();
     }
 
-    /// <summary>Supr: borra el módulo del catálogo EN CASCADA (sus variables y notas se van con él).</summary>
+    /// <summary>Supr: borra el contexto del catálogo EN CASCADA (sus variables y notas se van con él).</summary>
     private void DeleteSelected()
     {
         if (ModuleList.SelectedItem is not Row row) return;

@@ -220,7 +220,7 @@ public sealed class HotkeyEventArgs : EventArgs
     public NumpadKey Key { get; }
     public bool Shift { get; }
 
-    /// <summary>true si la Win estaba presionada al disparar (navegación/proyectos); false = atajo pelado.</summary>
+    /// <summary>true si la Win estaba presionada al disparar (navegación/espacios); false = atajo pelado.</summary>
     public bool WinDown { get; }
 
     public HotkeyEventArgs(NumpadKey key, bool shift, bool winDown)

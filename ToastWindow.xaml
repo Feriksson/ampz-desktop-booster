@@ -36,7 +36,7 @@
                 <TextBlock x:Name="TitleText" FontFamily="Segoe UI" FontSize="16" FontWeight="SemiBold"
                            Foreground="#F2F2F2" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
                 <!-- Tercera línea OPCIONAL (Collapsed por defecto): la usa el toast de atención para
-                     el nombre del proyecto en su propio renglón. Los demás toasts no la pasan → ni se ve. -->
+                     el nombre del espacio en su propio renglón. Los demás toasts no la pasan → ni se ve. -->
                 <TextBlock x:Name="ExtraText" FontFamily="Segoe UI" FontSize="12.5" FontWeight="SemiBold"
                            Foreground="#C9C9C9" TextTrimming="CharacterEllipsis" Margin="0,5,0,0"
                            Visibility="Collapsed" />

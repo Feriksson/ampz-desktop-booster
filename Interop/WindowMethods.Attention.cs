@@ -12,7 +12,7 @@ namespace AmpzDesktopBooster.Interop;
 /// vive DENTRO de la terminal de Claude Code, que vive dentro de VS Code / Windows Terminal, que es
 /// quien tiene la ventana top-level. Por eso subimos el ÁRBOL DE PROCESOS (Toolhelp32) hasta hallar
 /// un ancestro con ventana top-level real. El PID es único, así que esto desambigua aunque el mismo
-/// proyecto esté abierto en dos desks: cada instancia es un proceso distinto en un árbol distinto.
+/// espacio esté abierto en dos desks: cada instancia es un proceso distinto en un árbol distinto.
 /// </summary>
 internal static partial class WindowMethods
 {

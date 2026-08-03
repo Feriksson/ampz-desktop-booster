@@ -10,14 +10,14 @@ using AmpzDesktopBooster.Services.Localization;
 namespace AmpzDesktopBooster;
 
 /// <summary>
-/// Diálogo de NumpadClear (pelado): lista los desks que tienen un proyecto activo en la sesión,
+/// Diálogo de NumpadClear (pelado): lista los desks que tienen un espacio activo en la sesión,
 /// con filtro en vivo. Enter salta al desk seleccionado; Supr lo quita de la sesión.
 /// </summary>
 public partial class DeskPickerWindow : Window
 {
     /// <summary>
-    /// Una fila del picker: desk + proyecto + módulo. Las props derivadas (Accent/Visibility) las
-    /// bindea el DataTemplate — así el XAML no necesita converters para pintar el color del módulo.
+    /// Una fila del picker: desk + espacio + contexto. Las props derivadas (Accent/Visibility) las
+    /// bindea el DataTemplate — así el XAML no necesita converters para pintar el color del contexto.
     /// </summary>
     private sealed record Row(int Idx, string Name, string Project, string Module, string ModuleColor)
     {

@@ -36,7 +36,7 @@ public sealed class RestrictionStore
     public bool IsRestricted(string deskName) => _restricted.Contains(deskName);
 
     /// <summary>
-    /// Un desk es "restringible" si NO es MAIN y NO es un "DESK +N" (esos son de proyecto).
+    /// Un desk es "restringible" si NO es MAIN y NO es un "DESK +N" (esos son de espacio).
     /// CONSOLES, MISCS y similares califican. Misma regla que el legacy.
     /// </summary>
     public static bool IsRestrictable(string deskName) =>

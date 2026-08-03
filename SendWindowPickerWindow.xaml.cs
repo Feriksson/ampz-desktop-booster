@@ -14,10 +14,10 @@ namespace AmpzDesktopBooster;
 /// filtro; Enter mueve la ventana (capturada antes de abrir) y sigue. Útil cuando no te acordás
 /// el atajo directo del desk destino.
 ///
-/// Cada fila muestra DOS datos del desk para reconocerlo de un vistazo: el proyecto activo (1ra
+/// Cada fila muestra DOS datos del desk para reconocerlo de un vistazo: el espacio activo (1ra
 /// línea, junto al nombre) y la TAREA activa (2da línea, con el mismo lenguaje visual que el widget
 /// de tarea de la barra: ícono + identifier celeste + título). Ambos salen de la SESIÓN efímera
-/// (proyecto de ProjectStore, tarea de TaskSessionStore) — no de disco.
+/// (espacio de ProjectStore, tarea de TaskSessionStore) — no de disco.
 /// </summary>
 public partial class SendWindowPickerWindow : Window
 {
@@ -27,7 +27,7 @@ public partial class SendWindowPickerWindow : Window
         public string? TaskId { get; init; }    // identifier de la tarea (ej. "VKJ-123"), o "" si no hay
         public string? TaskTitle { get; init; } // título de la tarea, o null si el desk no tiene tarea
 
-        /// <summary>1ra línea: nombre del desk y, si hay, el proyecto activo.</summary>
+        /// <summary>1ra línea: nombre del desk y, si hay, el espacio activo.</summary>
         public string Line1 => string.IsNullOrEmpty(Project) ? Name : $"{Name}   —   {Project}";
 
         public bool HasTask   => !string.IsNullOrEmpty(TaskTitle);

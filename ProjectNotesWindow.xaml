@@ -13,7 +13,7 @@
     <Border BorderBrush="#33FFFFFF" BorderThickness="1" Padding="16">
         <Grid>
             <Grid.RowDefinitions>
-                <!-- Panel SUPERIOR: notas del proyecto/global (lo de siempre). -->
+                <!-- Panel SUPERIOR: notas del espacio/global (lo de siempre). -->
                 <RowDefinition x:Name="ProjectRow" Height="*" />
                 <!-- Splitter para repartir el alto entre los dos paneles a gusto. -->
                 <RowDefinition x:Name="SplitterRow" Height="Auto" />
@@ -23,7 +23,7 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <!-- ── Notas del proyecto / global ─────────────────────────────────── -->
+            <!-- ── Notas del espacio / global ─────────────────────────────────── -->
             <DockPanel Grid.Row="0">
                 <TextBlock DockPanel.Dock="Top" x:Name="HeaderText" Foreground="#FFD700"
                            FontSize="18" FontWeight="SemiBold" />

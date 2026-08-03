@@ -9,14 +9,14 @@ using AmpzDesktopBooster.Services.Localization;
 namespace AmpzDesktopBooster;
 
 /// <summary>
-/// Notas del proyecto / globales — la Win+Numpad/ del legacy (Notes Editor).
-/// Textarea grande (Consolas) con el mismo dual-scope que las variables: notas del proyecto
+/// Notas del espacio / globales — la Win+Numpad/ del legacy (Notes Editor).
+/// Textarea grande (Consolas) con el mismo dual-scope que las variables: notas del espacio
 /// activo en un DESK +N, o las globales en cualquier otro desk.
 ///
 /// Además, un SEGUNDO panel abajo: notas ligadas a la CARPETA activa del Explorer (la que estaba
 /// en foreground al abrir). Sirve para anotarle detalles a un repo/carpeta puntual, atado al disco
 /// y no al desk. Si al abrir no había un Explorer con carpeta, el panel inferior se COLAPSA y queda
-/// sólo el de proyecto (idéntico al comportamiento de antes). Cada panel se guarda por su cuenta.
+/// sólo el de espacio (idéntico al comportamiento de antes). Cada panel se guarda por su cuenta.
 ///
 /// Flujo "abrir, editar, cerrar y listo": NO hay botón Guardar. Auto-guarda al cerrar (Esc/X)
 /// si el texto cambió respecto al inicial; Ctrl+S guarda explícito sin cerrar. Como el legacy.
@@ -42,7 +42,7 @@ public partial class ProjectNotesWindow : Window
         _deskIdx = deskIdx;
 
         Icon = AppIcon.TryLoadForWindow();
-        HeaderText.Text = store.ScopeLabel(deskName, deskIdx); // "<Proyecto>" o "Global"
+        HeaderText.Text = store.ScopeLabel(deskName, deskIdx); // "<Espacio>" o "Global"
         SubHeaderText.Text = $"{Loc.T("Notes.ProjectScope")} · {deskName}";
 
         _initial = store.GetNotes(deskName, deskIdx);
@@ -63,7 +63,7 @@ public partial class ProjectNotesWindow : Window
         else
         {
             // Sin carpeta → colapsamos el panel inferior y su splitter, y devolvemos TODO el alto
-            // al panel de proyecto (la ventana queda igual que antes de esta feature).
+            // al panel de espacio (la ventana queda igual que antes de esta feature).
             FolderPanel.Visibility = Visibility.Collapsed;
             PanelSplitter.Visibility = Visibility.Collapsed;
             SplitterRow.Height = new GridLength(0);

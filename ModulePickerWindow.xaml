@@ -11,7 +11,7 @@
 
     <Window.Resources>
         <!-- Cada fila lleva su chip de color a la izquierda: es la MISMA señal cromática que
-             después vas a ver en la barra y en el overlay, así al elegir ya asociás color↔módulo. -->
+             después vas a ver en la barra y en el overlay, así al elegir ya asociás color↔contexto. -->
         <DataTemplate x:Key="ModuleRowTemplate">
             <StackPanel Orientation="Horizontal">
                 <Border Width="10" Height="10" CornerRadius="3" Margin="0,0,10,0"
@@ -28,7 +28,7 @@
             <TextBlock x:Name="SubHeaderText" Foreground="#9A9A9A" FontFamily="Segoe UI"
                        FontSize="11" Margin="0,0,0,10" />
 
-            <!-- MaxLength=23: mismo tope que el nombre de proyecto — juntos entran en la barra. -->
+            <!-- MaxLength=23: mismo tope que el nombre de espacio — juntos entran en la barra. -->
             <TextBox x:Name="FilterBox" FontFamily="Segoe UI" FontSize="13" MaxLength="23"
                      Background="#2A2A2A" Foreground="#F2F2F2" BorderBrush="#444"
                      Padding="6,4" Margin="0,0,0,8" />

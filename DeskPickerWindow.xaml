@@ -18,7 +18,7 @@
                      Background="#2A2A2A" Foreground="#F2F2F2" BorderBrush="#444"
                      Padding="6,4" Margin="0,0,0,8" />
 
-            <!-- El módulo va con su color propio: acá es donde SALTÁS a un desk, o sea el momento
+            <!-- El contexto va con su color propio: acá es donde SALTÁS a un desk, o sea el momento
                  exacto en que confundir "Plataforma" con "App Mobile" te hace perder el hilo. -->
             <ListBox x:Name="DeskList" Height="240"
                      FontFamily="Segoe UI" FontSize="13"
@@ -30,7 +30,7 @@
                             <TextBlock Text="{Binding Name}" Width="80" />
                             <TextBlock Text="{Binding Project}" Foreground="#FFD700" />
                             <!-- Neutral, igual que en la barra: separa dos datos, no identifica a
-                                 ninguno. El color del módulo vive en su texto. -->
+                                 ninguno. El color del contexto vive en su texto. -->
                             <Border Width="1" Height="12" Margin="9,0,7,0"
                                     VerticalAlignment="Center" Background="#33FFFFFF"
                                     Visibility="{Binding ModuleVisibility}" />

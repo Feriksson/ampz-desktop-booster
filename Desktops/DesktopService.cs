@@ -20,13 +20,13 @@ public sealed class DesktopService
     public int Count => VirtualDesktopAccessor.GetDesktopCount();
 
     /// <summary>
-    /// Resuelve el proyecto activo de un desk. Lo inyecta App con ProjectStore.GetDeskProject;
+    /// Resuelve el espacio activo de un desk. Lo inyecta App con ProjectStore.GetDeskProject;
     /// así DesktopService no depende de la capa de persistencia (queda desacoplado y testeable).
     /// </summary>
     public Func<int, string>? ProjectLookup { get; set; }
 
     /// <summary>
-    /// Resuelve el MÓDULO activo de un desk (nombre + color). Se inyecta igual que
+    /// Resuelve el CONTEXTO activo de un desk (nombre + color). Se inyecta igual que
     /// <see cref="ProjectLookup"/>, por la misma razón: DesktopService no conoce la persistencia.
     /// </summary>
     public Func<int, DeskModule>? ModuleLookup { get; set; }
@@ -113,10 +113,10 @@ public sealed class DesktopService
         return true;
     }
 
-    /// <summary>Proyecto activo del desktop (vía <see cref="ProjectLookup"/>), o "" si no hay.</summary>
+    /// <summary>Espacio activo del desktop (vía <see cref="ProjectLookup"/>), o "" si no hay.</summary>
     public string GetProject(int index) => ProjectLookup?.Invoke(index) ?? "";
 
-    /// <summary>Módulo activo del desktop (vía <see cref="ModuleLookup"/>), o <see cref="DeskModule.None"/>.</summary>
+    /// <summary>Contexto activo del desktop (vía <see cref="ModuleLookup"/>), o <see cref="DeskModule.None"/>.</summary>
     public DeskModule GetModule(int index) => ModuleLookup?.Invoke(index) ?? DeskModule.None;
 
     /// <summary>Envía una ventana ESPECÍFICA a un desktop por índice; si follow=true salta ahí.</summary>

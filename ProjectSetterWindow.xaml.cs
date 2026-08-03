@@ -8,10 +8,10 @@ using AmpzDesktopBooster.Services.Localization;
 namespace AmpzDesktopBooster;
 
 /// <summary>
-/// Diálogo de Win+NumpadEnter: setea el proyecto del desk actual (sólo "DESK +N").
-/// Textbox pre-cargado con la sugerencia/proyecto actual + lista del historial filtrable.
+/// Diálogo de Win+NumpadEnter: setea el espacio del desk actual (sólo "DESK +N").
+/// Textbox pre-cargado con la sugerencia/espacio actual + lista del historial filtrable.
 /// Enter prioriza: (1) fila seleccionada, (2) único resultado visible, (3) texto del textbox
-/// como proyecto NUEVO. Supr sobre una fila → borrado en cascada del historial.
+/// como espacio NUEVO. Supr sobre una fila → borrado en cascada del historial.
 /// </summary>
 public partial class ProjectSetterWindow : Window
 {
@@ -32,7 +32,7 @@ public partial class ProjectSetterWindow : Window
         HeaderText.Text = Loc.T("Setter.Header");
         SubHeaderText.Text = deskName;
 
-        // Pre-cargar con el proyecto activo (sesión) o, si no hay, la sugerencia persistida.
+        // Pre-cargar con el espacio activo (sesión) o, si no hay, la sugerencia persistida.
         string seed = store.GetDeskProject(deskIdx);
         if (seed == "") seed = store.GetSuggestion(deskIdx);
         FilterBox.Text = seed;
@@ -50,7 +50,7 @@ public partial class ProjectSetterWindow : Window
     }
 
     /// <summary>
-    /// Reset del desk: saca el proyecto de la sesión y cierra. Lo dispara tanto el botón "Quitar"
+    /// Reset del desk: saca el espacio de la sesión y cierra. Lo dispara tanto el botón "Quitar"
     /// como el re-press del hotkey Win+NumpadEnter (instancia única en el router) — un solo camino,
     /// sin duplicar lógica. No toca historial ni catálogo (eso es RemoveDeskProject, no DeleteFromHistory).
     /// </summary>
@@ -103,7 +103,7 @@ public partial class ProjectSetterWindow : Window
         if (name == "")
             return;
 
-        // El nombre de proyecto no puede pasar de 23 caracteres. El textbox ya lo frena con MaxLength,
+        // El nombre de espacio no puede pasar de 23 caracteres. El textbox ya lo frena con MaxLength,
         // pero una fila del historial creada antes de esta regla podría superarlo → la cortamos acá.
         if (name.Length > 23)
         {
@@ -118,17 +118,17 @@ public partial class ProjectSetterWindow : Window
 
         // ⚠ El nombre CANÓNICO sale del store, NO de `name`. SetDeskProject normaliza (Sanitize +
         // TitleCase) antes de guardar, así que el string que veníamos arrastrando puede diferir en
-        // mayúsculas del que quedó en la sesión — y las keys del catálogo (módulos, paths, notas) son
+        // mayúsculas del que quedó en la sesión — y las keys del catálogo (contextos, paths, notas) son
         // case-sensitive. Ése era el bug: elegir "Ampz desktop Booster" del historial le pasaba ESA
-        // casing al picker, que buscaba módulos bajo una key que no existía y aparecía vacío, mientras
-        // que Win+NumpadDot (que lee el proyecto de la sesión, ya normalizado) sí los encontraba.
+        // casing al picker, que buscaba contextos bajo una key que no existía y aparecía vacío, mientras
+        // que Win+NumpadDot (que lee el espacio de la sesión, ya normalizado) sí los encontraba.
         name = _store.GetDeskProject(_deskIdx);
 
-        // ── SEGUNDO PASO: el módulo ──
-        // Un proyecto puede tener sub-scopes ("Geocontrol" → "Plataforma" / "App Mobile"). Encadenar
+        // ── SEGUNDO PASO: el contexto ──
+        // Un espacio puede tener sub-scopes ("Geocontrol" → "Plataforma" / "App Mobile"). Encadenar
         // el picker acá es lo que hace la feature DESCUBRIBLE: si dependiera sólo del atajo dedicado
-        // (Win+NumpadDot), quien no lo conozca nunca sabría que los módulos existen. Es opcional:
-        // Esc en el picker deja el desk en el proyecto pelado, exactamente como antes.
+        // (Win+NumpadDot), quien no lo conozca nunca sabría que los contextos existen. Es opcional:
+        // Esc en el picker deja el desk en el espacio pelado, exactamente como antes.
         //
         // Abrimos ANTES de cerrarnos a propósito: así el foreground pasa directo de una ventana real
         // a otra y NO abrimos el hueco de foco huérfano que cuelga el hook de teclado (ver CLAUDE.md,

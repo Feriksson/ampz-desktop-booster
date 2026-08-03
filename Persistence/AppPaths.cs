@@ -22,17 +22,17 @@ public static class AppPaths
         }
     }
 
-    /// <summary>Catálogo persistente de proyectos: history, paths, notes, shared pools.</summary>
+    /// <summary>Catálogo persistente de espacios: history, paths, notes, shared pools.</summary>
     public static string ProjectDataFile => Path.Combine(DataDir, "desk_project_data.json");
 
-    /// <summary>INI con secciones varias (sugerencias de proyecto, pins, restricciones, etc.).</summary>
+    /// <summary>INI con secciones varias (sugerencias de espacio, pins, restricciones, etc.).</summary>
     public static string SettingsIni => Path.Combine(DataDir, "settings.ini");
 
     /// <summary>Catálogo de puertos/servicios locales (título + puerto). Lista GLOBAL única.</summary>
     public static string PortsFile => Path.Combine(DataDir, "ports.json");
 
     /// <summary>
-    /// Borra TODA la config del usuario: todos los archivos de DataDir (proyectos, settings.ini,
+    /// Borra TODA la config del usuario: todos los archivos de DataDir (espacios, settings.ini,
     /// apps, atajos, desktops, widgets, uso). Operación DESTRUCTIVA — el caller confirma y luego
     /// reinicia la app para arrancar con defaults limpios. No toca nada fuera de DataDir (ni el
     /// crash-log, que vive junto al exe). try/catch por archivo: si uno está lockeado, seguimos con

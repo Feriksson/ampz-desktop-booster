@@ -18,7 +18,7 @@ public sealed class PortEntry
 
 /// <summary>
 /// Catálogo durable de puertos/servicios locales — lo que abre la Win+Numpad+ (Add).
-/// Lista GLOBAL única (decisión del usuario): no depende del desk ni del proyecto, tus apps web
+/// Lista GLOBAL única (decisión del usuario): no depende del desk ni del espacio, tus apps web
 /// corren igual estés parado donde estés. Se persiste en %APPDATA%\AmpzDesktopBooster\ports.json.
 ///
 /// Mismo patrón de config que <see cref="Services.WidgetSettings"/> y el resto del repo:

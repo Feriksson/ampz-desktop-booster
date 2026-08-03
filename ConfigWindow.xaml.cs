@@ -18,7 +18,7 @@ namespace AmpzDesktopBooster;
 /// <summary>
 /// Ventana de configuración con pestañas — el hogar de todo lo ajustable de la app.
 /// Por ahora trae la pestaña DESKTOPS (gestionar el set de escritorios virtuales);
-/// las próximas fases sumarán pestañas (Widgets, Proyectos, Pins, etc.) al mismo TabControl.
+/// las próximas fases sumarán pestañas (Widgets, Espacios, Pins, etc.) al mismo TabControl.
 /// </summary>
 public partial class ConfigWindow : Window
 {

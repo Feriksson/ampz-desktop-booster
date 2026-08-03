@@ -13,15 +13,15 @@ namespace AmpzDesktopBooster.Hotkeys;
 
 /// <summary>
 /// Conecta los hotkeys del hook con sus acciones. Navegación de virtual desktops POR NOMBRE
-/// (Numpad físico con NumLock OFF), proyectos por desk, y el DeskPicker.
+/// (Numpad físico con NumLock OFF), espacios por desk, y el DeskPicker.
 ///
 /// Mapeo (igual que el legacy ampzWinTunner.ahk líneas 1289-1314, 3760, 3905-3906):
 ///   Win+Numpad 1/2/3 → MAIN / CONSOLES / MISCS  (fila inferior, la más cómoda)
 ///   Win+Numpad 4..9  → DESK +1..+6
 ///   Win+Shift+(nav)  → mandar ventana activa ahí + seguir
-///   Win+NumpadEnter  → setear proyecto del desk actual (sólo DESK+)
-///   NumpadClear solo → DeskPicker (saltar a un proyecto de la sesión)
-///   Win+NumpadMult   → Variables del proyecto/global (Paths Manager) — re-press dispara el predeterminado
+///   Win+NumpadEnter  → setear espacio del desk actual (sólo DESK+)
+///   NumpadClear solo → DeskPicker (saltar a un espacio de la sesión)
+///   Win+NumpadMult   → Variables del espacio/global (Paths Manager) — re-press dispara el predeterminado
 ///   Win+NumpadDiv    → Notes
 ///   Win+NumpadSub    → Send-window picker (mandar la ventana activa a un desk elegido)
 ///
@@ -42,7 +42,7 @@ public sealed class HotkeyRouter
 
     // Ventana de variables actualmente abierta (para el "re-press dispara el predeterminado").
     // Guardamos también el desk con el que se abrió: el re-press solo dispara el predeterminado si
-    // seguís en ESE desk. Si navegaste de desk con Variables abierta, el contexto (pool de proyecto
+    // seguís en ESE desk. Si navegaste de desk con Variables abierta, el contexto (pool de espacio
     // o global) cambió → cerramos la vieja y abrimos la del desk actual, en vez de disparar el path
     // del desk viejo. Mismo criterio desk-aware que _taskWindow/_taskWindowDeskIdx (ver abajo).
     private ProjectPathsWindow? _pathsWindow;
@@ -58,9 +58,9 @@ public sealed class HotkeyRouter
     private ShortcutsHelperWindow? _shortcutsWindow;
     // Picker de Hz abierto (Win+F12). Instancia única: re-press cicla; soltar Win aplica.
     private HzWindow? _hzWindow;
-    // Setter de proyecto abierto (Win+NumpadEnter). Instancia única: re-press RESETEA el desk.
+    // Setter de espacio abierto (Win+NumpadEnter). Instancia única: re-press RESETEA el desk.
     private ProjectSetterWindow? _setterWindow;
-    // Picker de módulo abierto (Win+NumpadDot). Instancia única: re-press deja el desk SIN módulo.
+    // Picker de contexto abierto (Win+NumpadDot). Instancia única: re-press deja el desk SIN contexto.
     private ModulePickerWindow? _moduleWindow;
     // Popup de puertos/servicios locales abierto (Win+Numpad+). Instancia única, scope GLOBAL (no
     // depende del desk) → re-press SOLO la trae al frente (no dispara nada, como Notas).
@@ -259,7 +259,7 @@ public sealed class HotkeyRouter
         {
             case NumpadKey.Subtract: ShowSendWindowPicker();  return; // Win+NumpadSub (antes Win+NumpadDel)
             case NumpadKey.Enter:    ShowProjectSetter();     return;
-            case NumpadKey.Decimal:  ShowModulePicker();      return; // Win+NumpadDel (módulo del desk)
+            case NumpadKey.Decimal:  ShowModulePicker();      return; // Win+NumpadDel (contexto del desk)
             case NumpadKey.Multiply: ShowProjectPaths();      return;
             case NumpadKey.Divide:   ShowProjectNotes();      return;
             case NumpadKey.Add:      ShowPorts();             return; // Win+Numpad+ (puertos/servicios locales)
@@ -321,7 +321,7 @@ public sealed class HotkeyRouter
         if (!name.Contains("DESK +", StringComparison.OrdinalIgnoreCase))
             return;
 
-        // Re-press con el setter abierto → RESET del desk: saca el proyecto y cierra. Mismo patrón de
+        // Re-press con el setter abierto → RESET del desk: saca el espacio y cierra. Mismo patrón de
         // instancia única que Variables (Win+*) y Notas (Win+/): la 2da pulsación NO abre otra ventana,
         // dispara la acción. Reusa el camino del botón "Quitar" (ResetAndClose) — un solo punto de verdad.
         if (_setterWindow is not null)
@@ -336,12 +336,12 @@ public sealed class HotkeyRouter
     }
 
     /// <summary>
-    /// Win+NumpadDot (Del): cambia SÓLO el módulo del desk actual, sin re-elegir proyecto. Es el
+    /// Win+NumpadDot (Del): cambia SÓLO el contexto del desk actual, sin re-elegir espacio. Es el
     /// atajo del uso frecuente — rotás de "Plataforma" a "App Mobile" del mismo cliente sin pasar
-    /// por el setter. El camino completo (proyecto → módulo) sigue siendo Win+NumpadEnter.
+    /// por el setter. El camino completo (espacio → contexto) sigue siendo Win+NumpadEnter.
     ///
-    /// Sin proyecto en el desk no hay nada que sub-dividir: en vez de abrir una ventana vacía,
-    /// mandamos al setter de proyecto, que es lo que realmente hace falta primero.
+    /// Sin espacio en el desk no hay nada que sub-dividir: en vez de abrir una ventana vacía,
+    /// mandamos al setter de espacio, que es lo que realmente hace falta primero.
     /// </summary>
     private void ShowModulePicker()
     {
@@ -354,11 +354,11 @@ public sealed class HotkeyRouter
         string project = _projects.GetDeskProject(idx);
         if (project == "")
         {
-            ShowProjectSetter(); // no hay proyecto todavía → arrancá por ahí
+            ShowProjectSetter(); // no hay espacio todavía → arrancá por ahí
             return;
         }
 
-        // Re-press con el picker abierto → deja el desk en el proyecto PELADO y cierra. Mismo patrón
+        // Re-press con el picker abierto → deja el desk en el espacio PELADO y cierra. Mismo patrón
         // de instancia única que el setter (re-press = resetear el scope de esta capa).
         if (_moduleWindow is not null)
         {
@@ -377,7 +377,7 @@ public sealed class HotkeyRouter
 
         // Re-press con la ventana abierta → dispara el predeterminado (no abre otra). Como el legacy.
         // PERO solo si seguís en el desk donde se abrió: el predeterminado pertenece al CONTEXTO de
-        // ese desk (pool de proyecto vs global). Si cambiaste de desk con Variables abierta, disparar
+        // ese desk (pool de espacio vs global). Si cambiaste de desk con Variables abierta, disparar
         // el path del desk viejo es justo el bug (FireDefault del contexto equivocado) → en ese caso
         // cerramos la vieja y reabrimos para el desk actual más abajo.
         if (_pathsWindow is not null && _pathsWindowDeskIdx == idx)
@@ -389,16 +389,16 @@ public sealed class HotkeyRouter
         _pathsWindow?.Close();
 
         string name = _desktops.GetName(idx);
-        // Herencia de tres niveles: pool primaria (módulo, proyecto o global) + las HEREDADAS de
-        // solo-lectura que se anexan debajo — el proyecto padre (sólo si estás en un módulo) y la
+        // Herencia de tres niveles: pool primaria (contexto, espacio o global) + las HEREDADAS de
+        // solo-lectura que se anexan debajo — el espacio padre (sólo si estás en un contexto) y la
         // global. Ambas salen null en scope global: ahí la global YA es la primaria.
         var pool = _projects.ResolvePoolWithGlobal(name, idx, out var globalPool, out var parentPool);
 
-        // Toggle "todos los proyectos" (F4 / botón): todas las pools de proyecto MENOS la primaria
+        // Toggle "todos los espacios" (F4 / botón): todas las pools de espacio MENOS la primaria
         // actual (ya se ve arriba) — la global tampoco, que se anexa por su cuenta. Read-only en la
-        // ventana. En scope global pool.Label == "Global" (no es key de proyecto) → se ven todos.
+        // ventana. En scope global pool.Label == "Global" (no es key de espacio) → se ven todos.
         // También excluimos el PADRE: ya se ve anexado arriba como sección heredada, listarlo otra vez
-        // en "todos los proyectos" sería la misma variable dos veces en la misma pantalla.
+        // en "todos los espacios" sería la misma variable dos veces en la misma pantalla.
         var others = _projects.GetAllProjectPools()
             .Where(p => !string.Equals(p.Label, pool.Label, StringComparison.OrdinalIgnoreCase)
                      && !string.Equals(p.Label, parentPool?.Label, StringComparison.OrdinalIgnoreCase))

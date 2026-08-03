@@ -99,9 +99,9 @@ public partial class App : Application
         _appsConfig = Apps.AppsConfig.Load();
         var pins = new PinStore();
         var restrictions = new RestrictionStore();
-        var taskSession = new TaskSessionStore(); // tarea activa por desk (efímera, igual que la sesión de proyectos)
-        desktops.ProjectLookup = projects.GetDeskProject;     // el proyecto activo sale de la sesión
-        desktops.ModuleLookup = projects.GetDeskModuleInfo;   // y su módulo (sub-scope) + color, igual
+        var taskSession = new TaskSessionStore(); // tarea activa por desk (efímera, igual que la sesión de espacios)
+        desktops.ProjectLookup = projects.GetDeskProject;     // el espacio activo sale de la sesión
+        desktops.ModuleLookup = projects.GetDeskModuleInfo;   // y su contexto (sub-scope) + color, igual
         Apps.Shell.Desktops = desktops; // ventaneo de terminal POR ESCRITORIO (Win+`, "Abrir con")
 
         // Cheatsheets de atajos per-app para el Shortcuts Helper (Win+/). Precarga los defaults
@@ -160,7 +160,7 @@ public partial class App : Application
         // Gobierno de ventanas: enforcement de pins + restricciones (hook EVENT_OBJECT_SHOW).
         _governor = new WindowGovernor(desktops, pins, restrictions);
 
-        // Hook global de teclado + ruteo (navegación, proyectos, paneles, pins, restricciones).
+        // Hook global de teclado + ruteo (navegación, espacios, paneles, pins, restricciones).
         _hotkeys = new HotkeyService();
         _router = new HotkeyRouter(_hotkeys, desktops, projects, _appsConfig, pins, restrictions,
             appShortcuts, () =>
@@ -178,7 +178,7 @@ public partial class App : Application
         bar.OnTaskWidgetClicked = () => _router.ShowTaskDetail();
 
         // Widget de atención (dots por desk que reclama). App es el TRADUCTOR: convierte el estado del
-        // servicio (Pending: desk→nivel) en lo que la barra pinta (idx + nombre + urgencia + proyecto).
+        // servicio (Pending: desk→nivel) en lo que la barra pinta (idx + nombre + urgencia + espacio).
         // El servicio no conoce la UI; la barra no conoce el dominio. Click en un dot → saltás al desk.
         bar.OnAttentionDeskClicked = idx => desktops.GoTo(idx);
         _attention.Changed += () =>
@@ -208,7 +208,7 @@ public partial class App : Application
         // si el ForceForeground tocó la entrega del hook.
         //
         // ⚠ EXCEPCIÓN OBLIGATORIA — ventanas ENCADENADAS (una utilitaria abre a la siguiente y se
-        // cierra: el setter de proyecto → el picker de módulo). RestoreForegroundOrDesktop considera
+        // cierra: el setter de espacio → el picker de contexto). RestoreForegroundOrDesktop considera
         // inválido CUALQUIER foreground de nuestro propio proceso (así cubre el caso de que sólo
         // quede la barra) → sin este guard le arrancaba el foco al picker recién abierto y se lo daba
         // a otra app: la ventana quedaba al frente (es Topmost) pero MUERTA de teclado, había que

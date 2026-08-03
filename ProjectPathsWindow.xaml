@@ -48,7 +48,7 @@
                 </Setter.Value>
             </Setter>
             <Style.Triggers>
-                <!-- Solo-lectura (globales u otros proyectos): texto ATENUADO cuando NO están
+                <!-- Solo-lectura (globales u otros espacios): texto ATENUADO cuando NO están
                      seleccionadas (al seleccionarlas, el trigger IsSelected del template les da blanco
                      = feedback normal de selección). Style.Triggers gana sobre Template.Triggers, por
                      eso gateamos en IsSelected=False. -->

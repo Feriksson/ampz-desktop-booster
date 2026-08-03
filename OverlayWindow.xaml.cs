@@ -10,7 +10,7 @@ using AmpzDesktopBooster.Interop;
 namespace AmpzDesktopBooster;
 
 /// <summary>
-/// El overlay central que aparece al cambiar de desktop: nombre grande del desk, proyecto
+/// El overlay central que aparece al cambiar de desktop: nombre grande del desk, espacio
 /// (cuando exista), una fila de dots de navegación coloreados por tipo de desk (el activo
 /// relleno y brillante), y el título de la app en foco. Se auto-oculta a los 800ms.
 ///
@@ -72,12 +72,12 @@ public partial class OverlayWindow : Window
 
         TitleText.Text = name;
 
-        // Proyecto en la última línea. Se colapsa si está vacío (los dots quedan como cierre).
+        // Espacio en la última línea. Se colapsa si está vacío (los dots quedan como cierre).
         ProjectText.Text = project;
         ProjectText.Visibility = string.IsNullOrEmpty(project) ? Visibility.Collapsed : Visibility.Visible;
 
-        // Módulo: sólo tiene sentido con proyecto arriba (sin proyecto no hay sub-scope posible).
-        // El TEXTO va pintado con el color del módulo — es la señal que se percibe de reflejo.
+        // Contexto: sólo tiene sentido con espacio arriba (sin espacio no hay sub-scope posible).
+        // El TEXTO va pintado con el color del contexto — es la señal que se percibe de reflejo.
         var module = string.IsNullOrEmpty(project) ? DeskModule.None : desktops.GetModule(index);
         if (module.IsSet)
         {

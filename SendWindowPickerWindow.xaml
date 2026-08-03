@@ -30,7 +30,7 @@
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <StackPanel Margin="0,2">
-                            <!-- 1ra línea: desk — proyecto -->
+                            <!-- 1ra línea: desk — espacio -->
                             <TextBlock Text="{Binding Line1}" />
                             <!-- 2da línea: la tarea activa (se oculta si el desk no tiene). Mismo
                                  lenguaje del widget de la barra: ícono + identifier celeste + título. -->

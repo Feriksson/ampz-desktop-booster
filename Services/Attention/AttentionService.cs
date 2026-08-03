@@ -36,7 +36,7 @@ public sealed class AttentionService
 
     /// <summary>
     /// Maneja una señal ya parseada: resuelve el desk por el PID (posición REAL de la ventana del
-    /// proceso, a prueba de "mismo proyecto en dos desks") y lo marca como pendiente.
+    /// proceso, a prueba de "mismo espacio en dos desks") y lo marca como pendiente.
     /// </summary>
     public void OnSignal(AttentionSignal signal)
     {
@@ -80,9 +80,9 @@ public sealed class AttentionService
         bool sameDesk = desk == _desktops.Current;
 
         string deskName = _desktops.GetName(desk);
-        // Si el desk tiene un proyecto activo en la sesión, va en su PROPIO renglón (tercera línea del
-        // toast) para que de un vistazo sepas no sólo DÓNDE sino EN QUÉ. Si no hay proyecto
-        // (MAIN/CONSOLES/MISCS, o un DESK+ sin proyecto), la línea queda vacía → el toast ni la muestra.
+        // Si el desk tiene un espacio activo en la sesión, va en su PROPIO renglón (tercera línea del
+        // toast) para que de un vistazo sepas no sólo DÓNDE sino EN QUÉ. Si no hay espacio
+        // (MAIN/CONSOLES/MISCS, o un DESK+ sin espacio), la línea queda vacía → el toast ni la muestra.
         string project = _desktops.GetProject(desk);
 
         // El TÍTULO es distinto según dónde caiga el aviso:
