@@ -13,6 +13,10 @@ public enum LaunchResult
     NoWorkDir,
     /// <summary>El directorio configurado ya no existe en disco (repo movido o worktree borrado).</summary>
     WorkDirMissing,
+    /// <summary>El comando usa <c>{ip}</c> pero no hay IP de LAN para poner en su lugar.</summary>
+    NoNetwork,
+    /// <summary>El comando usa <c>{port}</c> pero el servicio no declara puerto.</summary>
+    NoPortToken,
 }
 
 /// <summary>
@@ -38,7 +42,15 @@ public static class ServiceLauncher
         if (dir == "") return LaunchResult.NoWorkDir;
         if (!Directory.Exists(dir)) return LaunchResult.WorkDirMissing;
 
-        Shell.RunInDir(dir, command);
+        // Los tokens se resuelven ACÁ, en cada lanzada, y nunca se persiste el valor: ese es todo el
+        // punto de {ip} —la IP de LAN la rota el DHCP y cambia al saltar de WiFi a cable—. Ver
+        // CommandTokens. Sólo escaneamos las interfaces de red si el comando de verdad los usa.
+        string? ip = CommandTokens.HasTokens(command) ? Services.LocalIp.Get() : null;
+        var token = CommandTokens.Expand(command, service.Port, ip, out string expanded);
+        if (token == TokenResult.NoNetwork) return LaunchResult.NoNetwork;
+        if (token == TokenResult.NoPort) return LaunchResult.NoPortToken;
+
+        Shell.RunInDir(dir, expanded);
         return LaunchResult.Ok;
     }
 

@@ -327,6 +327,8 @@ public partial class ServicesWindow : Window
         LaunchResult.NoCommand => Loc.T("Services.ErrNoCommand"),
         LaunchResult.NoWorkDir => Loc.T("Services.ErrNoWorkDir"),
         LaunchResult.WorkDirMissing => string.Format(Loc.T("Services.ErrWorkDirMissing"), row.WorkDir),
+        LaunchResult.NoNetwork => Loc.T("Services.ErrTokenNoIp"),
+        LaunchResult.NoPortToken => Loc.T("Services.ErrTokenNoPort"),
         _ => Loc.T("Services.ErrNoCommand"),
     };
 

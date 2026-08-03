@@ -1,5 +1,7 @@
 using System.Windows;
+using AmpzDesktopBooster.Apps;
 using AmpzDesktopBooster.Persistence;
+using AmpzDesktopBooster.Services;
 using AmpzDesktopBooster.Services.Localization;
 
 namespace AmpzDesktopBooster;
@@ -15,6 +17,14 @@ namespace AmpzDesktopBooster;
 /// </summary>
 public partial class ServiceEditWindow : Window
 {
+    /// <summary>
+    /// IP de LAN para el PREVIEW, resuelta UNA vez al abrir el diálogo. No se re-resuelve en cada
+    /// tecla a propósito: <see cref="LocalIp.Get"/> recorre todas las interfaces de red, y en la vida
+    /// del diálogo la IP no va a cambiar. Ojo: esto es sólo el preview — al LANZAR, la IP se resuelve
+    /// de nuevo y de cero (ver ServiceLauncher), que es lo que hace al token siempre actual.
+    /// </summary>
+    private readonly string? _previewIp = LocalIp.Get();
+
     private ServiceEditWindow(string header, string scope, ServiceEntry initial)
     {
         InitializeComponent();
@@ -38,6 +48,13 @@ public partial class ServiceEditWindow : Window
         AutoStartBox.Indeterminate += (_, _) => UpdateAutoStartHint();
         UpdateAutoStartHint();
 
+        // Preview en vivo del comando ya expandido. Es el que convierte a los tokens de "confiá en mí"
+        // a algo VERIFICABLE antes de guardar: ves con qué IP y con qué puerto va a salir de verdad,
+        // y ves al toque el caso roto ({port} sin puerto cargado) sin tener que lanzarlo para enterarte.
+        CommandBox.TextChanged += (_, _) => UpdatePreview();
+        PortBox.TextChanged += (_, _) => UpdatePreview();
+        UpdatePreview();
+
         OkBtn.Click += (_, _) => Accept();
         CancelBtn.Click += (_, _) => { DialogResult = false; };
         Loaded += (_, _) => { TitleBox.Focus(); TitleBox.SelectAll(); };
@@ -52,6 +69,32 @@ public partial class ServiceEditWindow : Window
             true  => Loc.T("Services.AutoStartOn"),
             false => Loc.T("Services.AutoStartOff"),
             _     => Loc.T(hasPort ? "Services.AutoStartAutoOn" : "Services.AutoStartAutoOff"),
+        };
+    }
+
+    /// <summary>
+    /// Muestra el comando REAL que se va a ejecutar. Sólo aparece si el comando usa tokens: para el
+    /// 90% de los servicios (un `npm run dev` pelado) una línea que repite lo que acabás de tipear es
+    /// ruido, y el ruido constante es lo que hace que después no leas el cartel que sí importa.
+    /// </summary>
+    private void UpdatePreview()
+    {
+        string command = CommandBox.Text.Trim();
+        if (!CommandTokens.HasTokens(command))
+        {
+            PreviewText.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        int.TryParse(PortBox.Text.Trim(), out int port);
+        var result = CommandTokens.Expand(command, port, _previewIp, out string expanded);
+
+        PreviewText.Visibility = Visibility.Visible;
+        PreviewText.Text = "→ " + expanded + result switch
+        {
+            TokenResult.NoNetwork => "\n" + Loc.T("Services.PreviewNoIp"),
+            TokenResult.NoPort => "\n" + Loc.T("Services.PreviewNoPort"),
+            _ => "",
         };
     }
 
