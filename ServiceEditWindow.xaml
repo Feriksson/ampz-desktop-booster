@@ -67,7 +67,15 @@
             <TextBox x:Name="WorkDirBox" />
 
             <TextBlock Text="{loc:Translate Services.FldCommand}" />
-            <TextBox x:Name="CommandBox" />
+            <TextBox x:Name="CommandBox" Margin="0,0,0,4" />
+
+            <!-- Los atajos {ip}/{port} se anuncian ACÁ, pegados al campo donde se escriben: un token
+                 que no se puede descubrir no existe. El preview de abajo aparece sólo si los usás. -->
+            <TextBlock Text="{loc:Translate Services.TokensHint}" TextWrapping="Wrap"
+                       Foreground="#6E6E78" FontSize="10" Margin="0,0,0,4" />
+            <TextBlock x:Name="PreviewText" TextWrapping="Wrap" FontSize="11"
+                       FontFamily="Consolas" Foreground="#7FB8D4"
+                       Visibility="Collapsed" Margin="0,0,0,10" />
 
             <TextBlock Text="{loc:Translate Services.FldPort}" />
             <TextBox x:Name="PortBox" />
