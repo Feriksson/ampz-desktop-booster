@@ -245,12 +245,12 @@ legacy guardaba en `A_ScriptDir`; esto se modernizó para que la app sea compart
 
 | Archivo | Formato | Contenido |
 |---|---|---|
-| `desk_project_data.json` | JSON | Catálogo durable: `history` (los ESPACIOS), `notes`, `paths` (key = espacio **o** `"Espacio/Contexto"`), `modules` (los CONTEXTOS + su color, por espacio), `defaults` (predeterminado por scope), `shared_notes`, `shared_paths`, `shared_default`, `folder_notes`. |
+| `desk_project_data.json` | JSON | Catálogo durable: `history` (los ESPACIOS), `notes`, `paths` (key = espacio **o** `"Espacio/Contexto"`), `modules` (los CONTEXTOS + su color, por espacio), `defaults` (predeterminado por scope), `services` (cómo levantar lo básico, key = scope) + `shared_services`, `shared_notes`, `shared_paths`, `shared_default`, `folder_notes`. |
 | `settings.ini` | INI custom | `[Projects]` sugerencias (`desk_N` y `desk_N_module`), `[Pins]` `proc.exe=idx`, `[Restricted]` `idx=1`, `[Whitelist_IDX]` `proc.exe=1`. |
 | `desktops.json` | JSON | `DesktopConfig`: lista `managed` + flag `autoCreate`. |
 | `apps.json` | JSON | `AppsConfig`: apps de usuario (`name`, `exePath`, `args` con `{path}`). |
 | `widgets.json` | JSON | `WidgetSettings`: qué widgets de la barra están activos (defaults: Clock + Ram + Ip). |
-| `ports.json` | JSON | `PortStore`: catálogo GLOBAL de puertos/servicios locales (`title` + `port`). Estado/URL/proceso NO se persisten — se derivan en vivo. |
+| ~~`ports.json`~~ | JSON | **MIGRADO** a `services` del catálogo (ver arriba). `PortStore` queda como legacy de sólo-lectura para `ServiceMigration`; al migrar, el archivo se renombra a `ports.json.migrated`. |
 | `ampz-crash.log` | texto | Junto al **exe** (no en APPDATA). Log de excepciones no manejadas. |
 
 `IniFile` es un parser INI propio (.NET no trae uno): reescribe el archivo entero en cada op
@@ -280,7 +280,7 @@ del hook no se puede bloquear).
 | `Win+Numpad *` | **Variables** del espacio/contexto/global (Paths Manager); re-press dispara el predeterminado |
 | `Win+Numpad /` | **Notas** del espacio/contexto/global |
 | `Win+Numpad −` (Sub) | **Send-window picker** (mandar la ventana activa a un desk elegido) |
-| `Win+Numpad +` (Add) | **Puertos / Servicios locales** (lista global de apps web por puerto; estado vivo 🟢/⚪, copiar localhost / IP de red, QR) |
+| `Win+Numpad +` (Add) | **Servicios** del espacio/contexto/global: cómo levantar lo básico y qué está levantado (estado vivo 🟢/⚪ por puerto, copiar localhost / IP de red, QR). Re-press → levanta lo que falte |
 | `Win+F2` | "Abrir con" (sobre el path activo del Explorer) |
 | `Win+F3` | Variables de entorno |
 | `Win+F5` | Panel Docker |
@@ -324,7 +324,8 @@ abierta NO abre otra (Variables dispara el path predeterminado; Notas la trae al
 cambio de desk), `ConfigWindow` (config, instancia única), `ProjectSetterWindow`, `ProjectPathsWindow`
 (variables), `ProjectNotesWindow`, `EnvVarsWindow`, `DockerWindow`, `HzWindow` (refresh rate),
 `PinManagerWindow`, `DeskRestrictionsWindow`, `WhitelistPickerWindow`, `SendWindowPickerWindow`,
-`AbrirConWindow` ("Abrir con"), `DeskPickerWindow`, `PromptDialog`, `ToastWindow`.
+`AbrirConWindow` ("Abrir con"), `DeskPickerWindow`, `ServicesWindow` (servicios del scope) +
+`ServiceEditWindow` (sus 4 campos), `PromptDialog`, `ToastWindow`.
 
 ---
 

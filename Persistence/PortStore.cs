@@ -17,13 +17,15 @@ public sealed class PortEntry
 }
 
 /// <summary>
-/// Catálogo durable de puertos/servicios locales — lo que abre la Win+Numpad+ (Add).
-/// Lista GLOBAL única (decisión del usuario): no depende del desk ni del espacio, tus apps web
-/// corren igual estés parado donde estés. Se persiste en %APPDATA%\AmpzDesktopBooster\ports.json.
+/// LEGACY — SÓLO SE USA PARA MIGRAR. Era el catálogo GLOBAL de puertos que abría la Win+Numpad+.
 ///
-/// Mismo patrón de config que <see cref="Services.WidgetSettings"/> y el resto del repo:
-/// Load() con try/catch → defaults si corrupto; cada mutación llama Save() con try/catch silencioso
-/// (si falla el disco seguimos en memoria — la persistencia NUNCA voltea la app).
+/// Lo reemplazaron los SERVICIOS por scope (<see cref="ServiceEntry"/> + <c>ProjectStore</c>): esto
+/// modelaba el PUERTO, que es la consecuencia, y no el servicio; y sabía decirte si algo corría pero
+/// no hacerlo correr. Una entrada de acá equivale exactamente a un servicio global SIN comando.
+///
+/// NO agregues features acá ni lo vuelvas a cablear a la UI. Lo único que queda vivo es
+/// <see cref="Load"/>, que usa <c>ServiceMigration</c> para leer el ports.json viejo una última vez.
+/// Cuando ya no queden instalaciones sin migrar, este archivo se borra entero.
 /// </summary>
 public sealed class PortStore
 {

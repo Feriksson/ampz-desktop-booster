@@ -242,7 +242,8 @@ public sealed class ProjectStore
         string key = ScopeKey(project, module);
         _data.Paths.Remove(key);
         _data.Notes.Remove(key);
-        _data.Defaults.Remove(key); // sin scope no hay predeterminado que resolver
+        _data.Defaults.Remove(key);  // sin scope no hay predeterminado que resolver
+        _data.Services.Remove(key);  // …ni servicios que levantar
 
         foreach (var idx in _session
                      .Where(kv => string.Equals(kv.Value.Project, project, StringComparison.OrdinalIgnoreCase)
@@ -321,6 +322,48 @@ public sealed class ProjectStore
         global = null;
         parent = null;
         return GetSharedPool();
+    }
+
+    // ── Pools de SERVICIOS (cómo se levanta lo básico de este scope) ───────────
+    // Misma herencia de tres niveles que las variables — contexto → espacio → global — y por el mismo
+    // motivo: lo que es del cliente/espacio (levantar el docker compartido) se define UNA vez arriba y
+    // se ve desde todos sus contextos, sin duplicarlo en cada uno.
+
+    /// <summary>
+    /// Pool de servicios de un scope (crea la lista si no existía). <paramref name="scopeKey"/> puede
+    /// ser un espacio pelado o una key compuesta "Espacio/Contexto", igual que <see cref="GetProjectPool"/>.
+    /// </summary>
+    public ServicePool GetServicePool(string scopeKey)
+    {
+        if (!_data.Services.TryGetValue(scopeKey, out var list))
+        {
+            list = new List<ServiceEntry>();
+            _data.Services[scopeKey] = list;
+        }
+        return new ServicePool(list, Save, PrettyScope(scopeKey));
+    }
+
+    /// <summary>Pool GLOBAL de servicios — la de los desks sin espacio, y donde aterriza el viejo ports.json.</summary>
+    public ServicePool GetSharedServicePool() => new(_data.SharedServices, Save, "Global");
+
+    /// <summary>
+    /// Gemela de <see cref="ResolvePoolWithGlobal"/> para servicios: devuelve la pool PRIMARIA del desk
+    /// y expone las HEREDADAS que la ventana anexa de solo-lectura (espacio padre y global). Que la
+    /// regla viva acá —y no duplicada en la ventana— es lo que garantiza que variables y servicios
+    /// hereden con EL MISMO criterio: si algún día cambia, cambia para los dos.
+    /// </summary>
+    public ServicePool ResolveServicePoolWithGlobal(string deskName, int deskIdx,
+                                                    out ServicePool? global, out ServicePool? parent)
+    {
+        if (UseProjectScope(deskName, deskIdx, out var project, out var module))
+        {
+            global = GetSharedServicePool();
+            parent = module == "" ? null : GetServicePool(project);
+            return GetServicePool(ScopeKey(project, module));
+        }
+        global = null;
+        parent = null;
+        return GetSharedServicePool();
     }
 
     // ── Predeterminado POR SCOPE ───────────────────────────────────────────────
@@ -500,6 +543,7 @@ public sealed class ProjectStore
         _data.Notes.Remove(name);
         _data.Modules.Remove(name);
         _data.Defaults.Remove(name);
+        _data.Services.Remove(name);
 
         string prefix = name + ScopeSeparator;
         foreach (var key in _data.Paths.Keys.Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList())
@@ -508,6 +552,8 @@ public sealed class ProjectStore
             _data.Notes.Remove(key);
         foreach (var key in _data.Defaults.Keys.Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList())
             _data.Defaults.Remove(key);
+        foreach (var key in _data.Services.Keys.Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList())
+            _data.Services.Remove(key);
 
         foreach (var idx in _session
                      .Where(kv => string.Equals(kv.Value.Project, name, StringComparison.OrdinalIgnoreCase))
@@ -562,12 +608,13 @@ public sealed class ProjectStore
             MoveKey(dict, key, newPrefix + key[oldPrefix.Length..]);
     }
 
-    /// <summary>Mueve una key de scope en los TRES diccionarios que la usan. Un solo lugar, sin olvidos.</summary>
+    /// <summary>Mueve una key de scope en TODOS los diccionarios que la usan. Un solo lugar, sin olvidos.</summary>
     private void MoveScope(string fromKey, string toKey)
     {
         MoveKey(_data.Paths, fromKey, toKey);
         MoveKey(_data.Notes, fromKey, toKey);
         MoveKey(_data.Defaults, fromKey, toKey);
+        MoveKey(_data.Services, fromKey, toKey);
     }
 
     /// <summary>Reescribe la sesión en vivo: los desks que apuntaban al scope viejo siguen al nuevo.</summary>
@@ -622,6 +669,7 @@ public sealed class ProjectStore
         MovePrefix(_data.Paths, oldPrefix, newPrefix);
         MovePrefix(_data.Notes, oldPrefix, newPrefix);
         MovePrefix(_data.Defaults, oldPrefix, newPrefix);
+        MovePrefix(_data.Services, oldPrefix, newPrefix);
 
         MapSession((p, m) => new DeskAssignment(Same(p, oldName) ? newName : p, m));
         MapSuggestions((p, m) => (Same(p, oldName) ? newName : p, m));

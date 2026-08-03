@@ -43,6 +43,67 @@ public sealed class ModuleEntry
 }
 
 /// <summary>
+/// Un SERVICIO de un scope: CÓMO se levanta algo para laburar en este espacio/contexto
+/// ("npm run dev" en el repo de Plataforma, "php -S" con su puerto, "npm start" del Expo).
+///
+/// Nace de que el catálogo anterior (ports.json) modelaba el PUERTO — que es la CONSECUENCIA — y no
+/// el servicio, que es la cosa. Y le faltaba la mitad del ciclo: sabía decirte si algo corría, pero
+/// no sabía hacerlo correr. Por eso vive acá, con scope y herencia, y no en un catálogo global suelto.
+///
+/// EL PUERTO da el ESTADO (🟢/⚪): es lo único que podemos observar de afuera sin mentir.
+///
+/// OJO — el puerto NO alcanza para decidir qué entra en "levantar todo", y esto se aprendió a los
+/// golpes. La regla original era "Port &gt; 0 = servidor, Port == 0 = tarea", y es FALSA en cuanto
+/// aparece un worker: `php artisan queue:work`, `schedule:work`, un watcher de assets — corren para
+/// siempre y NO escuchan ningún puerto. Clasificarlos como tarea los dejaba afuera del arranque
+/// grupal en silencio: levantabas el 80% del stack creyendo que habías levantado todo, que es el peor
+/// tipo de bug porque se lee como éxito. Por eso el arranque tiene su propio campo,
+/// <see cref="AutoStart"/>. Son dos preguntas distintas y ahora tienen dos campos distintos.
+/// </summary>
+public sealed class ServiceEntry
+{
+    [JsonPropertyName("title")]   public string Title { get; set; } = "";
+
+    /// <summary>
+    /// Comando a correr en <see cref="WorkDir"/> (ej. "npm run dev"). VACÍO = entrada de SOLO
+    /// MONITOREO: sabemos mirarle el puerto pero no sabemos levantarla. Ése es exactamente el caso
+    /// de las entradas migradas del viejo ports.json — el caso DEGENERADO del modelo nuevo.
+    /// </summary>
+    [JsonPropertyName("command")] public string Command { get; set; } = "";
+
+    /// <summary>
+    /// Directorio donde corre el comando. Hoy es un path TIPEADO, literal.
+    /// Convención reservada para la fase 2: si arranca con "{" es una REFERENCIA a una variable del
+    /// scope (ej. "{Repo}"), que se resuelve al lanzar. Se deja el campo como string plano
+    /// justamente para que ese día la migración sea CERO — el campo no cambia de forma.
+    /// Precedente del mismo idioma en el repo: <c>AppsConfig.Args</c> con "{path}".
+    /// </summary>
+    [JsonPropertyName("workDir")] public string WorkDir { get; set; } = "";
+
+    /// <summary>Puerto que escucha, o 0 si no escucha ninguno. Da el estado 🟢/⚪ y nada más.</summary>
+    [JsonPropertyName("port")]    public int Port { get; set; }
+
+    /// <summary>
+    /// ¿Entra en "levantar todo"? NULLABLE a propósito: <c>null</c> = "no lo decidí, usá el default
+    /// inteligente" (<see cref="AutoStartEffective"/>).
+    ///
+    /// Es nullable y no un bool pelado porque un bool se deserializa en <c>false</c> cuando la key no
+    /// está en el JSON — y eso habría apagado EN SILENCIO el arranque grupal de todos los servicios
+    /// ya cargados al actualizar la app. Con nullable, "campo ausente" y "el usuario lo destildó" son
+    /// dos cosas distintas, que es exactamente la diferencia que importa acá. Migración: CERO.
+    /// </summary>
+    [JsonPropertyName("autoStart")] public bool? AutoStart { get; set; }
+
+    /// <summary>
+    /// Si entra o no en el arranque grupal. Default cuando el usuario no se pronunció: lo dicta el
+    /// puerto (con puerto = servidor = arranca; sin puerto = tarea suelta = no). Cubre el 95% sin que
+    /// tengas que tocar nada, y deja el worker sin puerto a un solo clic.
+    /// </summary>
+    [JsonIgnore]
+    public bool AutoStartEffective => AutoStart ?? Port > 0;
+}
+
+/// <summary>
 /// El catálogo persistente de espacios — mismo shape que el desk_project_data.json del legacy:
 ///   history       — todos los espacios conocidos (para autocompletar el setter)
 ///   notes         — pizarra de texto por espacio (o por contexto, con key "Espacio/Contexto")
@@ -86,4 +147,23 @@ public sealed class ProjectData
 
     /// <summary>Predeterminado del scope GLOBAL (desks sin espacio). Aparte porque no tiene key de scope.</summary>
     [JsonPropertyName("shared_default")] public string SharedDefault { get; set; } = "";
+
+    /// <summary>
+    /// Servicios por scope: key = "Espacio" o "Espacio/Contexto", igual que <see cref="Paths"/>.
+    ///
+    /// POR QUÉ VIVEN ACÁ Y NO EN UN services.json APARTE — no es comodidad, es la única forma de no
+    /// romper la disciplina del repo: <c>ProjectStore.MoveScope</c> mueve una key de scope en TODOS
+    /// los diccionarios de un saque. Estando acá, renombrar/mover/promover/degradar un espacio arrastra
+    /// los servicios con UNA línea. En un archivo aparte habría que re-implementar ese barrido, y media
+    /// migración deja servicios huérfanos colgando de un scope que ya no existe: invisibles desde la UI
+    /// e imposibles de borrar.
+    /// </summary>
+    [JsonPropertyName("services")] public Dictionary<string, List<ServiceEntry>> Services { get; set; } = new();
+
+    /// <summary>
+    /// Servicios del scope GLOBAL (desks sin espacio). Aparte de <see cref="Services"/> por el mismo
+    /// motivo que <see cref="SharedPaths"/>: la global no tiene key de scope. Acá aterrizan las
+    /// entradas migradas del viejo ports.json (puerto sin comando).
+    /// </summary>
+    [JsonPropertyName("shared_services")] public List<ServiceEntry> SharedServices { get; set; } = new();
 }

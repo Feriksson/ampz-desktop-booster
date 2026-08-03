@@ -38,7 +38,6 @@ public sealed class HotkeyRouter
     private readonly Action _refreshCurrentDesk;
     private readonly TaskSessionStore _taskSession;
     private readonly Action _refreshTaskWidget;
-    private readonly PortStore _ports;
 
     // Ventana de variables actualmente abierta (para el "re-press dispara el predeterminado").
     // Guardamos también el desk con el que se abrió: el re-press solo dispara el predeterminado si
@@ -62,9 +61,12 @@ public sealed class HotkeyRouter
     private ProjectSetterWindow? _setterWindow;
     // Picker de contexto abierto (Win+NumpadDot). Instancia única: re-press deja el desk SIN contexto.
     private ModulePickerWindow? _moduleWindow;
-    // Popup de puertos/servicios locales abierto (Win+Numpad+). Instancia única, scope GLOBAL (no
-    // depende del desk) → re-press SOLO la trae al frente (no dispara nada, como Notas).
-    private PortsWindow? _portsWindow;
+    // Popup de SERVICIOS abierto (Win+Numpad+). Instancia única y DESK-AWARE, igual que Variables: el
+    // re-press sólo "levanta lo que falta" si seguís en el MISMO desk con el que se abrió — si
+    // navegaste, el scope cambió y disparar los servicios del desk viejo sería justo el bug.
+    // (Antes era scope GLOBAL y no dependía del desk: eso era el catálogo de puertos, no los servicios.)
+    private ServicesWindow? _servicesWindow;
+    private int _servicesWindowDeskIdx;
 
     // Virtual-keys de las F que ruteamos (F1..F12 = 0x70..0x7B; backtick = 0xC0; barra /? = 0xBF).
     // F7 (Pin Manager) y F8 (Restricciones) SE QUITARON: eran popups de gestión compleja que hoy
@@ -75,8 +77,7 @@ public sealed class HotkeyRouter
 
     public HotkeyRouter(HotkeyService hotkeys, DesktopService desktops, ProjectStore projects,
         AppsConfig apps, PinStore pins, RestrictionStore restrictions, AppShortcutStore shortcuts,
-        Action refreshCurrentDesk, TaskSessionStore taskSession, Action refreshTaskWidget,
-        PortStore ports)
+        Action refreshCurrentDesk, TaskSessionStore taskSession, Action refreshTaskWidget)
     {
         _desktops = desktops;
         _projects = projects;
@@ -87,7 +88,6 @@ public sealed class HotkeyRouter
         _refreshCurrentDesk = refreshCurrentDesk;
         _taskSession = taskSession;
         _refreshTaskWidget = refreshTaskWidget;
-        _ports = ports;
         hotkeys.HotkeyFired += OnHotkeyFired;
         hotkeys.WinFunctionKey += OnWinFunctionKey;
         hotkeys.WinReleased += OnWinReleased;
@@ -262,7 +262,7 @@ public sealed class HotkeyRouter
             case NumpadKey.Decimal:  ShowModulePicker();      return; // Win+NumpadDel (contexto del desk)
             case NumpadKey.Multiply: ShowProjectPaths();      return;
             case NumpadKey.Divide:   ShowProjectNotes();      return;
-            case NumpadKey.Add:      ShowPorts();             return; // Win+Numpad+ (puertos/servicios locales)
+            case NumpadKey.Add:      ShowServices();          return; // Win+Numpad+ (servicios del scope)
             case NumpadKey.D0:       ShowTaskPicker();        return; // Win+NumpadInsert (scancode 0x52)
         }
 
@@ -438,19 +438,30 @@ public sealed class HotkeyRouter
         _notesWindow.ShowFocused();
     }
 
-    private void ShowPorts()
+    private void ShowServices()
     {
-        // Instancia única, scope GLOBAL (la lista de puertos no depende del desk): re-press SÓLO trae
-        // la ventana al frente, no dispara ninguna acción (a diferencia de Variables, que es desk-aware).
-        if (_portsWindow is not null)
+        int idx = _desktops.Current;
+
+        // Re-press en el MISMO desk → "levantar lo básico": dispara los servidores que no estén
+        // escuchando ya. Mismo idioma que Variables (re-press dispara el predeterminado): la segunda
+        // pulsación ejecuta la acción principal del scope en vez de abrir otra ventana.
+        if (_servicesWindow is not null && _servicesWindowDeskIdx == idx)
         {
-            _portsWindow.Activate();
+            _servicesWindow.LaunchMissing();
             return;
         }
+        // Quedó abierta en OTRO desk → descartarla (Close dispara el handler que limpia la referencia).
+        _servicesWindow?.Close();
 
-        _portsWindow = new PortsWindow(_ports);
-        _portsWindow.Closed += (_, _) => _portsWindow = null;
-        _portsWindow.ShowFocused();
+        string name = _desktops.GetName(idx);
+        // Herencia de tres niveles, la MISMA que las variables: pool primaria (contexto, espacio o
+        // global) + las heredadas de solo-lectura. La regla vive en el store, no acá.
+        var pool = _projects.ResolveServicePoolWithGlobal(name, idx, out var globalPool, out var parentPool);
+
+        _servicesWindow = new ServicesWindow(pool, name, parentPool: parentPool, globalPool: globalPool);
+        _servicesWindowDeskIdx = idx; // recordamos el desk: el re-press sólo cuenta si seguís acá
+        _servicesWindow.Closed += (_, _) => _servicesWindow = null;
+        _servicesWindow.ShowFocused();
     }
 
     private void ShowDeskPicker()

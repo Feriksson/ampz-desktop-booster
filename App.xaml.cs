@@ -96,6 +96,10 @@ public partial class App : Application
 
         var desktops = new DesktopService();
         var projects = new ProjectStore();
+        // El viejo catálogo GLOBAL de puertos pasa a ser servicios del scope global (sin comando: son
+        // de sólo monitoreo). Corre ANTES de que nadie lea servicios, y una sola vez — la idempotencia
+        // la da el renombre del archivo en disco. Ver ServiceMigration.
+        ServiceMigration.MigratePortsIfNeeded(projects);
         _appsConfig = Apps.AppsConfig.Load();
         var pins = new PinStore();
         var restrictions = new RestrictionStore();
@@ -170,9 +174,7 @@ public partial class App : Application
         },
             taskSession,
             // Refresca el widget de tarea del desk ACTUAL (tras pickear o desanclar).
-            () => bar.UpdateDeskTask(taskSession.GetDeskTask(desktops.Current)),
-            // Catálogo GLOBAL de puertos/servicios locales (Win+Numpad+). Durable en ports.json.
-            PortStore.Load());
+            () => bar.UpdateDeskTask(taskSession.GetDeskTask(desktops.Current)));
 
         // Click en el widget de tarea → el detalle (lo orquesta el router, que tiene la sesión).
         bar.OnTaskWidgetClicked = () => _router.ShowTaskDetail();

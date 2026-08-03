@@ -72,7 +72,7 @@ public sealed class QrWindow : Window
 
         panel.Children.Add(new TextBlock
         {
-            Text = Loc.T("Ports.QrHint"),
+            Text = Loc.T("Services.QrHint"),
             Foreground = new SolidColorBrush(Color.FromRgb(0x6E, 0x6E, 0x78)),
             FontSize = 10,
             Margin = new Thickness(0, 10, 0, 0),
