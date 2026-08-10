@@ -458,7 +458,11 @@ public sealed class HotkeyRouter
         // global) + las heredadas de solo-lectura. La regla vive en el store, no acá.
         var pool = _projects.ResolveServicePoolWithGlobal(name, idx, out var globalPool, out var parentPool);
 
-        _servicesWindow = new ServicesWindow(pool, name, parentPool: parentPool, globalPool: globalPool);
+        // El registro de puertos abarca TODO el catálogo, no sólo las tres pools de arriba: un puerto
+        // tiene un solo dueño en toda la app, así que el alta tiene que poder chocar contra un scope
+        // que ni siquiera está en pantalla. Ver PortRegistry.
+        _servicesWindow = new ServicesWindow(pool, name, parentPool: parentPool, globalPool: globalPool,
+                                             ports: _projects.Ports);
         _servicesWindowDeskIdx = idx; // recordamos el desk: el re-press sólo cuenta si seguís acá
         _servicesWindow.Closed += (_, _) => _servicesWindow = null;
         _servicesWindow.ShowFocused();

@@ -1,9 +1,9 @@
-<Window x:Class="AmpzDesktopBooster.ServiceEditWindow"
+<Window x:Class="AmpzDesktopBooster.VariableEditWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
-        Title="{loc:Translate Services.DlgTitle}"
-        Width="560" SizeToContent="Height"
+        Title="{loc:Translate Vars.DlgTitle}"
+        Width="620" SizeToContent="Height"
         WindowStyle="None" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False" Topmost="True"
@@ -58,47 +58,27 @@
         <StackPanel>
             <TextBlock x:Name="HeaderText" Foreground="#F2F2F2" FontSize="14"
                        FontWeight="SemiBold" Margin="0,0,0,2" />
+            <!-- El scope SIEMPRE a la vista: el mismo título de variable significa cosas distintas
+                 según dónde viva, y este diálogo se abre desde una pestaña donde estás saltando de
+                 scope en scope. Sin este renglón, guardás en el lugar equivocado sin enterarte. -->
             <TextBlock x:Name="ScopeText" Margin="0,0,0,12" />
 
-            <TextBlock Text="{loc:Translate Services.FldTitle}" />
+            <TextBlock Text="{loc:Translate Vars.FldTitle}" />
             <TextBox x:Name="TitleBox" />
 
-            <TextBlock Text="{loc:Translate Services.FldWorkDir}" />
-            <TextBox x:Name="WorkDirBox" />
+            <TextBlock Text="{loc:Translate Vars.FldPath}" />
+            <TextBox x:Name="PathBox" Margin="0,0,0,4" />
 
-            <TextBlock Text="{loc:Translate Services.FldCommand}" />
-            <TextBox x:Name="CommandBox" Margin="0,0,0,4" />
-
-            <!-- Los atajos {ip}/{port} se anuncian ACÁ, pegados al campo donde se escriben: un token
-                 que no se puede descubrir no existe. El preview de abajo aparece sólo si los usás. -->
-            <TextBlock Text="{loc:Translate Services.TokensHint}" TextWrapping="Wrap"
+            <TextBlock Text="{loc:Translate Vars.DlgHint}" TextWrapping="Wrap"
                        Foreground="#6E6E78" FontSize="10" Margin="0,0,0,4" />
-            <TextBlock x:Name="PreviewText" TextWrapping="Wrap" FontSize="11"
-                       FontFamily="Consolas" Foreground="#7FB8D4"
-                       Visibility="Collapsed" Margin="0,0,0,10" />
 
-            <TextBlock Text="{loc:Translate Services.FldPort}" />
-            <TextBox x:Name="PortBox" Margin="0,0,0,4" />
+            <!-- Diagnóstico en vivo del path: si apunta a algo que no existe en disco, se dice ACÁ y
+                 no tres pantallas después cuando el atajo no abre nada. Las URLs nunca se marcan
+                 rotas (verificarlas exigiría un request, ver ProjectPathsWindow.IsBrokenPath). -->
+            <TextBlock x:Name="StatusText" TextWrapping="Wrap" FontSize="11"
+                       Visibility="Collapsed" Margin="0,0,0,6" />
 
-            <!-- El choque de puerto se avisa MIENTRAS tipeás, no recién al aceptar: enterarte de que
-                 el 3000 está tomado después de cargar los cuatro campos es enterarte tarde. El
-                 MessageBox de Aceptar queda igual como red (podés no mirar acá), pero el camino
-                 normal es que nunca lo veas. -->
-            <TextBlock x:Name="PortConflictText" TextWrapping="Wrap" FontSize="11"
-                       Foreground="#E5A0A0" Visibility="Collapsed" Margin="0,0,0,10" />
-
-            <!-- Tri-estado REAL (IsThreeState): tildado / destildado / indeterminado = "seguí el
-                 default según el puerto". Sin el tercer estado, abrir y aceptar el diálogo sin tocar
-                 nada congelaría una decisión que el usuario nunca tomó. -->
-            <CheckBox x:Name="AutoStartBox" IsThreeState="True" Foreground="#E6E6EA" FontSize="12"
-                      Content="{loc:Translate Services.FldAutoStart}" Margin="0,2,0,4" />
-            <TextBlock x:Name="AutoStartHint" Foreground="#6E6E78" FontSize="10"
-                       TextWrapping="Wrap" Margin="0,0,0,6" />
-
-            <TextBlock Text="{loc:Translate Services.DlgHint}" TextWrapping="Wrap"
-                       Foreground="#6E6E78" FontSize="10" Margin="0,2,0,0" />
-
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
                 <Button x:Name="OkBtn" Content="{loc:Translate Prompt.Ok}" MinWidth="90"
                         Margin="0,0,6,0" Padding="10,4" IsDefault="True" />
                 <Button x:Name="CancelBtn" Content="{loc:Translate Prompt.Cancel}" MinWidth="90"

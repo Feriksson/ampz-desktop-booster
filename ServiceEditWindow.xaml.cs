@@ -1,5 +1,6 @@
 using System.Windows;
 using AmpzDesktopBooster.Apps;
+using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Persistence;
 using AmpzDesktopBooster.Services;
 using AmpzDesktopBooster.Services.Localization;
@@ -25,9 +26,25 @@ public partial class ServiceEditWindow : Window
     /// </summary>
     private readonly string? _previewIp = LocalIp.Get();
 
-    private ServiceEditWindow(string header, string scope, ServiceEntry initial)
+    /// <summary>
+    /// El registro de puertos de todo el catálogo. Nullable para no volver obligatorio el parámetro
+    /// en un diálogo que también se puede abrir desde otro lado: sin registro el editor funciona
+    /// igual, simplemente sin la validación (degradar, nunca romper).
+    /// </summary>
+    private readonly PortRegistry? _ports;
+
+    /// <summary>
+    /// La entrada que se está editando, o null en un alta. Se guarda para excluirla del registro:
+    /// si no, guardar un servicio sin tocarle el puerto se chocaría CONSIGO MISMO.
+    /// </summary>
+    private readonly ServiceEntry? _editing;
+
+    private ServiceEditWindow(string header, string scope, ServiceEntry initial,
+                              PortRegistry? ports, ServiceEntry? editing)
     {
         InitializeComponent();
+        _ports = ports;
+        _editing = editing;
         HeaderText.Text = header;
         ScopeText.Text = scope;
 
@@ -54,6 +71,9 @@ public partial class ServiceEditWindow : Window
         CommandBox.TextChanged += (_, _) => UpdatePreview();
         PortBox.TextChanged += (_, _) => UpdatePreview();
         UpdatePreview();
+
+        PortBox.TextChanged += (_, _) => UpdateConflict();
+        UpdateConflict();
 
         OkBtn.Click += (_, _) => Accept();
         CancelBtn.Click += (_, _) => { DialogResult = false; };
@@ -98,6 +118,27 @@ public partial class ServiceEditWindow : Window
         };
     }
 
+    /// <summary>
+    /// Aviso en vivo de puerto tomado. Sólo informa: quién lo tiene y cuál es el primero libre. El
+    /// bloqueo real vive en <see cref="Accept"/> — que el cartel no te frene mientras tipeás es lo
+    /// que te deja llegar hasta el 3000 y corregirlo sin pelearte con el campo tecla por tecla.
+    /// </summary>
+    private void UpdateConflict()
+    {
+        if (_ports is null || !int.TryParse(PortBox.Text.Trim(), out int port) || port <= 0
+            || _ports.FindOwner(port, _editing) is not { } owner)
+        {
+            PortConflictText.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        int free = _ports.SuggestFree(port);
+        PortConflictText.Visibility = Visibility.Visible;
+        PortConflictText.Text =
+            string.Format(Loc.T("Services.PortTakenInline"), owner.Port, owner.Title, owner.ScopeLabel)
+            + (free > 0 ? "  " + string.Format(Loc.T("Services.PortFreeHint"), free) : "");
+    }
+
     /// <summary>Lo que el usuario dejó cargado. Sólo se lee si <c>ShowDialog</c> devolvió true.</summary>
     private ServiceEntry Result { get; set; } = new();
 
@@ -109,6 +150,36 @@ public partial class ServiceEditWindow : Window
         {
             MessageBox.Show(Loc.T("Services.InvalidPort"), Loc.T("Services.WindowTitle"),
                 MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        // ⛔ UN PUERTO, UN DUEÑO — en TODO el catálogo (ver PortRegistry para el porqué del alcance).
+        // Se bloquea acá y no se ofrece "guardar igual": un override que se puede clickear es una
+        // regla que en la práctica no existe, y el choque que evita no se manifiesta al guardar sino
+        // media hora después, cuando un server sirve la app del otro y el 🟢 dice que está todo bien.
+        // El "no" viene siempre con el primer puerto libre a un Sí de distancia, para que acatar la
+        // regla cueste un click y no una búsqueda a mano por el catálogo.
+        if (port > 0 && _ports?.FindOwner(port, _editing) is { } owner)
+        {
+            string msg = string.Format(Loc.T("Services.PortTaken"), port, owner.Title, owner.ScopeLabel);
+            int free = _ports.SuggestFree(port);
+            if (free > 0)
+            {
+                var answer = MessageBox.Show(
+                    msg + "\n\n" + string.Format(Loc.T("Services.PortTakenUseFree"), free),
+                    Loc.T("Services.WindowTitle"), MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (answer == MessageBoxResult.Yes)
+                {
+                    PortBox.Text = free.ToString();
+                    PortBox.Focus();
+                    PortBox.SelectAll();
+                }
+            }
+            else
+            {
+                MessageBox.Show(msg, Loc.T("Services.WindowTitle"),
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
             return;
         }
 
@@ -142,10 +213,16 @@ public partial class ServiceEditWindow : Window
     /// <summary>
     /// Muestra el editor modal. Devuelve la entrada cargada, o null si se canceló.
     /// <paramref name="initial"/> null = alta; con valor = edición (los campos vienen pre-cargados).
+    /// Ojo: <paramref name="initial"/> tiene que ser la entry VIVA de la pool, no una copia — el
+    /// registro de puertos la excluye por referencia para que la edición no se choque consigo misma.
     /// </summary>
-    public static ServiceEntry? Show(Window owner, string header, string scope, ServiceEntry? initial = null)
+    public static ServiceEntry? Show(Window owner, string header, string scope,
+                                     ServiceEntry? initial = null, PortRegistry? ports = null)
     {
-        var dlg = new ServiceEditWindow(header, scope, initial ?? new ServiceEntry()) { Owner = owner };
+        var dlg = new ServiceEditWindow(header, scope, initial ?? new ServiceEntry(), ports, initial)
+        {
+            Owner = owner,
+        };
         return dlg.ShowDialog() == true ? dlg.Result : null;
     }
 }

@@ -60,6 +60,8 @@ public partial class ServicesWindow : Window
         public required string WorkDir { get; init; }
         public required int Port { get; init; }
         public required bool IsBroken { get; init; }
+        /// <summary>Su puerto lo declara además OTRA entrada del catálogo (choque preexistente).</summary>
+        public required bool IsPortDuplicated { get; init; }
         /// <summary>Entra en "levantar todo". Se pinta en la fila para que se lea sin abrir el editor.</summary>
         public required bool AutoStarts { get; init; }
 
@@ -90,12 +92,19 @@ public partial class ServicesWindow : Window
         /// ⚠ delante cuando el directorio ya no existe (la señal más importante de la fila) y ⏩ atrás
         /// cuando el servicio entra en "levantar todo" — mismo ícono que el botón, para que de un
         /// vistazo sepas QUÉ va a arrancar sin tener que abrir el editor de cada fila.
+        ///
+        /// ⛔ atrás cuando el puerto está duplicado en el catálogo. Va acá y no en un cartel aparte
+        /// porque el choque es INVISIBLE por naturaleza: la otra entrada vive en un scope que no
+        /// estás mirando, y el 🟢 se pone verde igual (mira el puerto, no el proceso) — o sea que sin
+        /// esta marca el estado te MIENTE con cara de éxito. El registro impide los nuevos; esta
+        /// marca es para los que ya estaban guardados cuando la regla llegó.
         /// </summary>
         public string Display
         {
             get
             {
                 string t = AutoStarts ? Title + " ⏩" : Title;
+                if (IsPortDuplicated) t += " ⛔";
                 return IsBroken ? "⚠ " + t : t;
             }
         }
@@ -111,18 +120,25 @@ public partial class ServicesWindow : Window
     private string? _networkIp;
 
     /// <summary>
+    /// Registro de puertos de TODO el catálogo (no sólo de las tres pools visibles acá): es lo que
+    /// hace que el alta pueda avisar de un choque contra un scope que ni siquiera está en pantalla.
+    /// </summary>
+    private readonly PortRegistry? _ports;
+
+    /// <summary>
     /// Servicios SIN puerto que este arranque grupal ya disparó (key = comando + directorio). Existe
     /// sólo para que el re-press no te apile workers duplicados — ver <see cref="LaunchMissing"/>.
     /// </summary>
     private readonly HashSet<string> _groupLaunchedPortless = new(StringComparer.OrdinalIgnoreCase);
 
     public ServicesWindow(ServicePool pool, string deskName, ServicePool? parentPool = null,
-                          ServicePool? globalPool = null)
+                          ServicePool? globalPool = null, PortRegistry? ports = null)
     {
         InitializeComponent();
         _pool = pool;
         _parentPool = parentPool;
         _globalPool = globalPool;
+        _ports = ports;
 
         Icon = AppIcon.TryLoadForWindow();
         _networkIp = LocalIp.Get();
@@ -166,20 +182,23 @@ public partial class ServicesWindow : Window
     {
         string filter = FilterBox.Text.Trim();
         var listening = TcpPortInfo.ListeningPorts();
+        // Se recalcula en cada rebuild y no una vez al abrir: si arreglás un duplicado desde acá, el
+        // ⛔ tiene que irse de las DOS filas — también de la que no tocaste.
+        var duplicated = _ports?.Duplicates() ?? new HashSet<int>();
 
         _rows.Clear();
-        AddSection(_pool, RowScope.Own, filter, listening, header: null);
+        AddSection(_pool, RowScope.Own, filter, listening, duplicated, header: null);
         // El orden de las secciones ES el orden de cercanía (contexto → espacio → global), igual que
         // en Variables: lo primero que ves es lo tuyo.
-        AddSection(_parentPool, RowScope.Parent, filter, listening, _parentPool?.Label);
-        AddSection(_globalPool, RowScope.Global, filter, listening, _globalPool?.Label);
+        AddSection(_parentPool, RowScope.Parent, filter, listening, duplicated, _parentPool?.Label);
+        AddSection(_globalPool, RowScope.Global, filter, listening, duplicated, _globalPool?.Label);
 
         SelectFirstSelectable();
     }
 
     /// <summary>Agrega las filas de una pool, con su rótulo de sección si es heredada.</summary>
     private void AddSection(ServicePool? pool, RowScope scope, string filter,
-                            HashSet<int> listening, string? header)
+                            HashSet<int> listening, HashSet<int> duplicated, string? header)
     {
         if (pool is null) return;
 
@@ -196,6 +215,7 @@ public partial class ServicesWindow : Window
                 Scope = RowScope.Separator, PoolIndex = -1,
                 Title = string.Format(Loc.T("Services.SectionInherited"), header),
                 Command = "", WorkDir = "", Port = 0, IsBroken = false, AutoStarts = false,
+                IsPortDuplicated = false,
             });
         }
 
@@ -210,6 +230,7 @@ public partial class ServicesWindow : Window
                 WorkDir = e.WorkDir,
                 Port = e.Port,
                 IsBroken = IsBrokenDir(e),
+                IsPortDuplicated = e.Port > 0 && duplicated.Contains(e.Port),
                 AutoStarts = ServiceLauncher.IsGroupLaunchable(e),
                 IsListening = e.Port > 0 && listening.Contains(e.Port),
             });
@@ -226,8 +247,11 @@ public partial class ServicesWindow : Window
     /// <summary>
     /// El directorio configurado ya no existe. Sólo aplica a entradas CON comando: una de sólo
     /// monitoreo (migrada del viejo ports.json) no tiene directorio y no está rota por eso.
+    /// Público porque la pestaña Comandos de la config pinta el mismo ⚠: el criterio de "roto" vive
+    /// acá y no duplicado, o las dos superficies terminarían discrepando sobre la misma fila
+    /// (mismo precedente que <see cref="ProjectPathsWindow.IsBrokenPath"/>).
     /// </summary>
-    private static bool IsBrokenDir(ServiceEntry e)
+    public static bool IsBrokenDir(ServiceEntry e)
     {
         if (e.Command.Trim() == "") return false;
         string dir = e.WorkDir.Trim();
@@ -445,7 +469,8 @@ public partial class ServicesWindow : Window
 
     private void AddNew()
     {
-        var entry = ServiceEditWindow.Show(this, Loc.T("Services.DlgNewTitle"), _pool.Label);
+        var entry = ServiceEditWindow.Show(this, Loc.T("Services.DlgNewTitle"), _pool.Label,
+                                           ports: _ports);
         if (entry is null) return;
         _pool.Add(entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.AutoStart);
         RefreshList();
@@ -457,8 +482,10 @@ public partial class ServicesWindow : Window
         if (!row.IsOwn) { InheritedReadOnly(); return; }
         if (row.PoolIndex < 0 || row.PoolIndex >= _pool.Entries.Count) return;
 
+        // Se pasa la entry VIVA de la pool (no una copia): el registro de puertos la excluye por
+        // referencia para que re-guardar sin tocar el puerto no se choque consigo mismo.
         var entry = ServiceEditWindow.Show(this, Loc.T("Services.DlgEditTitle"), _pool.Label,
-                                           _pool.Entries[row.PoolIndex]);
+                                           _pool.Entries[row.PoolIndex], _ports);
         if (entry is null) return;
         _pool.Update(row.PoolIndex, entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.AutoStart);
         RefreshList();
