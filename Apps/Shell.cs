@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
@@ -6,6 +7,13 @@ using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Interop;
 
 namespace AmpzDesktopBooster.Apps;
+
+/// <summary>
+/// Un comando a correr en un directorio: lo que ocupa UNA pestaña de terminal. Existe para que
+/// <see cref="Shell.RunMany"/> reciba el lote ya resuelto y no tenga que saber nada de servicios —
+/// Shell no conoce la capa de dominio, igual que SystemMonitor no conoce WPF.
+/// </summary>
+public readonly record struct ShellJob(string WorkingDir, string Command);
 
 /// <summary>
 /// Resuelve y lanza el shell preferido. "PowerShell" (el moderno, v7+) es pwsh.exe; "Windows
@@ -65,6 +73,72 @@ public static class Shell
     public static void RunInDir(string workingDir, string command) => Launch(workingDir, command);
 
     /// <summary>
+    /// Corre VARIOS comandos en UNA sola ventana de terminal, uno por pestaña.
+    ///
+    /// Existe porque llamar N veces a <see cref="RunInDir"/> en un lazo NO da N pestañas sino N
+    /// VENTANAS, y el motivo está en <see cref="ResolveWindowTarget"/>: la decisión "ventana nueva vs
+    /// pestaña" se toma mirando si YA hay una ventana de WT en este escritorio, pero wt.exe las crea
+    /// de forma ASÍNCRONA (vía su monarca). En un lazo sincrónico las N preguntas se contestan antes
+    /// de que la primera ventana exista → las N piden ventana nueva. Lanzando a mano no se ve, porque
+    /// entre clic y clic la ventana alcanza a nacer.
+    ///
+    /// La cura es que deje de haber N decisiones: se arma UN comando de wt con la primera pestaña y
+    /// un <c>; new-tab</c> por cada una de las siguientes. Un solo proceso, una sola decisión, cero
+    /// carrera. Arreglarlo esperando entre lanzadas habría sido tapar una carrera con timing — en
+    /// este repo eso ya falló antes (ver el bloque del z-order en el CLAUDE.md).
+    ///
+    /// ⚠ El <c>;</c> separador va como argumento PROPIO y sin comillas, que es como wt.exe lo
+    /// reconoce. Lo único que viaja crudo por su parser es el DIRECTORIO (el comando del usuario va en
+    /// base64 y es opaco, ver <see cref="Launch"/>): un workingDir con un <c>;</c> adentro partiría el
+    /// comando. Es un path que en la práctica no existe, y el precio de blindarlo sería escapar a mano
+    /// la línea de wt — justo lo que el base64 vino a evitar.
+    /// </summary>
+    public static void RunMany(IReadOnlyList<ShellJob> jobs)
+    {
+        if (jobs.Count == 0) return;
+
+        // Uno solo no necesita nada de esto: se va por el camino de siempre, que además resuelve el
+        // foco y el fallback sin WT sin duplicar una línea.
+        if (jobs.Count == 1)
+        {
+            Launch(jobs[0].WorkingDir, jobs[0].Command);
+            return;
+        }
+
+        // Sin Windows Terminal no hay pestañas que valgan: conhost abre una ventana por comando y no
+        // hay forma de agruparlas. Se degrada al comportamiento viejo en vez de no lanzar nada.
+        if (AppDetector.InPath("wt.exe") is null)
+        {
+            foreach (var job in jobs) LaunchDirect(job.WorkingDir, job.Command);
+            return;
+        }
+
+        string target = ResolveWindowTarget(out int current);
+
+        var psi = new ProcessStartInfo("wt.exe") { UseShellExecute = false };
+        ScrubInheritedEditorEnv(psi);
+        psi.ArgumentList.Add("-w");
+        psi.ArgumentList.Add(target);
+
+        for (int i = 0; i < jobs.Count; i++)
+        {
+            // La PRIMERA pestaña es el subcomando implícito de wt; de la segunda en adelante hay que
+            // nombrarlo (`new-tab`) detrás del separador.
+            if (i > 0)
+            {
+                psi.ArgumentList.Add(";");
+                psi.ArgumentList.Add("new-tab");
+            }
+            AddTabArgs(psi, jobs[i].WorkingDir, jobs[i].Command);
+        }
+
+        Process.Start(psi);
+
+        if (target == "new" && current >= 0)
+            WindowFocuser.FocusWhenReady(hwnd => IsTerminalOn(hwnd, current), preserveMaximized: true);
+    }
+
+    /// <summary>
     /// Núcleo del lanzamiento: decide reusar/forzar ventana por escritorio y dispara wt.exe.
     /// Si no hay WT, cae al lanzamiento directo del .exe.
     /// </summary>
@@ -76,23 +150,7 @@ public static class Shell
             return;
         }
 
-        // "new" por defecto: si no podemos resolver el escritorio (Desktops null) o no hay una
-        // ventana de WT acá, abrimos una ventana nueva en el escritorio actual.
-        string target = "new";
-        int current = Desktops?.Current ?? -1;
-        if (current >= 0)
-        {
-            IntPtr existing = FindTerminalOnDesktop(current);
-            if (existing != IntPtr.Zero)
-            {
-                // Hay WT en ESTE escritorio → traerla al frente (queda como "last" / MRU de WT)
-                // y abrir la pestaña ahí. ForceForeground maneja el robo-de-foco al venir de un
-                // hotkey global (la app no es el foreground en ese instante). preserveMaximized:
-                // NO le sacamos el maximizado a la ventana de WT (solo la des-minimizamos si hace falta).
-                WindowMethods.ForceForeground(existing, preserveMaximized: true);
-                target = "last";
-            }
-        }
+        string target = ResolveWindowTarget(out int current);
 
         // UseShellExecute = FALSE a propósito: wt.exe es un App Execution Alias (reparse point en
         // WindowsApps). Por ShellExecuteEx (UseShellExecute=true) el alias NO recibe los argumentos
@@ -102,21 +160,7 @@ public static class Shell
         ScrubInheritedEditorEnv(psi);
         psi.ArgumentList.Add("-w");
         psi.ArgumentList.Add(target);
-        psi.ArgumentList.Add("-d");
-        psi.ArgumentList.Add(workingDir);
-        if (command is not null)
-        {
-            // Hay comando (claude/opencode CLI) → necesitamos un shell host. Pasamos el pwsh
-            // LANZABLE (alias, no el path del paquete) + -EncodedCommand (base64 UTF-16LE): el
-            // base64 es opaco al parser de comillas/`;` de wt.exe que rompía los comandos anidados.
-            psi.ArgumentList.Add(PreferredExe);
-            psi.ArgumentList.Add("-NoExit");
-            psi.ArgumentList.Add("-EncodedCommand");
-            psi.ArgumentList.Add(Convert.ToBase64String(Encoding.Unicode.GetBytes(command)));
-        }
-        // Sin comando → NO especificamos shell: WT abre su PERFIL POR DEFECTO (PowerShell), que
-        // lanza pwsh por el mecanismo correcto (activación AppX). Pasarle el .exe del paquete por
-        // ruta lo rompía (hostfxr). Es, además, como el usuario abre WT a diario → garantizado.
+        AddTabArgs(psi, workingDir, command);
         Process.Start(psi);
 
         // FOCO GARANTIZADO a la ventana NUEVA. El reuse ("last") ya hizo ForceForeground arriba;
@@ -131,6 +175,59 @@ public static class Shell
         // es la nuestra. El timer corre en el hilo de UI (el router difiere todo al Dispatcher).
         if (target == "new" && current >= 0)
             WindowFocuser.FocusWhenReady(hwnd => IsTerminalOn(hwnd, current), preserveMaximized: true);
+    }
+
+    /// <summary>
+    /// Decide el <c>-w</c> de wt.exe: reusar la ventana de WT de ESTE escritorio (<c>last</c>) o
+    /// forzar una nueva acá (<c>new</c>). Devuelve además el escritorio actual (-1 si no se pudo
+    /// resolver), que el caller necesita para el foco de la ventana nueva.
+    ///
+    /// ⚠ La respuesta sólo vale para UN lanzamiento: wt.exe crea sus ventanas ASÍNCRONO vía el
+    /// monarca, así que preguntar dos veces seguidas devuelve "no hay" las dos veces aunque la
+    /// primera ya haya pedido una. Por eso el arranque grupal NO llama acá una vez por servicio —
+    /// ver <see cref="RunMany"/>.
+    /// </summary>
+    private static string ResolveWindowTarget(out int current)
+    {
+        // "new" por defecto: si no podemos resolver el escritorio (Desktops null) o no hay una
+        // ventana de WT acá, abrimos una ventana nueva en el escritorio actual.
+        current = Desktops?.Current ?? -1;
+        if (current < 0) return "new";
+
+        IntPtr existing = FindTerminalOnDesktop(current);
+        if (existing == IntPtr.Zero) return "new";
+
+        // Hay WT en ESTE escritorio → traerla al frente (queda como "last" / MRU de WT) y abrir la
+        // pestaña ahí. ForceForeground maneja el robo-de-foco al venir de un hotkey global (la app no
+        // es el foreground en ese instante). preserveMaximized: NO le sacamos el maximizado a la
+        // ventana de WT (sólo la des-minimizamos si hace falta).
+        WindowMethods.ForceForeground(existing, preserveMaximized: true);
+        return "last";
+    }
+
+    /// <summary>
+    /// Argumentos de UNA pestaña: directorio y, si hay comando, el shell host que lo corre. Lo
+    /// comparten el lanzamiento simple y el grupal a propósito — si divergieran, un servicio lanzado
+    /// solo y el mismo servicio lanzado en lote podrían arrancar distinto, que es el peor tipo de bug
+    /// (el que sólo aparece por la puerta que no probaste).
+    /// </summary>
+    private static void AddTabArgs(ProcessStartInfo psi, string workingDir, string? command)
+    {
+        psi.ArgumentList.Add("-d");
+        psi.ArgumentList.Add(workingDir);
+
+        // Sin comando → NO especificamos shell: WT abre su PERFIL POR DEFECTO (PowerShell), que
+        // lanza pwsh por el mecanismo correcto (activación AppX). Pasarle el .exe del paquete por
+        // ruta lo rompía (hostfxr). Es, además, como el usuario abre WT a diario → garantizado.
+        if (command is null) return;
+
+        // Hay comando (claude/opencode CLI, npm run dev) → necesitamos un shell host. Pasamos el pwsh
+        // LANZABLE (alias, no el path del paquete) + -EncodedCommand (base64 UTF-16LE): el base64 es
+        // opaco al parser de comillas/`;` de wt.exe que rompía los comandos anidados.
+        psi.ArgumentList.Add(PreferredExe);
+        psi.ArgumentList.Add("-NoExit");
+        psi.ArgumentList.Add("-EncodedCommand");
+        psi.ArgumentList.Add(Convert.ToBase64String(Encoding.Unicode.GetBytes(command)));
     }
 
     /// <summary>

@@ -32,6 +32,8 @@ public enum ScopeOpResult
     WouldNest,
     /// <summary>Origen y destino son el mismo — no hay nada que mover.</summary>
     SameTarget,
+    /// <summary>El destino ya tiene una variable con ese MISMO path (duplicarla sería ruido invisible).</summary>
+    DuplicatePath,
 }
 
 /// <summary>
@@ -347,6 +349,24 @@ public sealed class ProjectStore
     public ServicePool GetSharedServicePool() => new(_data.SharedServices, Save, "Global");
 
     /// <summary>
+    /// El registro de puertos de TODO el catálogo — un puerto, un dueño (ver <see cref="PortRegistry"/>).
+    /// Se arma con un enumerador PEREZOSO a propósito: el registro se consulta con cada tecla que
+    /// tipeás en el campo de puerto, así que tiene que ver el catálogo VIVO. Si acá se materializara
+    /// una lista, agregar un servicio y abrir el alta del siguiente sin cerrar la ventana consultaría
+    /// una foto vieja y dejaría pasar justo el choque que vinimos a impedir.
+    /// </summary>
+    public PortRegistry Ports => new(EnumerateServices);
+
+    private IEnumerable<(string ScopeLabel, ServiceEntry Entry)> EnumerateServices()
+    {
+        foreach (var kv in _data.Services)
+            foreach (var e in kv.Value)
+                yield return (PrettyScope(kv.Key), e);
+        foreach (var e in _data.SharedServices)
+            yield return ("Global", e);
+    }
+
+    /// <summary>
     /// Gemela de <see cref="ResolvePoolWithGlobal"/> para servicios: devuelve la pool PRIMARIA del desk
     /// y expone las HEREDADAS que la ventana anexa de solo-lectura (espacio padre y global). Que la
     /// regla viva acá —y no duplicada en la ventana— es lo que garantiza que variables y servicios
@@ -364,6 +384,138 @@ public sealed class ProjectStore
         global = null;
         parent = null;
         return GetSharedServicePool();
+    }
+
+    // ── Servicios: gestión desde la pestaña de config ──────────────────────────
+    // Gemelos EXACTOS de los de variables (PeekVariables / GetPoolFor / UpdateVariable /
+    // DeleteVariables / MoveVariables), y a propósito con la misma forma: la pestaña de Comandos es
+    // la hermana de la de Variables, así que si las operaciones de abajo divergieran, las dos
+    // superficies se comportarían distinto ante el MISMO gesto — que es justo lo que confunde.
+
+    /// <summary>Pool de servicios de CUALQUIER scope, incluida la global. Gemelo de <see cref="GetPoolFor"/>.</summary>
+    public ServicePool GetServicePoolFor(string scopeKey) =>
+        scopeKey == GlobalScope ? GetSharedServicePool() : GetServicePool(RawServiceKey(scopeKey));
+
+    private string RawServiceKey(string scopeKey) => FindKey(_data.Services, scopeKey) ?? scopeKey;
+
+    /// <summary>Lista viva de servicios de un scope, CREÁNDOLA si no existía (para poder mutarla).</summary>
+    private List<ServiceEntry> RawServices(string scopeKey)
+    {
+        if (scopeKey == GlobalScope) return _data.SharedServices;
+        string key = RawServiceKey(scopeKey);
+        if (!_data.Services.TryGetValue(key, out var list))
+        {
+            list = new List<ServiceEntry>();
+            _data.Services[key] = list;
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// Servicios PROPIOS de un scope, de solo-lectura y SIN materializar la pool — mismo motivo que
+    /// <see cref="PeekVariables"/>: la pestaña recorre TODOS los scopes para contar, y crear la lista
+    /// en cada uno dejaría el JSON lleno de arrays vacíos que nadie pidió.
+    /// </summary>
+    public IReadOnlyList<ServiceEntry> PeekServices(string scopeKey)
+    {
+        if (scopeKey == GlobalScope) return _data.SharedServices;
+        return FindKey(_data.Services, scopeKey) is string k
+            ? _data.Services[k]
+            : Array.Empty<ServiceEntry>();
+    }
+
+    /// <summary>Reescribe los cinco campos de un servicio (la edición es del formulario entero).</summary>
+    public void UpdateService(string scopeKey, int index, ServiceEntry values)
+    {
+        var list = RawServices(scopeKey);
+        if (index < 0 || index >= list.Count) return;
+
+        var e = list[index];
+        e.Title = values.Title.Trim();
+        e.Command = values.Command.Trim();
+        e.WorkDir = values.WorkDir.Trim();
+        e.Port = values.Port;
+        e.AutoStart = values.AutoStart;
+        Save();
+    }
+
+    /// <summary>
+    /// Fija si un servicio entra en "levantar todo". Escribe SIEMPRE un valor explícito (true/false),
+    /// nunca null: <c>null</c> significa "no me pronuncié, usá el default por puerto", y alguien que
+    /// aprieta el botón SÍ se está pronunciando. Dejar que el ciclo pase por null obligaría a un tercer
+    /// estado invisible en un botón de dos.
+    /// </summary>
+    public void SetServiceAutoStart(string scopeKey, int index, bool autoStart)
+    {
+        var list = RawServices(scopeKey);
+        if (index < 0 || index >= list.Count) return;
+        list[index].AutoStart = autoStart;
+        Save();
+    }
+
+    /// <summary>Borra servicios de un scope en una sola pasada.</summary>
+    public void DeleteServices(string scopeKey, IEnumerable<int> indices)
+    {
+        var list = RawServices(scopeKey);
+        foreach (var i in indices.Distinct().OrderByDescending(i => i))
+            if (i >= 0 && i < list.Count) list.RemoveAt(i);
+        Save();
+    }
+
+    /// <summary>
+    /// Mueve (o COPIA) servicios de un scope a otro.
+    ///
+    /// ⚠ LA COPIA NO SE LLEVA EL PUERTO — y esto no es un capricho: la copia dejaría DOS entradas
+    /// declarando el mismo puerto, que es exactamente lo que <see cref="PortRegistry"/> prohíbe en el
+    /// alta. Permitirlo por la puerta de atrás haría de la regla un teatro. Se evaluó rechazar la
+    /// copia y se descartó: el caso real de copiar es "quiero el mismo comando en otro proyecto, con
+    /// SU directorio y SU puerto", así que negarla mata un gesto útil por un campo. La copia sale con
+    /// el primer puerto LIBRE del catálogo (o sin puerto si no queda ninguno), y la ventana lo avisa
+    /// — un valor que cambia solo y en silencio sería peor que la duplicación.
+    ///
+    /// MOVER no toca el puerto: la entrada se va del origen, así que no hay dos dueños en ningún
+    /// momento. Es la misma entrada en otro estante.
+    /// </summary>
+    public ScopeOpResult MoveServices(string fromScope, string toScope, IEnumerable<int> indices,
+                                      bool copy, out List<int> reassignedPorts)
+    {
+        reassignedPorts = new List<int>();
+        if (Same(fromScope, toScope)) return ScopeOpResult.SameTarget;
+
+        var src = RawServices(fromScope);
+        var picked = indices.Distinct().Where(i => i >= 0 && i < src.Count).OrderBy(i => i).ToList();
+        if (picked.Count == 0) return ScopeOpResult.NotFound;
+
+        var dst = RawServices(toScope);
+
+        foreach (var i in picked)
+        {
+            var e = src[i];
+            if (!copy) { dst.Add(e); continue; }
+
+            // El registro se consulta DE NUEVO por cada copia (no una vez afuera): copiar tres
+            // servicios de una tiene que darles tres puertos distintos, y con un solo cálculo previo
+            // los tres se llevarían el mismo número libre — reintroduciendo el choque desde adentro
+            // de la operación que existe para evitarlo.
+            int port = e.Port > 0 ? Ports.SuggestFree(e.Port) : 0;
+            if (port > 0) reassignedPorts.Add(port);
+
+            dst.Add(new ServiceEntry
+            {
+                Title = e.Title,
+                Command = e.Command,
+                WorkDir = e.WorkDir,
+                Port = port,
+                AutoStart = e.AutoStart,
+            });
+        }
+
+        if (!copy)
+            foreach (var i in Enumerable.Reverse(picked)) // de mayor a menor: los índices no se corren
+                src.RemoveAt(i);
+
+        Save();
+        return ScopeOpResult.Ok;
     }
 
     // ── Predeterminado POR SCOPE ───────────────────────────────────────────────
@@ -774,6 +926,169 @@ public sealed class ProjectStore
         MapSuggestions((p, m) => Same(p, project) ? (toProject, project) : (p, m));
         Save();
         return ScopeOpResult.Ok;
+    }
+
+    // ── Gestión de VARIABLES entre scopes (la pestaña Variables de la config) ──────────────────
+    //
+    // El bloque de arriba mueve SCOPES enteros; éste mueve el CONTENIDO de un scope a otro. Es el
+    // hermano que faltaba: reorganizar el catálogo servía para arreglar la jerarquía, pero una
+    // variable cargada en el lugar equivocado (el repo del cliente cargado en un contexto en vez de
+    // en su espacio, o al revés) sólo se podía arreglar borrándola y re-tipeándola en el otro lado.
+    //
+    // Disciplina propia de este bloque: el PREDETERMINADO apunta por PATH, así que cualquier cosa que
+    // mueva, edite o borre una variable puede dejar predeterminados apuntando al vacío. Toda mutación
+    // termina en <see cref="PruneDanglingDefaults"/> — un predeterminado colgado no se ve en la UI
+    // pero deja el re-press del atajo sin hacer nada, que es el peor tipo de bug: se lee como "no
+    // configuraste nada" cuando en realidad SÍ lo hiciste.
+
+    /// <summary>
+    /// Pool de variables de CUALQUIER scope, incluida la global (<see cref="GlobalScope"/>). Es la
+    /// forma de tratar a la global como una más — que es exactamente lo que necesita una superficie
+    /// que las lista TODAS juntas y las mueve entre sí.
+    /// </summary>
+    public PathPool GetPoolFor(string scopeKey) =>
+        scopeKey == GlobalScope ? GetSharedPool() : GetProjectPool(RawKey(scopeKey));
+
+    /// <summary>La key REAL del catálogo de paths (resuelve casing), o la pedida si todavía no existe.</summary>
+    private string RawKey(string scopeKey) => FindKey(_data.Paths, scopeKey) ?? scopeKey;
+
+    /// <summary>Lista viva de variables de un scope, CREÁNDOLA si no existía (para poder mutarla).</summary>
+    private List<PathEntry> RawPaths(string scopeKey)
+    {
+        if (scopeKey == GlobalScope) return _data.SharedPaths;
+        string key = RawKey(scopeKey);
+        if (!_data.Paths.TryGetValue(key, out var list))
+        {
+            list = new List<PathEntry>();
+            _data.Paths[key] = list;
+        }
+        return list;
+    }
+
+    /// <summary>Lista de variables de un scope SIN crearla — para consultar sin ensuciar el JSON.</summary>
+    private List<PathEntry>? PeekPaths(string scopeKey)
+    {
+        if (scopeKey == GlobalScope) return _data.SharedPaths;
+        return FindKey(_data.Paths, scopeKey) is string k ? _data.Paths[k] : null;
+    }
+
+    /// <summary>
+    /// Variables PROPIAS de un scope, de solo-lectura y SIN materializar la pool. Existe porque la
+    /// pestaña Variables recorre TODOS los scopes para contar: con <see cref="GetPoolFor"/> eso
+    /// crearía una lista vacía por cada scope del catálogo y el próximo Save escribiría un JSON lleno
+    /// de arrays vacíos que nadie pidió.
+    /// </summary>
+    public IReadOnlyList<PathEntry> PeekVariables(string scopeKey) =>
+        PeekPaths(scopeKey) ?? (IReadOnlyList<PathEntry>)Array.Empty<PathEntry>();
+
+    /// <summary>
+    /// Mueve (o COPIA, con <paramref name="copy"/>) variables de un scope a otro. Es todo-o-nada: si
+    /// alguna ya existe en el destino por path, no se mueve NINGUNA y se devuelve el motivo. Media
+    /// operación dejaría al usuario sin saber qué quedó dónde, justo en la superficie que existe para
+    /// ordenar.
+    ///
+    /// OJO con lo que esto SIGNIFICA en el modelo: subir una variable del contexto al espacio la hace
+    /// visible para TODOS sus contextos (herencia); bajarla del espacio a un contexto se la SACA a los
+    /// hermanos. No se pide confirmación a propósito — las dos pools están a la vista, una al lado de
+    /// la otra, y el efecto se ve al instante; un modal por cada arrastre mataría el gesto.
+    /// </summary>
+    public ScopeOpResult MoveVariables(string fromScope, string toScope, IEnumerable<int> indices, bool copy)
+    {
+        if (Same(fromScope, toScope)) return ScopeOpResult.SameTarget;
+
+        var src = RawPaths(fromScope);
+        var picked = indices.Distinct().Where(i => i >= 0 && i < src.Count).OrderBy(i => i).ToList();
+        if (picked.Count == 0) return ScopeOpResult.NotFound;
+
+        var dst = RawPaths(toScope);
+        if (picked.Any(i => dst.Any(d => Same(d.Path, src[i].Path))))
+            return ScopeOpResult.DuplicatePath;
+
+        foreach (var i in picked)
+        {
+            var e = src[i];
+            dst.Add(copy ? new PathEntry { Title = e.Title, Path = e.Path } : e);
+        }
+
+        if (!copy)
+            foreach (var i in Enumerable.Reverse(picked)) // de mayor a menor: los índices no se corren
+                src.RemoveAt(i);
+
+        PruneDanglingDefaults();
+        Save();
+        return ScopeOpResult.Ok;
+    }
+
+    /// <summary>
+    /// Edita título y path de una variable. Si el PATH cambió, los predeterminados que la apuntaban
+    /// LA SIGUEN: el predeterminado es "esta variable", no "este string" — corregir un typo del path
+    /// no puede desmarcar en silencio lo que el usuario ya había elegido.
+    /// </summary>
+    public void UpdateVariable(string scopeKey, int index, string title, string path)
+    {
+        var list = RawPaths(scopeKey);
+        if (index < 0 || index >= list.Count) return;
+
+        var entry = list[index];
+        string oldPath = entry.Path;
+        path = path.Trim();
+        title = title.Trim();
+
+        entry.Path = path;
+        entry.Title = title == "" ? path : title; // sin título, el path oficia de título (como el legacy)
+
+        if (!Same(oldPath, path))
+        {
+            foreach (var key in _data.Defaults.Keys.ToList())
+                if (Same(_data.Defaults[key], oldPath)) _data.Defaults[key] = path;
+            if (Same(_data.SharedDefault, oldPath)) _data.SharedDefault = path;
+        }
+
+        PruneDanglingDefaults();
+        Save();
+    }
+
+    /// <summary>Borra variables de un scope en una sola pasada y limpia los predeterminados que quedaron sueltos.</summary>
+    public void DeleteVariables(string scopeKey, IEnumerable<int> indices)
+    {
+        var list = RawPaths(scopeKey);
+        foreach (var i in indices.Distinct().OrderByDescending(i => i))
+            if (i >= 0 && i < list.Count) list.RemoveAt(i);
+
+        PruneDanglingDefaults();
+        Save();
+    }
+
+    /// <summary>
+    /// Tira los predeterminados que apuntan a una variable que ese scope YA NO VE. Se corre después de
+    /// CUALQUIER mutación de variables: mover, editar o borrar una puede dejar apuntando al vacío no
+    /// sólo al scope que la tenía, sino a todos sus contextos (que la veían por herencia).
+    /// </summary>
+    private void PruneDanglingDefaults()
+    {
+        if (_data.SharedDefault != "" && !_data.SharedPaths.Any(e => Same(e.Path, _data.SharedDefault)))
+            _data.SharedDefault = "";
+
+        foreach (var key in _data.Defaults.Keys.ToList())
+            if (!ScopeSees(key, _data.Defaults[key]))
+                _data.Defaults.Remove(key);
+    }
+
+    /// <summary>
+    /// ¿Este scope VE esta variable? Recorre la MISMA herencia de tres niveles que
+    /// <see cref="ResolvePoolWithGlobal"/> —contexto → espacio → global—, porque un predeterminado
+    /// puede apuntar legítimamente a una variable heredada sin que el scope la tenga propia.
+    /// </summary>
+    private bool ScopeSees(string scopeKey, string path)
+    {
+        if (Has(PeekPaths(scopeKey), path)) return true;
+
+        int sep = scopeKey.IndexOf(ScopeSeparator);
+        if (sep > 0 && Has(PeekPaths(scopeKey[..sep]), path)) return true;
+
+        return Has(_data.SharedPaths, path);
+
+        static bool Has(List<PathEntry>? list, string p) => list is not null && list.Any(e => Same(e.Path, p));
     }
 
     /// <summary>

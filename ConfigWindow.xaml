@@ -354,6 +354,228 @@
             </Grid>
         </TabItem>
 
+        <!-- ===== Pestaña VARIABLES =====
+             Hermana de la de Espacios: aquella reorganiza la JERARQUÍA, ésta el CONTENIDO. Dos
+             paneles a propósito — el izquierdo es el mapa de scopes (y el blanco de los drops), el
+             derecho el contenido del scope elegido. Ver las dos cosas a la vez es lo que hace que
+             mover una variable sea un gesto y no una operación a ciegas: ves de dónde sale, ves
+             adónde entra, y ves el contador del destino subir. -->
+        <TabItem Tag="🔗" Header="{loc:Translate Config.VarsTab}">
+            <Grid Margin="14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold"
+                           Text="{loc:Translate Config.VarsTitle}" />
+                <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,10"
+                           Text="{loc:Translate Config.VarsHint}" />
+
+                <Grid Grid.Row="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="300" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Panel izquierdo: los scopes. AllowDrop porque CADA fila es un destino. -->
+                    <Grid Grid.Column="0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="{loc:Translate Config.VarsScopesHeader}"
+                                   Foreground="{StaticResource FgMuted}" FontSize="11" Margin="2,0,0,5" />
+                        <Border Grid.Row="1" Background="{StaticResource Panel}" CornerRadius="4" Padding="2">
+                            <ListBox x:Name="VarScopeList" Background="Transparent" BorderThickness="0"
+                                     AllowDrop="True"
+                                     Foreground="{StaticResource Fg}" FontSize="13"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                        </Border>
+                    </Grid>
+
+                    <!-- Panel derecho: las variables del scope elegido. -->
+                    <Grid Grid.Column="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="0,0,0,5">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="180" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="VarScopeHeader" Grid.Column="0" VerticalAlignment="Center"
+                                       FontSize="12" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Column="1" Text="{loc:Translate Config.VarsFilterLabel}"
+                                       VerticalAlignment="Center" Foreground="{StaticResource FgMuted}"
+                                       FontSize="11" Margin="0,0,6,0" />
+                            <TextBox x:Name="VarFilterBox" Grid.Column="2"
+                                     Background="#2A2A2A" Foreground="{StaticResource Fg}"
+                                     BorderBrush="#444" Padding="5,3" FontSize="12" />
+                        </Grid>
+
+                        <Border Grid.Row="1" Background="{StaticResource Panel}" CornerRadius="4" Padding="2">
+                            <Grid>
+                                <ListBox x:Name="VarList" Background="Transparent" BorderThickness="0"
+                                         SelectionMode="Extended"
+                                         Foreground="{StaticResource Fg}" FontSize="13"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                                <!-- Estado vacío: nunca una lista en blanco sin decir qué falta ni cómo salir. -->
+                                <TextBlock x:Name="VarEmptyHint" Visibility="Collapsed"
+                                           Foreground="{StaticResource FgMuted}" FontSize="12"
+                                           TextWrapping="Wrap" MaxWidth="420"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           TextAlignment="Center"
+                                           Text="{loc:Translate Config.VarsEmpty}" />
+                            </Grid>
+                        </Border>
+
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button x:Name="VarNewBtn"     Content="{loc:Translate Config.VarsNew}"     MinWidth="100" />
+                            <Button x:Name="VarEditBtn"    Content="{loc:Translate Config.VarsEdit}"    MinWidth="100" />
+                            <Button x:Name="VarDefaultBtn" Content="{loc:Translate Config.VarsDefault}" MinWidth="150" />
+                            <Button x:Name="VarDeleteBtn"  Content="{loc:Translate Config.VarsDelete}"  MinWidth="90"
+                                    Foreground="{StaticResource Danger}" />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+
+                <!-- Camino de TECLADO para mover/copiar. El drag&drop es el gesto rápido, pero es
+                     sólo-mouse: sin esta fila, mover una variable sería imposible sin el mouse. -->
+                <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,10,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="{loc:Translate Config.VarsTargetLabel}" VerticalAlignment="Center"
+                               Foreground="{StaticResource FgMuted}" FontSize="12" Margin="0,0,8,0" />
+                    <ComboBox x:Name="VarTargetCombo" Width="260" Margin="0,0,10,0" />
+                    <Button x:Name="VarMoveBtn" Content="{loc:Translate Config.VarsMove}" MinWidth="130" />
+                    <Button x:Name="VarCopyBtn" Content="{loc:Translate Config.VarsCopy}" MinWidth="130" />
+                    <!-- Qué quedó cargado con Ctrl+C / Ctrl+X. Sin esto el atajo es MUDO y "copié
+                         cuatro" se lee igual que "no copié nada" hasta que el pegado sale mal. -->
+                    <TextBlock x:Name="VarClipHint" VerticalAlignment="Center" Margin="14,0,0,0"
+                               Foreground="{StaticResource FgMuted}" FontSize="11"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </Grid>
+        </TabItem>
+
+        <!-- ===== Pestaña COMANDOS (servicios) =====
+             Trilliza de Espacios y Variables, y el tercer vértice del mismo problema: Espacios
+             arregla la JERARQUÍA, Variables el CONTENIDO de paths, ésta el CONTENIDO de comandos.
+             Hasta acá los servicios sólo se podían tocar desde la ventana del atajo (Win+Numpad+),
+             que muestra UN scope por vez y sólo edita el propio — o sea que corregir un comando
+             cargado en el scope equivocado era borrarlo y re-tipearlo del otro lado, con sus cuatro
+             campos. Misma estructura de dos paneles y por el mismo motivo: mover tiene origen y
+             destino, y los dos tienen que estar a la vista. -->
+        <TabItem Tag="⏩" Header="{loc:Translate Config.CmdsTab}">
+            <Grid Margin="14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold"
+                           Text="{loc:Translate Config.CmdsTitle}" />
+                <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,10"
+                           Text="{loc:Translate Config.CmdsHint}" />
+
+                <Grid Grid.Row="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="300" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Panel izquierdo: los scopes. AllowDrop porque CADA fila es un destino. -->
+                    <Grid Grid.Column="0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="{loc:Translate Config.VarsScopesHeader}"
+                                   Foreground="{StaticResource FgMuted}" FontSize="11" Margin="2,0,0,5" />
+                        <Border Grid.Row="1" Background="{StaticResource Panel}" CornerRadius="4" Padding="2">
+                            <ListBox x:Name="CmdScopeList" Background="Transparent" BorderThickness="0"
+                                     AllowDrop="True"
+                                     Foreground="{StaticResource Fg}" FontSize="13"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                        </Border>
+                    </Grid>
+
+                    <!-- Panel derecho: los comandos del scope elegido. -->
+                    <Grid Grid.Column="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="0,0,0,5">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="180" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="CmdScopeHeader" Grid.Column="0" VerticalAlignment="Center"
+                                       FontSize="12" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Column="1" Text="{loc:Translate Config.VarsFilterLabel}"
+                                       VerticalAlignment="Center" Foreground="{StaticResource FgMuted}"
+                                       FontSize="11" Margin="0,0,6,0" />
+                            <TextBox x:Name="CmdFilterBox" Grid.Column="2"
+                                     Background="#2A2A2A" Foreground="{StaticResource Fg}"
+                                     BorderBrush="#444" Padding="5,3" FontSize="12" />
+                        </Grid>
+
+                        <Border Grid.Row="1" Background="{StaticResource Panel}" CornerRadius="4" Padding="2">
+                            <Grid>
+                                <ListBox x:Name="CmdList" Background="Transparent" BorderThickness="0"
+                                         SelectionMode="Extended"
+                                         Foreground="{StaticResource Fg}" FontSize="13"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                                <!-- Estado vacío: nunca una lista en blanco sin decir qué falta ni cómo salir. -->
+                                <TextBlock x:Name="CmdEmptyHint" Visibility="Collapsed"
+                                           Foreground="{StaticResource FgMuted}" FontSize="12"
+                                           TextWrapping="Wrap" MaxWidth="420"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           TextAlignment="Center"
+                                           Text="{loc:Translate Config.CmdsEmpty}" />
+                            </Grid>
+                        </Border>
+
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button x:Name="CmdNewBtn"    Content="{loc:Translate Config.VarsNew}"   MinWidth="100" />
+                            <Button x:Name="CmdEditBtn"   Content="{loc:Translate Config.VarsEdit}"  MinWidth="100" />
+                            <Button x:Name="CmdAutoBtn"   Content="{loc:Translate Config.CmdsAutoOn}" MinWidth="170" />
+                            <Button x:Name="CmdDeleteBtn" Content="{loc:Translate Config.VarsDelete}" MinWidth="90"
+                                    Foreground="{StaticResource Danger}" />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+
+                <!-- Camino de TECLADO para mover/copiar, igual que en Variables: el drag&drop es el
+                     gesto rápido pero es sólo-mouse. -->
+                <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,10,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="{loc:Translate Config.VarsTargetLabel}" VerticalAlignment="Center"
+                               Foreground="{StaticResource FgMuted}" FontSize="12" Margin="0,0,8,0" />
+                    <ComboBox x:Name="CmdTargetCombo" Width="260" Margin="0,0,10,0" />
+                    <Button x:Name="CmdMoveBtn" Content="{loc:Translate Config.VarsMove}" MinWidth="130" />
+                    <Button x:Name="CmdCopyBtn" Content="{loc:Translate Config.VarsCopy}" MinWidth="130" />
+                    <TextBlock x:Name="CmdClipHint" VerticalAlignment="Center" Margin="14,0,0,0"
+                               Foreground="{StaticResource FgMuted}" FontSize="11"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </Grid>
+        </TabItem>
+
         <!-- ===== Pestaña DESKTOPS ===== -->
         <TabItem Tag="🖥️" Header="{loc:Translate Config.DesktopsTab}">
             <Grid Margin="14">

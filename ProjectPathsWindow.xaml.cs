@@ -113,8 +113,12 @@ public partial class ProjectPathsWindow : Window
     /// true si <paramref name="path"/> es un path de filesystem que ya no existe (ni carpeta ni
     /// archivo). Las URLs y los strings vacíos NO se consideran rotos. Mismo criterio de "qué es URL"
     /// que <see cref="PathOpener.Open"/> para no clasificar distinto de cómo se abre.
+    ///
+    /// Es <c>internal</c> (y no privado) para que la pestaña Variables de la config marque la fila
+    /// rota EXACTAMENTE con la misma regla. Una segunda implementación del criterio se desincroniza
+    /// sola: dos ventanas mostrando el mismo dato con distinto ⚠ es peor que no mostrarlo.
     /// </summary>
-    private static bool IsBrokenPath(string path)
+    internal static bool IsBrokenPath(string path)
     {
         path = path.Trim();
         if (path == "" || UrlHelper.IsUrl(path)) return false;
