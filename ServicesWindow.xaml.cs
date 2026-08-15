@@ -363,11 +363,16 @@ public partial class ServicesWindow : Window
     /// Incluye las HEREDADAS: si el espacio define el docker compartido, "levantar lo básico" del
     /// contexto tiene que levantarlo — para eso se hereda.
     /// Devuelve cuántos lanzó (0 = ya estaba todo arriba, o no hay nada que levantar).
+    ///
+    /// Se juntan TODOS primero y se lanzan de UNA (<see cref="ServiceLauncher.LaunchMany"/>), no de a
+    /// uno adentro del lazo. No es un detalle de estilo: uno por uno abría una VENTANA de terminal por
+    /// servicio en vez de una ventana con una pestaña por servicio — el porqué (la creación asíncrona
+    /// de ventanas de wt.exe) está en LaunchMany.
     /// </summary>
     public int LaunchMissing()
     {
         var listening = TcpPortInfo.ListeningPorts();
-        int launched = 0;
+        var pending = new List<ServiceEntry>();
 
         foreach (var pool in new[] { _pool, _parentPool, _globalPool })
         {
@@ -392,10 +397,11 @@ public partial class ServicesWindow : Window
                     if (!_groupLaunchedPortless.Add(key)) continue;
                 }
 
-                if (ServiceLauncher.Launch(s) == LaunchResult.Ok) launched++;
+                pending.Add(s);
             }
         }
-        return launched;
+
+        return ServiceLauncher.LaunchMany(pending);
     }
 
     private void LaunchMissingWithFeedback()

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using AmpzDesktopBooster.Persistence;
 
@@ -35,6 +36,50 @@ public static class ServiceLauncher
 {
     public static LaunchResult Launch(ServiceEntry service)
     {
+        var result = Resolve(service, out var job);
+        if (result != LaunchResult.Ok) return result;
+
+        Shell.RunInDir(job.WorkingDir, job.Command);
+        return LaunchResult.Ok;
+    }
+
+    /// <summary>
+    /// Lanza VARIOS servicios de una, todos en la MISMA ventana de terminal (una pestaña cada uno).
+    /// Devuelve cuántos se pudieron resolver — los que no (directorio inexistente, {ip} sin red)
+    /// quedan afuera en silencio, igual que antes: en un arranque grupal el que falla no puede
+    /// frenar a los demás ni tapar la pantalla con un modal por cada uno.
+    ///
+    /// POR QUÉ EXISTE Y NO ES UN <c>foreach</c> DE <see cref="Launch"/> — que es lo que era, y estaba
+    /// MAL: <see cref="Shell"/> decide "ventana nueva vs pestaña" preguntando si YA hay una ventana de
+    /// Windows Terminal en el escritorio actual, y wt.exe crea sus ventanas de forma ASÍNCRONA (vía su
+    /// proceso monarca). En un lazo sincrónico las N preguntas se hacen antes de que NINGUNA de las
+    /// ventanas exista, así que las N contestaban "no hay" y abrían N ventanas. Lanzando uno por uno a
+    /// mano el bug no aparece porque entre clic y clic la ventana alcanza a nacer.
+    ///
+    /// La cura NO es esperar entre lanzadas —eso sería arreglar una carrera con timing, que en este
+    /// repo ya sabemos que no se sostiene— sino que deje de haber N decisiones independientes: se arma
+    /// UN solo comando de terminal con todas las pestañas. Ver <see cref="Shell.RunMany"/>.
+    /// </summary>
+    public static int LaunchMany(IEnumerable<ServiceEntry> services)
+    {
+        var jobs = new List<ShellJob>();
+        foreach (var s in services)
+            if (Resolve(s, out var job) == LaunchResult.Ok)
+                jobs.Add(job);
+
+        if (jobs.Count == 0) return 0;
+        Shell.RunMany(jobs);
+        return jobs.Count;
+    }
+
+    /// <summary>
+    /// Valida el servicio y expande sus tokens, SIN lanzar nada. Separado de <see cref="Launch"/>
+    /// para que el arranque grupal pueda resolver todo primero y recién después disparar una sola vez.
+    /// </summary>
+    private static LaunchResult Resolve(ServiceEntry service, out ShellJob job)
+    {
+        job = default;
+
         string command = service.Command.Trim();
         if (command == "") return LaunchResult.NoCommand;
 
@@ -50,7 +95,7 @@ public static class ServiceLauncher
         if (token == TokenResult.NoNetwork) return LaunchResult.NoNetwork;
         if (token == TokenResult.NoPort) return LaunchResult.NoPortToken;
 
-        Shell.RunInDir(dir, expanded);
+        job = new ShellJob(dir, expanded);
         return LaunchResult.Ok;
     }
 
