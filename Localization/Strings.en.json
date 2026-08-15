@@ -174,7 +174,7 @@
 
   "Config.CmdsTab": "Commands",
   "Config.CmdsTitle": "Commands per space and context",
-  "Config.CmdsHint": "The commands that bring up each scope's basics. This is where they get REORGANIZED: drag one onto the scope it belongs to (hold Ctrl to copy), or use the target below. Only each scope's OWN commands are listed, not inherited ones. ⏩ = joins \"launch all\" · ⚠ = the directory no longer exists · ⛔ = the port is duplicated in the catalog. To launch them and see what's up, Win+Numpad +.",
+  "Config.CmdsHint": "The commands that bring up each scope's basics. This is where they get REORGANIZED, three ways: Ctrl+C (or Ctrl+X to move) on your selection, click the target scope and Ctrl+V; or drag them onto the scope they belong to (hold Ctrl to copy); or use the target below. Pick several with Ctrl and Shift. Only each scope's OWN commands are listed, not inherited ones. ⏩ = joins \"launch all\" · ⚠ = the directory no longer exists · ⛔ = the port is duplicated in the catalog. To launch them and see what's up, Win+Numpad +.",
   "Config.CmdsScopeHeader": "Commands in {0} ({1})",
   "Config.CmdsEmpty": "This scope has no commands of its own. Add one with \"New\", or drag over the ones you already have in another scope.",
   "Config.CmdsMonitorOnly": "(monitoring only: no command)",
@@ -185,7 +185,7 @@
   "Config.CmdsCopyPortReassigned": "The copy came out on a different port: {0}.\n\nA port has ONE owner across the whole catalog, so copying a command can't carry the original's port — there'd be two owners of the same number. It got the first free one: check it and adjust if your command pins the port elsewhere.",
   "Config.VarsTab": "Variables",
   "Config.VarsTitle": "Variables",
-  "Config.VarsHint": "The variables (paths and URLs) you open with Win + Numpad *. Here you edit them and MOVE them between scopes: drag a row from the right and drop it on a space or context on the left (hold Ctrl to copy instead of move). Mind the inheritance: what lives in the SPACE is seen by all its contexts; what lives in GLOBAL is seen everywhere. Each list shows only what the scope OWNS.",
+  "Config.VarsHint": "The variables (paths and URLs) you open with Win + Numpad *. Here you edit them and MOVE them between scopes: pick several with Ctrl or Shift and use Ctrl+C (or Ctrl+X to move) → click the target scope → Ctrl+V; or drag a row from the right and drop it on a space or context on the left (hold Ctrl to copy instead of move). Mind the inheritance: what lives in the SPACE is seen by all its contexts; what lives in GLOBAL is seen everywhere. Each list shows only what the scope OWNS.",
   "Config.VarsScopesHeader": "Scopes (drop here to move)",
   "Config.VarsGlobal": "Global (shared)",
   "Config.VarsScopeHeader": "{0} — {1} owned",
@@ -215,6 +215,11 @@
   "Vars.StatusMissing": "Not found on disk (saved anyway: it may be a disconnected drive or something you haven't cloned yet).",
   "Vars.NeedPath": "Path or URL is missing.",
   "Config.ScopeErrTitle": "Cannot do that",
+
+  "Config.ClipTitle": "Clipboard",
+  "Config.ClipCopy": "⧉ {0} copied from \"{1}\" — Ctrl+V to paste here",
+  "Config.ClipCut": "✂ {0} cut from \"{1}\" — Ctrl+V to paste here",
+  "Config.ClipStale": "What you had on the clipboard no longer matches its source scope: something was edited, deleted or moved since you copied it.\n\nNothing was pasted — pasting the wrong entry would be worse. Go back to the source scope and copy again.",
 
   "Config.ResetAllConfirm": "This deletes ALL settings and CANNOT be undone:\n\n• Managed desktops\n• Spaces and contexts (history, paths, notes)\n• Pins\n• Protections and whitelists\n• \"Open with\" apps and their shortcuts\n• Bar widgets and usage panel\n\nThe app will restart with default settings.\n\nContinue?",
   "Config.ResetAllTitle": "Reset everything",

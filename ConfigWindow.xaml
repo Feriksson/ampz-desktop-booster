@@ -456,6 +456,11 @@
                     <ComboBox x:Name="VarTargetCombo" Width="260" Margin="0,0,10,0" />
                     <Button x:Name="VarMoveBtn" Content="{loc:Translate Config.VarsMove}" MinWidth="130" />
                     <Button x:Name="VarCopyBtn" Content="{loc:Translate Config.VarsCopy}" MinWidth="130" />
+                    <!-- Qué quedó cargado con Ctrl+C / Ctrl+X. Sin esto el atajo es MUDO y "copié
+                         cuatro" se lee igual que "no copié nada" hasta que el pegado sale mal. -->
+                    <TextBlock x:Name="VarClipHint" VerticalAlignment="Center" Margin="14,0,0,0"
+                               Foreground="{StaticResource FgMuted}" FontSize="11"
+                               TextTrimming="CharacterEllipsis" />
                 </StackPanel>
             </Grid>
         </TabItem>
@@ -564,6 +569,9 @@
                     <ComboBox x:Name="CmdTargetCombo" Width="260" Margin="0,0,10,0" />
                     <Button x:Name="CmdMoveBtn" Content="{loc:Translate Config.VarsMove}" MinWidth="130" />
                     <Button x:Name="CmdCopyBtn" Content="{loc:Translate Config.VarsCopy}" MinWidth="130" />
+                    <TextBlock x:Name="CmdClipHint" VerticalAlignment="Center" Margin="14,0,0,0"
+                               Foreground="{StaticResource FgMuted}" FontSize="11"
+                               TextTrimming="CharacterEllipsis" />
                 </StackPanel>
             </Grid>
         </TabItem>

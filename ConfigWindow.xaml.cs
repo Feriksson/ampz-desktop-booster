@@ -1164,12 +1164,20 @@ public partial class ConfigWindow : Window
     /// <summary>Fila del panel izquierdo resaltada como destino del drop en curso (o null).</summary>
     private ListBoxItem? _varDropTarget;
 
+    /// <summary>Lo que dejó cargado el último Ctrl+C / Ctrl+X de esta pestaña (null = vacío).</summary>
+    private ScopeClipboard? _varClip;
+
     private void InitVarsTab()
     {
         VarScopeList.SelectionChanged += (_, _) => OnVarScopeChanged();
         VarList.SelectionChanged += (_, _) => UpdateVarButtons();
         VarList.MouseDoubleClick += (_, _) => EditVariable();
         VarList.PreviewKeyDown += OnVarListKeyDown;
+        // Ctrl+V también con el foco en el MAPA de scopes: seleccionar el destino ahí y tener que
+        // volver a la lista de la derecha para poder pegar sería pedirle al usuario que deshaga el
+        // gesto que acaba de hacer. Copiar/cortar no se enganchan acá — en este panel no hay
+        // variables seleccionadas, hay scopes.
+        VarScopeList.PreviewKeyDown += OnVarScopeListKeyDown;
         VarFilterBox.TextChanged += (_, _) => RefreshVars();
 
         VarNewBtn.Click     += (_, _) => NewVariable();
@@ -1417,8 +1425,21 @@ public partial class ConfigWindow : Window
             case Key.Delete: DeleteVariables();  e.Handled = true; break;
             case Key.F2:     EditVariable();     e.Handled = true; break;
             case Key.F3:     ToggleVarDefault(); e.Handled = true; break;
+            case Key.C when Ctrl: CopyVars(cut: false); e.Handled = true; break;
+            case Key.X when Ctrl: CopyVars(cut: true);  e.Handled = true; break;
+            case Key.V when Ctrl: PasteVars();          e.Handled = true; break;
         }
     }
+
+    /// <summary>En el panel de scopes sólo se PEGA: es un destino, no una fuente de selección.</summary>
+    private void OnVarScopeListKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.V || !Ctrl) return;
+        PasteVars();
+        e.Handled = true;
+    }
+
+    private static bool Ctrl => (Keyboard.Modifiers & ModifierKeys.Control) != 0;
 
     // ── Acciones sobre variables ───────────────────────────────────────────────
 
@@ -1481,21 +1502,94 @@ public partial class ConfigWindow : Window
         MoveVars(target.Key, SelectedVarIndices(), copy);
     }
 
-    /// <summary>Ejecuta el movimiento/copia y repinta. Un fallo SIEMPRE dice por qué (nunca silencio).</summary>
-    private void MoveVars(string targetKey, IEnumerable<int> indices, bool copy)
+    /// <summary>Botón y drag&amp;drop: el origen es SIEMPRE el scope que estás viendo.</summary>
+    private void MoveVars(string targetKey, IEnumerable<int> indices, bool copy) =>
+        MoveVarsFrom(_varScope, targetKey, indices, copy);
+
+    /// <summary>
+    /// Ejecuta el movimiento/copia y repinta. Un fallo SIEMPRE dice por qué (nunca silencio).
+    ///
+    /// El origen va EXPLÍCITO y no se asume <see cref="_varScope"/> porque al PEGAR ya no coinciden:
+    /// el usuario copió en un scope, navegó a otro, y el destino es el que está viendo ahora.
+    /// </summary>
+    private bool MoveVarsFrom(string fromScope, string targetKey, IEnumerable<int> indices, bool copy)
     {
         var list = indices.ToList();
-        if (list.Count == 0) return;
+        if (list.Count == 0) return false;
 
-        if (!ReportScopeResult(_projects.MoveVariables(_varScope, targetKey, list, copy),
+        if (!ReportScopeResult(_projects.MoveVariables(fromScope, targetKey, list, copy),
                 VarScopeLabel(targetKey)))
-            return;
+            return false;
 
-        // Queda seleccionado el scope de ORIGEN, no el destino: el caso real es vaciar un scope mal
-        // cargado moviendo varias variables seguidas, y saltar al destino en cada drop obligaría a
-        // volver a mano cada vez.
+        // Se repinta dejando seleccionado el scope que el usuario ESTÁ MIRANDO, sea cual sea la vía:
+        // arrastrando o con el botón está parado en el ORIGEN (el caso real es vaciar un scope mal
+        // cargado moviendo varias seguidas, y saltar al destino en cada drop obligaría a volver a mano
+        // cada vez); pegando está parado en el DESTINO y ve aparecer las filas donde las mandó.
         RefreshVarScopes(_varScope);
+        return true;
     }
+
+    // ── Portapapeles de variables (Ctrl+C / Ctrl+X / Ctrl+V) ───────────────────
+
+    /// <summary>Huella de una variable para revalidar el portapapeles. Ver <see cref="ScopeClipboard"/>.</summary>
+    private static string VarFingerprint(PathEntry e) => ScopeClipboard.Fingerprint(e.Title, e.Path);
+
+    private static List<string> VarFingerprints(IReadOnlyList<PathEntry> entries) =>
+        entries.Select(VarFingerprint).ToList();
+
+    /// <summary>
+    /// Carga la selección en el portapapeles. No muta nada todavía —ni siquiera con Ctrl+X— porque
+    /// cortar sin pegar tiene que poder abandonarse sin consecuencias: si el corte borrara acá, un
+    /// Ctrl+X seguido de un Escape te habría comido las variables.
+    /// </summary>
+    private void CopyVars(bool cut)
+    {
+        var entries = _projects.PeekVariables(_varScope);
+        // El filtro de rango es defensivo: las filas se construyen de esta misma pool, así que el
+        // índice SIEMPRE debería existir. Pero una lista repintada a destiempo dejaría acá un
+        // IndexOutOfRange que voltea la ventana, y en esta app la persistencia y la UI nunca voltean.
+        var indices = SelectedVarIndices().Where(i => i >= 0 && i < entries.Count).ToList();
+        if (indices.Count == 0) return;
+
+        var fps = indices.Select(i => VarFingerprint(entries[i])).ToList();
+
+        _varClip = new ScopeClipboard(_varScope, indices, fps, cut);
+        UpdateVarClipHint();
+    }
+
+    private void PasteVars()
+    {
+        // Portapapeles vacío → silencio, como cualquier app: un cartel de "no hay nada" ante un atajo
+        // que se aprieta de más es ruido, no información.
+        if (_varClip is not { } clip) return;
+
+        if (clip.IsStale(VarFingerprints(_projects.PeekVariables(clip.SourceScope))))
+        {
+            _varClip = null;
+            UpdateVarClipHint();
+            MessageBox.Show(this, Loc.T("Config.ClipStale"), Loc.T("Config.ClipTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (!MoveVarsFrom(clip.SourceScope, _varScope, clip.Indices, copy: !clip.IsCut)) return;
+
+        // Un CORTE consumido vacía el portapapeles: las entradas ya no están en el origen, así que sus
+        // índices quedaron corridos y un segundo pegado traería OTRAS filas. Una COPIA sobrevive — el
+        // caso de uso es justamente pegar lo mismo en varios scopes seguidos.
+        if (clip.IsCut) _varClip = null;
+        UpdateVarClipHint();
+    }
+
+    /// <summary>
+    /// Qué hay cargado, al lado del combo de destino. Sin esto el Ctrl+C es MUDO y no hay forma de
+    /// distinguir "copié cuatro" de "no copié nada" hasta que el pegado sale mal.
+    /// </summary>
+    private void UpdateVarClipHint() =>
+        VarClipHint.Text = _varClip is not { } c
+            ? ""
+            : string.Format(Loc.T(c.IsCut ? "Config.ClipCut" : "Config.ClipCopy"),
+                            c.Count, VarScopeLabel(c.SourceScope));
 
     // ── Drag & drop de variables sobre el panel de scopes ──────────────────────
 
@@ -1626,12 +1720,16 @@ public partial class ConfigWindow : Window
     private System.Windows.Point _cmdDragOrigin;
     private List<int>? _cmdDragSnapshot;
 
+    /// <summary>Portapapeles PROPIO, separado del de variables — ver <see cref="PasteCmds"/>.</summary>
+    private ScopeClipboard? _cmdClip;
+
     private void InitCmdsTab()
     {
         CmdScopeList.SelectionChanged += (_, _) => OnCmdScopeChanged();
         CmdList.SelectionChanged += (_, _) => UpdateCmdButtons();
         CmdList.MouseDoubleClick += (_, _) => EditCommand();
         CmdList.PreviewKeyDown += OnCmdListKeyDown;
+        CmdScopeList.PreviewKeyDown += OnCmdScopeListKeyDown;
         CmdFilterBox.TextChanged += (_, _) => RefreshCmds();
 
         CmdNewBtn.Click    += (_, _) => NewCommand();
@@ -1809,7 +1907,18 @@ public partial class ConfigWindow : Window
             case Key.Delete: DeleteCommands();      e.Handled = true; break;
             case Key.F2:     EditCommand();         e.Handled = true; break;
             case Key.F3:     ToggleCmdAutoStart();  e.Handled = true; break;
+            case Key.C when Ctrl: CopyCmds(cut: false); e.Handled = true; break;
+            case Key.X when Ctrl: CopyCmds(cut: true);  e.Handled = true; break;
+            case Key.V when Ctrl: PasteCmds();          e.Handled = true; break;
         }
+    }
+
+    /// <summary>En el panel de scopes sólo se PEGA (mismo criterio que Variables).</summary>
+    private void OnCmdScopeListKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.V || !Ctrl) return;
+        PasteCmds();
+        e.Handled = true;
     }
 
     // ── Acciones sobre comandos ────────────────────────────────────────────────
@@ -1878,14 +1987,19 @@ public partial class ConfigWindow : Window
         MoveCmds(target.Key, SelectedCmdIndices(), copy);
     }
 
-    private void MoveCmds(string targetKey, IEnumerable<int> indices, bool copy)
+    /// <summary>Botón y drag&amp;drop: el origen es SIEMPRE el scope que estás viendo.</summary>
+    private void MoveCmds(string targetKey, IEnumerable<int> indices, bool copy) =>
+        MoveCmdsFrom(_cmdScope, targetKey, indices, copy);
+
+    /// <summary>Origen explícito por el mismo motivo que <see cref="MoveVarsFrom"/>: al pegar difiere.</summary>
+    private bool MoveCmdsFrom(string fromScope, string targetKey, IEnumerable<int> indices, bool copy)
     {
         var list = indices.ToList();
-        if (list.Count == 0) return;
+        if (list.Count == 0) return false;
 
-        if (!ReportScopeResult(_projects.MoveServices(_cmdScope, targetKey, list, copy, out var reassigned),
+        if (!ReportScopeResult(_projects.MoveServices(fromScope, targetKey, list, copy, out var reassigned),
                 VarScopeLabel(targetKey)))
-            return;
+            return false;
 
         // La copia NO se lleva el puerto (duplicarlo es justo lo que el registro prohíbe): sale con
         // el primer libre. Se AVISA siempre — un campo que cambia solo y en silencio es peor que la
@@ -1895,10 +2009,73 @@ public partial class ConfigWindow : Window
                 string.Format(Loc.T("Config.CmdsCopyPortReassigned"), string.Join(", ", reassigned)),
                 Loc.T("Config.CmdsTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
 
-        // Queda seleccionado el scope de ORIGEN, mismo criterio que Variables: el caso real es vaciar
-        // un scope mal cargado moviendo varios seguidos.
+        // Queda seleccionado el scope que el usuario ESTÁ MIRANDO, mismo criterio que Variables:
+        // arrastrando o con el botón es el ORIGEN (vaciar un scope mal cargado moviendo varios
+        // seguidos); pegando es el DESTINO, y ve aparecer las filas donde las mandó.
         RefreshCmdScopes(_cmdScope);
+        return true;
     }
+
+    // ── Portapapeles de comandos (Ctrl+C / Ctrl+X / Ctrl+V) ────────────────────
+
+    /// <summary>
+    /// Huella de un servicio: sus CINCO campos. Van todos y no sólo el título porque el título es
+    /// justo el que más se re-tipea sin que la entrada cambie de identidad, y editar el puerto o el
+    /// directorio de lo que tenés copiado es exactamente el caso que la revalidación debe cazar.
+    /// </summary>
+    private static string CmdFingerprint(ServiceEntry e) => ScopeClipboard.Fingerprint(
+        e.Title, e.Command, e.WorkDir, e.Port.ToString(), e.AutoStart?.ToString() ?? "");
+
+    private static List<string> CmdFingerprints(IReadOnlyList<ServiceEntry> entries) =>
+        entries.Select(CmdFingerprint).ToList();
+
+    private void CopyCmds(bool cut)
+    {
+        var entries = _projects.PeekServices(_cmdScope);
+        var indices = SelectedCmdIndices().Where(i => i >= 0 && i < entries.Count).ToList(); // ver CopyVars
+        if (indices.Count == 0) return;
+
+        var fps = indices.Select(i => CmdFingerprint(entries[i])).ToList();
+
+        _cmdClip = new ScopeClipboard(_cmdScope, indices, fps, cut);
+        UpdateCmdClipHint();
+    }
+
+    /// <summary>
+    /// Pega los comandos del portapapeles en el scope que estás viendo.
+    ///
+    /// El portapapeles de comandos es SEPARADO del de variables a propósito: un servicio tiene cinco
+    /// campos y una variable dos, así que "pegar" de una lista en la otra no tiene un significado que
+    /// se pueda definir sin inventarlo. Con dos portapapeles, Ctrl+V en cada pestaña pega lo que esa
+    /// pestaña copió, y nunca hay que explicar por qué el atajo no hizo nada.
+    /// </summary>
+    private void PasteCmds()
+    {
+        if (_cmdClip is not { } clip) return;
+
+        if (clip.IsStale(CmdFingerprints(_projects.PeekServices(clip.SourceScope))))
+        {
+            _cmdClip = null;
+            UpdateCmdClipHint();
+            MessageBox.Show(this, Loc.T("Config.ClipStale"), Loc.T("Config.ClipTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        // copy: !IsCut — o sea que Ctrl+C hereda la regla del puerto tal cual está escrita en
+        // MoveServices: la copia NO se lleva el puerto y sale con el primero libre, avisando. Ctrl+X
+        // sí lo conserva, porque la entrada se va del origen y nunca hay dos dueños del mismo número.
+        if (!MoveCmdsFrom(clip.SourceScope, _cmdScope, clip.Indices, copy: !clip.IsCut)) return;
+
+        if (clip.IsCut) _cmdClip = null;
+        UpdateCmdClipHint();
+    }
+
+    private void UpdateCmdClipHint() =>
+        CmdClipHint.Text = _cmdClip is not { } c
+            ? ""
+            : string.Format(Loc.T(c.IsCut ? "Config.ClipCut" : "Config.ClipCopy"),
+                            c.Count, VarScopeLabel(c.SourceScope));
 
     // ── Drag & drop de comandos sobre el panel de scopes ───────────────────────
 
