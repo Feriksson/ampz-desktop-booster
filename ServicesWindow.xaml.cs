@@ -141,6 +141,14 @@ public partial class ServicesWindow : Window
         _ports = ports;
 
         Icon = AppIcon.TryLoadForWindow();
+
+        // 90% x 80% del área de trabajo, como Notas. Antes era 1020 fijo, y con eso el comando —que
+        // es lo que más se necesita leer de un vistazo, porque ahí están los parámetros— entraba en
+        // 230px y se cortaba SIEMPRE. Va antes de RefreshList para que el reparto de columnas se
+        // calcule sobre el ancho definitivo.
+        this.SizeToWorkArea();
+        LayoutColumns();
+
         _networkIp = LocalIp.Get();
         HeaderText.Text = $"{pool.Label} — {Loc.T("Services.HeaderSuffix")}";
         SubHeaderText.Text = _networkIp is null
@@ -174,6 +182,38 @@ public partial class ServicesWindow : Window
 
         Closed += (_, _) => _statusTimer.Stop();
         Loaded += (_, _) => FilterBox.Focus();
+    }
+
+    /// <summary>
+    /// Reparte el ancho disponible entre Título, Comando y Directorio. Existe porque un
+    /// <c>GridViewColumn</c> con <c>Width</c> fijo NO crece con la ventana y GridView no tiene
+    /// star-sizing: sin esto, agrandar la ventana sólo agregaba un hueco a la derecha y el comando
+    /// se seguía cortando exactamente igual que antes.
+    ///
+    /// Estado y Puerto quedan FIJOS a propósito: uno es un puntito y el otro cuatro dígitos: darles
+    /// ancho proporcional sería regalarle a un círculo el espacio que necesita un comando.
+    ///
+    /// El DIRECTORIO se lleva la tajada más grande, y no por gusto: se midió contra el catálogo real.
+    /// Un comando típico ronda los 60 caracteres ("php artisan queue:work --queue=default --tries=3
+    /// --timeout=60"), pero un directorio es un path ABSOLUTO de Windows con repos anidados y se va a
+    /// los 86 ("C:\...\Repos clientes\Geocontrol\geoplataform -dev\worktrees\wt-desk-01"). Los paths
+    /// son estructuralmente más largos que los comandos, así que darle la mayor al comando —que es lo
+    /// que parecía obvio— dejaba al directorio cortándose igual.
+    ///
+    /// El TÍTULO es el que mejor tolera quedarse corto: lo escribiste vos y lo reconocés por el
+    /// principio, mientras que en un comando y en un path lo que se necesita leer está al FINAL.
+    /// </summary>
+    private void LayoutColumns()
+    {
+        const double fixedCols = 60 + 80;   // Estado + Puerto (ver los Width del XAML)
+        const double chrome = 34 + 4 + 24;  // borde+padding de la ventana, padding del panel, scrollbar
+
+        double free = Width - fixedCols - chrome;
+        if (free <= 0) return; // pantalla absurdamente chica: dejamos los anchos de arranque del XAML
+
+        TitleCol.Width   = free * 0.24;
+        CommandCol.Width = free * 0.36;
+        WorkDirCol.Width = free * 0.40;
     }
 
     // ── Lista ───────────────────────────────────────────────────────────────────

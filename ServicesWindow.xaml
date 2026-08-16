@@ -3,12 +3,17 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
         Title="{loc:Translate Services.WindowTitle}"
-        Width="1020" Height="720"
         WindowStyle="None" ResizeMode="NoResize"
-        WindowStartupLocation="CenterScreen"
+        WindowStartupLocation="Manual"
         ShowInTaskbar="False" Topmost="True"
         Background="#1E1E1E" UseLayoutRounding="True"
         FontFamily="Segoe UI">
+
+    <!-- El TAMAÑO no se declara acá: lo pone SizeToWorkArea en el constructor (90% x 80% del área de
+         trabajo), igual que Notas. El ancho fijo de 1020 que había antes dejaba el comando y el
+         directorio cortados con puntos suspensivos justo en la parte que más importa: los
+         parámetros. Por eso WindowStartupLocation es Manual — con CenterScreen, WPF pisaría el
+         Left/Top que calcula el helper. -->
 
     <Window.Resources>
         <!-- Mismo estilado de filas oscuras que ProjectPathsWindow: el GridView crea ListViewItems
@@ -168,11 +173,17 @@
                                     </DataTemplate>
                                 </GridViewColumn.CellTemplate>
                             </GridViewColumn>
-                            <GridViewColumn Header="{loc:Translate Services.ColTitle}" Width="240"
+                            <!-- Los anchos de Titulo/Comando/Directorio los REPARTE el code-behind
+                                 (LayoutColumns) con lo que sobra del ancho real de la ventana. Un
+                                 GridViewColumn con Width fijo NO crece: agrandar la ventana sola
+                                 dejaba el hueco a la derecha y el comando cortado igual. GridView no
+                                 tiene star-sizing, asi que el reparto es a mano. Los valores de aca
+                                 son solo el arranque, antes del primer layout. -->
+                            <GridViewColumn x:Name="TitleCol" Header="{loc:Translate Services.ColTitle}" Width="240"
                                             DisplayMemberBinding="{Binding Display}" />
-                            <GridViewColumn Header="{loc:Translate Services.ColCommand}" Width="230"
+                            <GridViewColumn x:Name="CommandCol" Header="{loc:Translate Services.ColCommand}" Width="230"
                                             DisplayMemberBinding="{Binding Command}" />
-                            <GridViewColumn Header="{loc:Translate Services.ColWorkDir}" Width="330"
+                            <GridViewColumn x:Name="WorkDirCol" Header="{loc:Translate Services.ColWorkDir}" Width="330"
                                             DisplayMemberBinding="{Binding WorkDir}" />
                             <GridViewColumn Header="{loc:Translate Services.ColPort}" Width="80"
                                             DisplayMemberBinding="{Binding PortText}" />

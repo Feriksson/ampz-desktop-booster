@@ -24,6 +24,26 @@ internal static class WindowActivation
     /// </summary>
     public static System.Action? OnUtilityWindowClosed;
 
+    /// <summary>
+    /// Dimensiona y centra una ventana utilitaria sobre el ÁREA DE TRABAJO (que ya excluye la
+    /// taskbar y nuestra AppBar). 90% × 80% es la proporción que viene del legacy y que ya usaba
+    /// Notas; vive acá para que las ventanas que la necesiten compartan UNA implementación en vez de
+    /// copiarse el cálculo — si divergieran, dos ventanas hermanas abrirían de tamaños distintos sin
+    /// que nadie lo haya decidido.
+    ///
+    /// Usa <see cref="SystemParameters.WorkArea"/>, que es el área del monitor PRIMARIO. Es la misma
+    /// convención que ya tenían Notas y el overlay: estas ventanas se abren centradas en el primario,
+    /// no en el monitor donde está el mouse. Si algún día eso cambia, cambia acá y para todas.
+    /// </summary>
+    public static void SizeToWorkArea(this Window window, double widthRatio = 0.90, double heightRatio = 0.80)
+    {
+        var wa = SystemParameters.WorkArea;
+        window.Width = wa.Width * widthRatio;
+        window.Height = wa.Height * heightRatio;
+        window.Left = wa.Left + (wa.Width - window.Width) / 2;
+        window.Top = wa.Top + (wa.Height - window.Height) / 2;
+    }
+
     /// <summary>Muestra la ventana y le fuerza el primer plano + foco de teclado.</summary>
     public static void ShowFocused(this Window window)
     {

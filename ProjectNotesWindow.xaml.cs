@@ -70,21 +70,11 @@ public partial class ProjectNotesWindow : Window
             FolderRow.Height = new GridLength(0);
         }
 
-        SizeToWorkArea();
+        this.SizeToWorkArea();
 
         PreviewKeyDown += OnKeyDown;
         Closing += (_, _) => AutoSave();
         Loaded += (_, _) => { NotesBox.Focus(); NotesBox.CaretIndex = NotesBox.Text.Length; };
-    }
-
-    /// <summary>90% × 80% del área de trabajo (excluye la taskbar), centrada sobre ella — como el legacy.</summary>
-    private void SizeToWorkArea()
-    {
-        var wa = SystemParameters.WorkArea;
-        Width = wa.Width * 0.90;
-        Height = wa.Height * 0.80;
-        Left = wa.Left + (wa.Width - Width) / 2;
-        Top = wa.Top + (wa.Height - Height) / 2;
     }
 
     private void OnKeyDown(object sender, KeyEventArgs e)
