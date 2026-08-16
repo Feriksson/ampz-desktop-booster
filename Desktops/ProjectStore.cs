@@ -928,6 +928,170 @@ public sealed class ProjectStore
         return ScopeOpResult.Ok;
     }
 
+    // ── DUPLICAR espacios y contextos ──────────────────────────────────────────────────────────
+    //
+    // Las de arriba REORGANIZAN lo que hay (renombrar, mover, promover, degradar); éstas CREAN a
+    // partir de lo que hay. Nacen del caso real de armar un espacio nuevo que se parece muchísimo a
+    // uno existente —otro cliente con el mismo stack, una variante de un proyecto— donde re-tipear
+    // cuatro contextos con sus variables y sus comandos a mano es media hora y varios olvidos.
+    //
+    // Tres reglas que NO son negociables porque ya estaban decididas en otro lado, y romperlas acá
+    // dejaría la regla original en el papel:
+    //
+    // 1. LOS PUERTOS NO SE DUPLICAN. PortRegistry garantiza un dueño por puerto en TODO el catálogo,
+    //    sin override. Duplicar un espacio con cuatro servicios repetiría cuatro puertos de un saque:
+    //    es la misma puerta de atrás que ya se le cerró a la copia de comandos, pero más grande. Cada
+    //    servicio copiado sale con el primer puerto LIBRE y la ventana lo AVISA — un valor que cambia
+    //    solo y en silencio es peor que la duplicación.
+    //
+    // 2. LAS NOTAS NO SE COPIAN (decisión explícita del usuario). Una nota es una pizarra de trabajo
+    //    con cosas a medio hacer; arrastrarla a un espacio nuevo la convierte en ruido que después hay
+    //    que limpiar. El duplicado nace con la pizarra en blanco. Es coherente con que las notas
+    //    tampoco HEREDEN: en este modelo la nota nunca viaja.
+    //
+    // 3. NO SE TOCAN LA SESIÓN NI LAS SUGERENCIAS DEL INI. Ahí está la diferencia con renombrar o
+    //    mover: aquéllas cambian de lugar un scope que YA estaba en uso y tienen que arrastrar sus
+    //    referencias, ésta crea uno que todavía no está en ningún desk. Meterlo en la sesión sería
+    //    inventar que el usuario ya se paró ahí.
+
+    /// <summary>
+    /// Duplica un ESPACIO entero con sus contextos, variables, comandos y predeterminados.
+    ///
+    /// Los COLORES de los contextos se copian TAL CUAL, y no es una omisión: la regla de recolorear
+    /// existe para que no haya dos HERMANOS del mismo color, y los contextos del espacio original ya
+    /// eran distintos entre sí. Como el espacio nuevo nace sin contextos, el conjunto copiado sigue
+    /// siendo internamente distinto — recolorearlo sólo le sacaría al usuario la identificación
+    /// visual que ya tenía aprendida.
+    /// </summary>
+    public ScopeOpResult DuplicateProject(string source, string newName, out List<int> reassignedPorts)
+    {
+        reassignedPorts = new List<int>();
+
+        newName = TitleCase(Sanitize(newName));
+        if (newName == "") return ScopeOpResult.EmptyName;
+        if (!ProjectExists(source)) return ScopeOpResult.NotFound;
+        if (ProjectExists(newName)) return ScopeOpResult.NameTaken;
+
+        CopyScope(source, newName, reassignedPorts);
+        _data.History.Add(newName);
+
+        var mods = GetModules(source);
+        if (mods.Count > 0)
+        {
+            var dst = new List<ModuleEntry>();
+            _data.Modules[newName] = dst;
+            foreach (var m in mods)
+            {
+                dst.Add(new ModuleEntry { Name = m.Name, Color = m.Color });
+                CopyScope(ScopeKey(source, m.Name), ScopeKey(newName, m.Name), reassignedPorts);
+            }
+        }
+
+        Save();
+        return ScopeOpResult.Ok;
+    }
+
+    /// <summary>
+    /// Duplica un CONTEXTO, en su mismo espacio o en otro. Duplicar a otro espacio es el caso grande
+    /// —llevarte "Plataforma" con todos sus comandos armados a un cliente nuevo—, y no equivale a
+    /// mover: el original se queda donde estaba.
+    ///
+    /// El COLOR sí se revisa acá (a diferencia de <see cref="DuplicateProject"/>): la copia aterriza
+    /// entre HERMANOS que ya existen, y dos contextos del mismo espacio con el mismo color son
+    /// exactamente la confusión que el color vino a matar. Mismo criterio que <see cref="MoveModule"/>.
+    ///
+    /// OJO con lo que NO viaja al duplicar a OTRO espacio: lo que el contexto HEREDABA del espacio
+    /// original no se copia — pasa a heredar del destino. Es lo mismo que ya pasa al mover, y por el
+    /// mismo motivo (arrastrar el Jira del cliente anterior sería peor), pero SORPRENDE: la ventana
+    /// lo avisa.
+    /// </summary>
+    public ScopeOpResult DuplicateModule(string project, string module, string toProject,
+                                         string newName, out List<int> reassignedPorts)
+    {
+        reassignedPorts = new List<int>();
+
+        newName = TitleCase(Sanitize(newName));
+        if (newName == "") return ScopeOpResult.EmptyName;
+        if (!ModuleExists(project, module)) return ScopeOpResult.NotFound;
+        if (!ProjectExists(toProject)) return ScopeOpResult.NotFound;
+        if (ModuleExists(toProject, newName)) return ScopeOpResult.NameTaken;
+
+        string dstKey = ResolveModulesKey(toProject);
+        if (!_data.Modules.TryGetValue(dstKey, out var siblings))
+        {
+            siblings = new List<ModuleEntry>();
+            _data.Modules[dstKey] = siblings;
+        }
+
+        string color = GetModuleColor(project, module);
+        if (color == "" || siblings.Any(m => Same(m.Color, color)))
+            color = ModulePalette.NextFree(siblings.Select(m => m.Color));
+
+        siblings.Add(new ModuleEntry { Name = newName, Color = color });
+        CopyScope(ScopeKey(project, module), ScopeKey(toProject, newName), reassignedPorts);
+
+        Save();
+        return ScopeOpResult.Ok;
+    }
+
+    /// <summary>
+    /// Copia el CONTENIDO de un scope a otro: variables, predeterminado y comandos. Gemelo de
+    /// <see cref="MoveScope"/> y con la misma razón de existir — que el barrido esté en UN solo lugar
+    /// y ninguna operación pueda olvidarse una capa. Las NOTAS quedan afuera a propósito (ver el
+    /// bloque de arriba).
+    /// </summary>
+    private void CopyScope(string fromKey, string toKey, List<int> reassignedPorts)
+    {
+        // Los diccionarios de ProjectData son case-SENSITIVE. Si quedó una key huérfana que difiere
+        // sólo en mayúsculas (restos de un scope borrado), escribir la nueva dejaría DOS entradas
+        // vivas para el mismo scope: una visible y otra fantasma que igual entra al registro de
+        // puertos y a los conteos. Se limpia el choque igual que hace MoveKey.
+        ClearScopeKey(toKey);
+
+        if (FindKey(_data.Paths, fromKey) is string pathsKey)
+            _data.Paths[toKey] = _data.Paths[pathsKey]
+                .Select(e => new PathEntry { Title = e.Title, Path = e.Path }).ToList();
+
+        // El predeterminado apunta por PATH, y los paths se copiaron TAL CUAL: el mismo valor sigue
+        // siendo válido del otro lado. Por eso se copia el string y no hay nada que remapear.
+        if (FindKey(_data.Defaults, fromKey) is string defKey)
+            _data.Defaults[toKey] = _data.Defaults[defKey];
+
+        if (FindKey(_data.Services, fromKey) is not string svcKey) return;
+
+        // La lista destino se publica en el diccionario VACÍA y se llena de a una: SuggestFree
+        // enumera el catálogo VIVO, así que cada copia tiene que ver las anteriores. Armándola
+        // aparte y asignándola al final, tres servicios que declaren el mismo puerto se llevarían
+        // los tres el mismo número libre — reintroduciendo el choque desde adentro de la operación
+        // que existe para evitarlo. Es el mismo cuidado que ya toma MoveServices.
+        var copies = new List<ServiceEntry>();
+        _data.Services[toKey] = copies;
+
+        foreach (var e in _data.Services[svcKey])
+        {
+            int port = e.Port > 0 ? Ports.SuggestFree(e.Port) : 0;
+            if (port > 0 && port != e.Port) reassignedPorts.Add(port);
+
+            copies.Add(new ServiceEntry
+            {
+                Title = e.Title,
+                Command = e.Command,
+                WorkDir = e.WorkDir,
+                Port = port,
+                AutoStart = e.AutoStart,
+            });
+        }
+    }
+
+    /// <summary>Borra una key de scope de todos los diccionarios (resolviendo casing). Ver CopyScope.</summary>
+    private void ClearScopeKey(string scopeKey)
+    {
+        if (FindKey(_data.Paths, scopeKey) is string p) _data.Paths.Remove(p);
+        if (FindKey(_data.Notes, scopeKey) is string n) _data.Notes.Remove(n);
+        if (FindKey(_data.Defaults, scopeKey) is string d) _data.Defaults.Remove(d);
+        if (FindKey(_data.Services, scopeKey) is string s) _data.Services.Remove(s);
+    }
+
     // ── Gestión de VARIABLES entre scopes (la pestaña Variables de la config) ──────────────────
     //
     // El bloque de arriba mueve SCOPES enteros; éste mueve el CONTENIDO de un scope a otro. Es el

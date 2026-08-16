@@ -856,6 +856,8 @@ public partial class ConfigWindow : Window
         ScopePromoteBtn.Click += (_, _) => PromoteScope();
         ScopeMoveBtn.Click    += (_, _) => MoveScopeToTarget();
         ScopeDemoteBtn.Click  += (_, _) => DemoteScopeToTarget();
+        ScopeDuplicateBtn.Click   += (_, _) => DuplicateSpace();
+        ScopeDuplicateToBtn.Click += (_, _) => DuplicateContextToTarget();
         ScopeDeleteBtn.Click  += (_, _) => DeleteScope();
         RefreshScopes();
     }
@@ -1005,6 +1007,13 @@ public partial class ConfigWindow : Window
         ScopePromoteBtn.IsEnabled = isContext;
         ScopeMoveBtn.IsEnabled    = isContext;
         ScopeDemoteBtn.IsEnabled  = isSpace;
+
+        // Cada duplicar aplica a UN nivel, por el mismo motivo que el resto: el de espacio crea un
+        // espacio nuevo (sin destino), el de contexto aterriza EN un espacio (con destino). Un solo
+        // botón que hiciera las dos cosas dejaría al combo de destino significando algo distinto
+        // según qué fila tocaste.
+        ScopeDuplicateBtn.IsEnabled   = isSpace;
+        ScopeDuplicateToBtn.IsEnabled = isContext;
     }
 
     /// <summary>
@@ -1103,6 +1112,83 @@ public partial class ConfigWindow : Window
         if (!ReportScopeResult(_projects.DemoteProject(row.Space, target), row.Space)) return;
         RefreshScopes(target, row.Space);
         _onApplied();
+    }
+
+    /// <summary>
+    /// Duplica el espacio seleccionado: sus variables, comandos, predeterminados y TODOS sus
+    /// contextos con lo suyo. Las notas quedan afuera (ver el bloque de duplicación en ProjectStore).
+    /// </summary>
+    private void DuplicateSpace()
+    {
+        var row = SelectedScope;
+        if (row is null || row.IsContext) return;
+
+        // El nombre se pide SIEMPRE, nunca se autogenera y listo: el duplicado existe para
+        // convertirse en otra cosa, así que nombrarlo es el primer paso del trabajo, no un trámite.
+        // Se pre-llena con "(copia)" para que aceptar sin pensar tampoco choque con el original.
+        string? name = PromptDialog.Show(this, Loc.T("Config.ScopesDupSpaceTitle"),
+            Loc.T("Config.ScopesNameLabel"), string.Format(Loc.T("Config.ScopesDupSuffix"), row.Space));
+        if (name is null) return;
+
+        if (!ReportScopeResult(_projects.DuplicateProject(row.Space, name, out var ports), name)) return;
+
+        string final = ProjectStore.TitleCase(ProjectStore.Sanitize(name));
+        ReportReassignedPorts(ports);
+        RefreshScopes(final);
+        _onApplied();
+    }
+
+    /// <summary>
+    /// Duplica el contexto seleccionado dentro del espacio elegido en el combo. Eligiendo su PROPIO
+    /// espacio, la copia queda al lado del original; eligiendo otro, te llevás el contexto armado a
+    /// un cliente nuevo sin tocar el de acá.
+    /// </summary>
+    private void DuplicateContextToTarget()
+    {
+        var row = SelectedScope;
+        if (row?.Context is null || ScopeTargetCombo.SelectedItem is not string target) return;
+
+        // Duplicando DENTRO del mismo espacio el nombre no puede repetirse → se propone "(copia)".
+        // Duplicando a OTRO espacio el nombre original está libre y es el que querés (llevarte
+        // "Plataforma" tal cual), así que se propone ése.
+        bool sameSpace = string.Equals(target, row.Space, StringComparison.OrdinalIgnoreCase);
+        string seed = sameSpace ? string.Format(Loc.T("Config.ScopesDupSuffix"), row.Context) : row.Context;
+
+        string? name = PromptDialog.Show(this,
+            string.Format(Loc.T("Config.ScopesDupContextTitle"), target),
+            Loc.T("Config.ScopesNameLabel"), seed);
+        if (name is null) return;
+
+        if (!ReportScopeResult(
+                _projects.DuplicateModule(row.Space, row.Context, target, name, out var ports), name))
+            return;
+
+        string final = ProjectStore.TitleCase(ProjectStore.Sanitize(name));
+
+        // Duplicar a OTRO espacio cambia de quién HEREDA la copia, y eso no se ve en la lista: el
+        // contexto nuevo deja de ver las variables del espacio original y pasa a ver las del destino.
+        // Es lo correcto, pero sorprende — mismo aviso que ya lleva Mover, y por lo mismo.
+        if (!sameSpace)
+            MessageBox.Show(this,
+                string.Format(Loc.T("Config.ScopesDupInherit"), final, target, row.Space),
+                Loc.T("Config.ScopesDupTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
+
+        ReportReassignedPorts(ports);
+        RefreshScopes(target, final);
+        _onApplied();
+    }
+
+    /// <summary>
+    /// Avisa qué puertos salieron cambiados. NUNCA se calla: un puerto que se mueve solo y en
+    /// silencio te deja lanzando el comando y mirando el puerto de siempre, que ahora sirve otra
+    /// cosa. Es el mismo aviso que ya da la copia de un comando, por el mismo motivo.
+    /// </summary>
+    private void ReportReassignedPorts(List<int> ports)
+    {
+        if (ports.Count == 0) return;
+        MessageBox.Show(this,
+            string.Format(Loc.T("Config.ScopesDupPorts"), string.Join(", ", ports)),
+            Loc.T("Config.ScopesDupTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void DeleteScope()

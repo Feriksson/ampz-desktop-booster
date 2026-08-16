@@ -337,6 +337,9 @@
                     <Button x:Name="ScopeRenameBtn"  Content="{loc:Translate Config.ScopesRename}"  MinWidth="120" />
                     <Button x:Name="ScopeColorBtn"   Content="{loc:Translate Config.ScopesColor}"   MinWidth="140" />
                     <Button x:Name="ScopePromoteBtn" Content="{loc:Translate Config.ScopesPromote}" MinWidth="160" />
+                    <!-- Duplicar un ESPACIO no necesita destino (nace como espacio nuevo), por eso vive
+                         acá. El de CONTEXTO sí lo necesita y vive abajo, con el combo. -->
+                    <Button x:Name="ScopeDuplicateBtn" Content="{loc:Translate Config.ScopesDuplicate}" MinWidth="150" />
                     <Button x:Name="ScopeDeleteBtn"  Content="{loc:Translate Config.ScopesDelete}"  MinWidth="90"
                             Foreground="{StaticResource Danger}" />
                 </StackPanel>
@@ -350,6 +353,9 @@
                     <ComboBox x:Name="ScopeTargetCombo" Width="240" Margin="0,0,10,0" />
                     <Button x:Name="ScopeMoveBtn"   Content="{loc:Translate Config.ScopesMove}"   MinWidth="150" />
                     <Button x:Name="ScopeDemoteBtn" Content="{loc:Translate Config.ScopesDemote}" MinWidth="160" />
+                    <!-- Duplicar un CONTEXTO aterriza EN un espacio, así que usa el mismo destino que
+                         Mover. Eligiendo el espacio propio, la copia queda al lado del original. -->
+                    <Button x:Name="ScopeDuplicateToBtn" Content="{loc:Translate Config.ScopesDuplicateTo}" MinWidth="170" />
                 </StackPanel>
             </Grid>
         </TabItem>
