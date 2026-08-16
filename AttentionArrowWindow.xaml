@@ -1,0 +1,79 @@
+<Window x:Class="AmpzDesktopBooster.AttentionArrowWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
+        Title="{loc:Translate AttentionArrow.Title}"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        Width="230" Height="340"
+        WindowStartupLocation="Manual"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+
+    <!--
+      Destello direccional: "el aviso vino de allá". Todo el contenido se dibuja apuntando a la
+      DERECHA y, cuando el desk está a la izquierda, se ESPEJA entero con un ScaleX=-1 (ver Mirror).
+      Un solo visual, dos direcciones: no hay dos ramas de dibujo que se puedan desincronizar.
+
+      El orden del TransformGroup importa: Slide va PRIMERO (espacio local, sin espejar) y Mirror
+      después. Así "deslizar hacia afuera" es siempre X positivo y el espejo se encarga de que, del
+      lado izquierdo, "afuera" sea la izquierda. Si invirtiéramos el orden, habría que negar el
+      desplazamiento a mano según el lado — justo la rama que queremos no tener.
+    -->
+    <Grid x:Name="Root" RenderTransformOrigin="0.5,0.5" Opacity="0">
+        <Grid.RenderTransform>
+            <TransformGroup>
+                <TranslateTransform x:Name="Slide" X="0" />
+                <ScaleTransform x:Name="Mirror" ScaleX="1" />
+            </TransformGroup>
+        </Grid.RenderTransform>
+
+        <!-- Resplandor del borde: se funde con la pantalla en vez de recortarse contra ella.
+             El degradé HORIZONTAL lleva el color al borde exterior (Offset=1) y lo disuelve hacia
+             adentro; el OpacityMask VERTICAL le come el arriba y el abajo. Sin esa máscara el
+             resplandor sería una barra con dos filos rectos = se lee como un artefacto gráfico,
+             no como luz. Los dos degradés juntos son lo que lo hace "elegante" y no un cartel. -->
+        <Rectangle>
+            <Rectangle.Fill>
+                <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                    <GradientStop x:Name="GlowInner"  Offset="0"    Color="#00000000" />
+                    <GradientStop x:Name="GlowMiddle" Offset="0.62" Color="#00000000" />
+                    <GradientStop x:Name="GlowOuter"  Offset="1"    Color="#00000000" />
+                </LinearGradientBrush>
+            </Rectangle.Fill>
+            <Rectangle.OpacityMask>
+                <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
+                    <GradientStop Offset="0"    Color="#00000000" />
+                    <GradientStop Offset="0.35" Color="#FF000000" />
+                    <GradientStop Offset="0.65" Color="#FF000000" />
+                    <GradientStop Offset="1"    Color="#00000000" />
+                </LinearGradientBrush>
+            </Rectangle.OpacityMask>
+        </Rectangle>
+
+        <!-- El chevron. Va pegado al borde exterior (Right) porque ahí es donde el ojo periférico
+             lo capta sin tener que mirarlo de frente — que es TODO el punto de la feature. -->
+        <Path x:Name="Chevron"
+              Data="M 0,0 L 20,25 L 0,50"
+              StrokeThickness="6"
+              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+              Fill="{x:Null}"
+              HorizontalAlignment="Right" VerticalAlignment="Center"
+              Margin="0,0,26,0">
+            <Path.Stroke>
+                <SolidColorBrush x:Name="ChevronBrush" Color="#00000000" />
+            </Path.Stroke>
+            <Path.Effect>
+                <!-- Halo del mismo color: separa el chevron de un fondo claro (si atrás hay una
+                     ventana blanca, un trazo de color sin halo se pierde). ShadowDepth=0 → es un
+                     resplandor centrado, no una sombra proyectada. -->
+                <DropShadowEffect x:Name="ChevronGlow" BlurRadius="22" ShadowDepth="0" Opacity="0.9" />
+            </Path.Effect>
+        </Path>
+    </Grid>
+</Window>

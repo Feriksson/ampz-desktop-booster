@@ -48,6 +48,10 @@ internal static partial class WindowMethods
     public const int GWL_EXSTYLE      = -20;
     public const int WS_EX_TOOLWINDOW = 0x00000080;  // fuera del Alt-Tab y del taskbar
     public const int WS_EX_NOACTIVATE = 0x08000000;  // no roba el foco al mostrarse
+    public const int WS_EX_TRANSPARENT = 0x00000020; // click-through: el mouse la ATRAVIESA (hit-test
+                                                     // pasa a la ventana de abajo). Para overlays
+                                                     // puramente informativos que aparecen encima de
+                                                     // lo que el usuario está haciendo.
 
     [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
     public static partial IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);

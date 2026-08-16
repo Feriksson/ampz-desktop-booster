@@ -29,6 +29,7 @@ public partial class App : Application
     private UsageService? _usage;
     private Services.Attention.AttentionService? _attention;
     private Services.Attention.AttentionPipeServer? _attentionPipe;
+    private AttentionArrowWindow? _attentionArrow;
     private BrowserPipeServer? _browserPipe;
     private DispatcherTimer? _overlayDebounce;
     private int _pendingOverlayIdx = -1;
@@ -196,6 +197,14 @@ public partial class App : Application
             bar.UpdateAttention(items);
         };
 
+        // Destello direccional en el lateral. Se cuelga de Raised (el HECHO "llegó un aviso") y no de
+        // Changed (el ESTADO pendiente): colgarlo de Changed lo haría destellar también al ENTRAR al
+        // desk, cuando el aviso se limpia — justo cuando ya no hay nada hacia dónde señalar.
+        // Igual que con el widget, App es el traductor: el servicio da el desk, App le suma el desk
+        // ACTUAL (de dónde se mide la dirección) y la ventana sólo dibuja.
+        _attentionArrow = new AttentionArrowWindow();
+        _attention.Raised += (desk, level) => _attentionArrow?.Flash(desk, desktops.Current, level);
+
         // Watchdog del hook: cuando la barra cambia su z-order (ocultarse/reaparecer en pantalla
         // completa), Windows corta la entrega de teclas al hook global hasta el próximo cambio de
         // foco. Re-armamos el hook justo después de ese cambio de z-order → el "click que lo
@@ -278,6 +287,10 @@ public partial class App : Application
             _overlayDebounce.Start();
             _governor!.OnDesktopEntered(idx); // aplicar restricciones del desk entrante
             _attention?.ClearDesk(idx);       // "lo viste, listo": apaga el aviso de atención de este desk
+            // El destello lateral se mata en CUALQUIER cambio de desk, no sólo al llegar al que
+            // reclamaba: apunta "desde donde estás", así que apenas te movés queda desactualizado y
+            // te seguiría empujando al costado cuando ya llegaste (se sentía como "falta uno más").
+            _attentionArrow?.Cancel();
         };
 
         _hotkeys.Start();

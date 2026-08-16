@@ -525,6 +525,7 @@
   "Attention.DoneHere": "Listo, terminó acá",
   "Attention.NeedsYou": "te necesita",
   "Attention.TaskDone": "tarea lista",
+  "AttentionArrow.Title": "Indicador de atención",
   "Attention.UnresolvedDesk": "Atención (desk no resuelto)",
 
   "Tray.Settings": "Configuración",

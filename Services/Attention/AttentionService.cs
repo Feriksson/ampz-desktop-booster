@@ -29,6 +29,19 @@ public sealed class AttentionService
     /// <summary>Se dispara (en UI) cuando cambia el conjunto de desks pendientes — alta o limpieza.</summary>
     public event Action? Changed;
 
+    /// <summary>
+    /// Se dispara (en UI) SÓLO cuando ENTRA un aviso nuevo de OTRO desk. Es el gancho para el
+    /// feedback EFÍMERO (la flecha lateral): un destello que dice "mirá para allá" en el instante
+    /// en que la señal llega.
+    ///
+    /// Es un evento aparte de <see cref="Changed"/> a propósito, y la diferencia es de SEMÁNTICA, no
+    /// de conveniencia: <c>Changed</c> es "el ESTADO pendiente cambió" (sirve para repintar el widget,
+    /// y también se dispara al LIMPIAR) — colgarse de ahí para animar haría destellar la flecha
+    /// cuando entrás al desk y el aviso se apaga, que es exactamente el momento en que ya no hay
+    /// nada que señalar. <c>Raised</c> es "llegó un aviso": un HECHO puntual, no un estado.
+    /// </summary>
+    public event Action<int, AttentionLevel>? Raised;
+
     public AttentionService(DesktopService desktops)
     {
         _desktops = desktops;
@@ -113,6 +126,12 @@ public sealed class AttentionService
             if (!_pending.TryGetValue(desk, out var existing) || Outranks(signal.Level, existing))
                 _pending[desk] = signal.Level;
             Changed?.Invoke();
+
+            // Después del estado: el destello es feedback de la SEÑAL, y se dispara con el nivel de
+            // ESTA señal (no con el acumulado del desk). Si el desk ya estaba en ActionNeeded y entra
+            // un Completed, el widget sigue rojo (el pendiente manda) pero la flecha destella verde:
+            // te está contando lo que ACABA de pasar, no el resumen.
+            Raised?.Invoke(desk, signal.Level);
         }
     }
 
