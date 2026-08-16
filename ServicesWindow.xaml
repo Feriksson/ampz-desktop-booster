@@ -79,6 +79,10 @@
             </Style.Triggers>
         </Style>
 
+        <!-- KEYCAP en cada botón (mismo criterio que ProjectPathsWindow, donde está el porqué largo):
+             el atajo se pinta en un recuadrito a la derecha del label, tomado del Tag. En una app que
+             se maneja sin mouse, esconder los atajos en la línea de hints del pie te obliga a soltar
+             el teclado. Sin Tag, el recuadro no se dibuja. -->
         <Style TargetType="Button">
             <Setter Property="Background" Value="#2A2A2A" />
             <Setter Property="Foreground" Value="#F2F2F2" />
@@ -91,16 +95,33 @@
                         <Border x:Name="Bd" Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
                                 CornerRadius="4" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                        VerticalAlignment="Center">
+                                <ContentPresenter VerticalAlignment="Center" />
+                                <Border x:Name="Keycap" Margin="8,0,0,0" Padding="4,0,4,1"
+                                        CornerRadius="3" VerticalAlignment="Center"
+                                        Background="#1A1A1A" BorderBrush="#4A4A52" BorderThickness="1">
+                                    <TextBlock x:Name="KeycapText" FontFamily="Consolas" FontSize="10"
+                                               Foreground="#9A9A9A"
+                                               Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" />
+                                </Border>
+                            </StackPanel>
                         </Border>
                         <ControlTemplate.Triggers>
+                            <Trigger Property="Tag" Value="{x:Null}">
+                                <Setter TargetName="Keycap" Property="Visibility" Value="Collapsed" />
+                            </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="#2D4A57" />
                                 <Setter TargetName="Bd" Property="BorderBrush" Value="#4FC3F7" />
+                                <Setter TargetName="KeycapText" Property="Foreground" Value="#E6E6EA" />
+                                <Setter TargetName="Keycap" Property="BorderBrush" Value="#4FC3F7" />
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="#34505C" />
                                 <Setter TargetName="Bd" Property="BorderBrush" Value="#4FC3F7" />
+                                <Setter TargetName="KeycapText" Property="Foreground" Value="#E6E6EA" />
+                                <Setter TargetName="Keycap" Property="BorderBrush" Value="#4FC3F7" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="#3A6070" />
@@ -195,17 +216,21 @@
             <TextBlock Grid.Row="4" Foreground="#6E6E78" FontSize="10" Margin="0,8,0,0"
                        TextWrapping="Wrap" Text="{loc:Translate Services.Hints}" />
 
-            <StackPanel Grid.Row="5" Orientation="Horizontal" Margin="0,10,0,0">
-                <Button x:Name="LaunchBtn"    Content="{loc:Translate Services.BtnLaunch}" MinWidth="90" Margin="0,0,6,0" Padding="10,4" />
-                <Button x:Name="VisitBtn"     Content="{loc:Translate Services.BtnVisit}" MinWidth="90" Margin="0,0,6,0" Padding="10,4" />
-                <Button x:Name="LaunchAllBtn" Content="{loc:Translate Services.BtnLaunchAll}" MinWidth="120" Margin="0,0,6,0" Padding="10,4" />
-                <Button x:Name="AddBtn"       Content="{loc:Translate Services.BtnAdd}" MinWidth="90" Margin="0,0,6,0" Padding="10,4" />
-                <Button x:Name="EditBtn"      Content="{loc:Translate Services.BtnEdit}" MinWidth="90" Margin="0,0,6,0" Padding="10,4" />
-                <Button x:Name="DeleteBtn"    Content="{loc:Translate Services.BtnDelete}" MinWidth="70" Margin="0,0,6,0" Padding="10,4" />
-                <Button x:Name="CopyLocalBtn" Content="{loc:Translate Services.BtnCopyLocal}" MinWidth="120" Margin="0,0,6,0" Padding="10,4" />
-                <Button x:Name="QrBtn"        Content="{loc:Translate Services.BtnQr}" MinWidth="60" Margin="0,0,6,0" Padding="10,4" />
-                <Button x:Name="CloseBtn"     Content="{loc:Translate Services.BtnClose}" MinWidth="70" HorizontalAlignment="Right" Padding="10,4" IsCancel="True" />
-            </StackPanel>
+            <!-- WrapPanel y no StackPanel: con el keycap adentro cada botón creció, y son NUEVE. Un
+                 StackPanel horizontal recorta en silencio lo que no entra (te quedás sin el botón de
+                 Cerrar y sin enterarte); el WrapPanel baja a una segunda línea. -->
+            <WrapPanel Grid.Row="5" Orientation="Horizontal" Margin="0,10,0,0">
+                <Button x:Name="LaunchBtn"    Content="{loc:Translate Services.BtnLaunch}" Tag="{loc:Translate Keys.Enter}" MinWidth="90" Margin="0,0,6,6" Padding="10,4" />
+                <Button x:Name="VisitBtn"     Content="{loc:Translate Services.BtnVisit}" Tag="{loc:Translate Keys.ShiftEnter}" MinWidth="90" Margin="0,0,6,6" Padding="10,4" />
+                <Button x:Name="LaunchAllBtn" Content="{loc:Translate Services.BtnLaunchAll}" Tag="{loc:Translate Keys.CtrlEnter}" MinWidth="120" Margin="0,0,6,6" Padding="10,4" />
+                <Button x:Name="AddBtn"       Content="{loc:Translate Services.BtnAdd}" Tag="{loc:Translate Keys.CtrlN}" MinWidth="90" Margin="0,0,6,6" Padding="10,4" />
+                <Button x:Name="EditBtn"      Content="{loc:Translate Services.BtnEdit}" Tag="{loc:Translate Keys.F2}" MinWidth="90" Margin="0,0,6,6" Padding="10,4" />
+                <Button x:Name="DeleteBtn"    Content="{loc:Translate Services.BtnDelete}" Tag="{loc:Translate Keys.Delete}" MinWidth="70" Margin="0,0,6,6" Padding="10,4" />
+                <Button x:Name="CopyLocalBtn" Content="{loc:Translate Services.BtnCopyLocal}" Tag="{loc:Translate Keys.CtrlC}" MinWidth="120" Margin="0,0,6,6" Padding="10,4" />
+                <Button x:Name="CopyNetBtn"   Content="{loc:Translate Services.BtnCopyNetwork}" Tag="{loc:Translate Keys.CtrlShiftC}" MinWidth="120" Margin="0,0,6,6" Padding="10,4" />
+                <Button x:Name="QrBtn"        Content="{loc:Translate Services.BtnQr}" Tag="{loc:Translate Keys.CtrlQ}" MinWidth="60" Margin="0,0,6,6" Padding="10,4" />
+                <Button x:Name="CloseBtn"     Content="{loc:Translate Services.BtnClose}" Tag="{loc:Translate Keys.Escape}" MinWidth="70" Margin="0,0,6,6" Padding="10,4" IsCancel="True" />
+            </WrapPanel>
         </Grid>
     </Border>
 </Window>

@@ -83,7 +83,15 @@
         <!-- Botones del footer. SIN style propio, WPF usa el default (gris claro) y el foco se
              dibuja como un puntito punteado negro casi invisible sobre fondo oscuro → no se ve
              cuál tiene el foco. Replicamos el patrón de AbrirConWindow: IsKeyboardFocused cambia
-             borde a celeste + fondo, y FocusVisualStyle vacío mata el rectángulo punteado. -->
+             borde a celeste + fondo, y FocusVisualStyle vacío mata el rectángulo punteado.
+
+             KEYCAP: cada botón muestra SU atajo en un recuadrito a la derecha del label, tomado del
+             Tag. Nació de un problema de uso real: los atajos existían pero sólo estaban escritos en
+             la línea de hints de 10px del pie — o sea, invisibles. En una app que se maneja SIN
+             mouse, un botón que no dice con qué tecla se dispara te obliga a soltar el teclado, que
+             es exactamente lo que la app vino a evitar. Va como Tag y no como parte del Content para
+             que el atajo se pinte DISTINTO (chico, monoespaciado, atenuado) y no compita con el
+             label: se lee de reflejo, no se lee "leyendo". Sin Tag, el recuadro no se dibuja. -->
         <Style TargetType="Button">
             <Setter Property="Background" Value="#2A2A2A" />
             <Setter Property="Foreground" Value="#F2F2F2" />
@@ -96,16 +104,35 @@
                         <Border x:Name="Bd" Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
                                 CornerRadius="4" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                        VerticalAlignment="Center">
+                                <ContentPresenter VerticalAlignment="Center" />
+                                <Border x:Name="Keycap" Margin="8,0,0,0" Padding="4,0,4,1"
+                                        CornerRadius="3" VerticalAlignment="Center"
+                                        Background="#1A1A1A" BorderBrush="#4A4A52" BorderThickness="1">
+                                    <TextBlock x:Name="KeycapText" FontFamily="Consolas" FontSize="10"
+                                               Foreground="#9A9A9A"
+                                               Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" />
+                                </Border>
+                            </StackPanel>
                         </Border>
                         <ControlTemplate.Triggers>
+                            <!-- Sin atajo declarado no hay recuadro: un keycap vacío se leería como
+                                 "tiene atajo y no me lo dice". -->
+                            <Trigger Property="Tag" Value="{x:Null}">
+                                <Setter TargetName="Keycap" Property="Visibility" Value="Collapsed" />
+                            </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="#2D4A57" />
                                 <Setter TargetName="Bd" Property="BorderBrush" Value="#4FC3F7" />
+                                <Setter TargetName="KeycapText" Property="Foreground" Value="#E6E6EA" />
+                                <Setter TargetName="Keycap" Property="BorderBrush" Value="#4FC3F7" />
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="#34505C" />
                                 <Setter TargetName="Bd" Property="BorderBrush" Value="#4FC3F7" />
+                                <Setter TargetName="KeycapText" Property="Foreground" Value="#E6E6EA" />
+                                <Setter TargetName="Keycap" Property="BorderBrush" Value="#4FC3F7" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="#3A6070" />
@@ -191,18 +218,24 @@
                        TextWrapping="Wrap"
                        Text="{loc:Translate Paths.Hints}" />
 
-            <StackPanel Grid.Row="5" Orientation="Horizontal" Margin="0,10,0,0">
-                <Button x:Name="AddBtn"        Content="{loc:Translate Paths.BtnAdd}" MinWidth="100" Margin="0,0,6,0" Padding="10,4" />
-                <Button x:Name="EditBtn"       Content="{loc:Translate Paths.BtnRename}" MinWidth="100" Margin="0,0,6,0" Padding="10,4" />
-                <Button x:Name="DefaultBtn"    Content="{loc:Translate Paths.BtnDefault}" MinWidth="140" Margin="0,0,6,0" Padding="10,4" />
-                <Button x:Name="DeleteBtn"     Content="{loc:Translate Paths.BtnDelete}" MinWidth="80" Margin="0,0,6,0" Padding="10,4" />
-                <Button x:Name="PurgeBtn"      Content="{loc:Translate Paths.BtnPurge}" MinWidth="120" Margin="0,0,6,0" Padding="10,4" />
-                <Button x:Name="AllProjectsBtn" Content="{loc:Translate Paths.BtnAllProjectsOff}" MinWidth="160" Margin="0,0,6,0" Padding="10,4" />
+            <!-- WrapPanel y no StackPanel: con el keycap adentro, cada botón creció y la fila ya no
+                 entra siempre de una en el ancho de la ventana. Un StackPanel horizontal RECORTA lo
+                 que sobra en silencio (te comés el botón de Cerrar sin enterarte); el WrapPanel baja
+                 a una segunda línea y no se pierde ninguna acción. -->
+            <WrapPanel Grid.Row="5" Orientation="Horizontal" Margin="0,10,0,0">
+                <Button x:Name="OpenBtn"       Content="{loc:Translate Paths.BtnOpen}" Tag="{loc:Translate Keys.Enter}" MinWidth="90" Margin="0,0,6,6" Padding="10,4" />
+                <Button x:Name="AddBtn"        Content="{loc:Translate Paths.BtnAdd}" Tag="{loc:Translate Keys.CtrlN}" MinWidth="100" Margin="0,0,6,6" Padding="10,4" />
+                <Button x:Name="EditBtn"       Content="{loc:Translate Paths.BtnRename}" Tag="{loc:Translate Keys.F2}" MinWidth="100" Margin="0,0,6,6" Padding="10,4" />
+                <Button x:Name="DefaultBtn"    Content="{loc:Translate Paths.BtnDefault}" Tag="{loc:Translate Keys.F3}" MinWidth="140" Margin="0,0,6,6" Padding="10,4" />
+                <Button x:Name="CopyBtn"       Content="{loc:Translate Paths.BtnCopy}" Tag="{loc:Translate Keys.CtrlC}" MinWidth="90" Margin="0,0,6,6" Padding="10,4" />
+                <Button x:Name="DeleteBtn"     Content="{loc:Translate Paths.BtnDelete}" Tag="{loc:Translate Keys.Delete}" MinWidth="80" Margin="0,0,6,6" Padding="10,4" />
+                <Button x:Name="PurgeBtn"      Content="{loc:Translate Paths.BtnPurge}" Tag="{loc:Translate Keys.CtrlK}" MinWidth="120" Margin="0,0,6,6" Padding="10,4" />
+                <Button x:Name="AllProjectsBtn" Content="{loc:Translate Paths.BtnAllProjectsOff}" Tag="{loc:Translate Keys.CtrlP}" MinWidth="160" Margin="0,0,6,6" Padding="10,4" />
                 <!-- IsCancel=True: Esc dispara el Click de este botón sin importar qué control
                      tenga el foco. Sin esto, al tabular a un botón el foco se va del FilterBox/
                      PathList y los PreviewKeyDown de Esc no se ejecutan → Esc dejaba de cerrar. -->
-                <Button x:Name="CloseBtn"      Content="{loc:Translate Paths.BtnClose}" MinWidth="80" HorizontalAlignment="Right" Padding="10,4" IsCancel="True" />
-            </StackPanel>
+                <Button x:Name="CloseBtn"      Content="{loc:Translate Paths.BtnClose}" Tag="{loc:Translate Keys.Escape}" MinWidth="80" Margin="0,0,6,6" Padding="10,4" IsCancel="True" />
+            </WrapPanel>
         </Grid>
     </Border>
 </Window>

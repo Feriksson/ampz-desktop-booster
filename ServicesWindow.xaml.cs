@@ -26,10 +26,12 @@ namespace AmpzDesktopBooster;
 ///   Enter        → acción primaria: LANZAR (o abrir en el browser si la entrada no tiene comando)
 ///   Shift+Enter  → abrir http://localhost:PUERTO en el browser
 ///   Ctrl+Enter   → LEVANTAR TODO lo que falta (los que declaran puerto y no están escuchando)
-///   F2 / ✎       → editar los cuatro campos
-///   Supr         → borrar
+///   Ctrl+N       → alta   ·   F2 → editar los cuatro campos   ·   Supr → borrar
 ///   Ctrl+C       → copiar la URL con localhost   ·   Ctrl+Shift+C → con la IP de red
-///   🔳 QR        → QR de la URL-de-red (escaneás con el celu y entrás)
+///   Ctrl+Q       → QR de la URL-de-red (escaneás con el celu y entrás)
+/// Todos están IMPRESOS en su botón (keycap) y responden desde cualquier foco de la ventana — ver
+/// <see cref="OnWindowKeyDown"/>. Antes vivían sólo en la línea de hints del pie: existían pero no
+/// se veían, que para una app que se maneja sin mouse es casi lo mismo que no existir.
 ///
 /// HERENCIA: igual que Variables — contexto → espacio → global. Las heredadas se ven atenuadas y SE
 /// PUEDEN LANZAR (heredar un servicio es justamente poder levantarlo desde el contexto), pero no se
@@ -159,8 +161,7 @@ public partial class ServicesWindow : Window
         RefreshList();
 
         FilterBox.TextChanged += (_, _) => RefreshList();
-        FilterBox.PreviewKeyDown += OnFilterKeyDown;
-        ServiceList.PreviewKeyDown += OnListKeyDown;
+        PreviewKeyDown += OnWindowKeyDown;
         ServiceList.MouseDoubleClick += (_, _) => PrimaryAction();
 
         LaunchBtn.Click += (_, _) => PrimaryAction();
@@ -170,6 +171,7 @@ public partial class ServicesWindow : Window
         EditBtn.Click += (_, _) => EditSelected();
         DeleteBtn.Click += (_, _) => DeleteSelected();
         CopyLocalBtn.Click += (_, _) => CopyLocalhost();
+        CopyNetBtn.Click += (_, _) => CopyNetwork();
         QrBtn.Click += (_, _) => ShowQr();
         CloseBtn.Click += (_, _) => Close();
 
@@ -328,35 +330,46 @@ public partial class ServicesWindow : Window
     private static bool Shift => (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
     private static bool Ctrl => (Keyboard.Modifiers & ModifierKeys.Control) != 0;
 
-    private void OnFilterKeyDown(object sender, KeyEventArgs e)
+    /// <summary>
+    /// Atajos de TODA la ventana (PreviewKeyDown del Window), no del filtro y la lista por separado
+    /// como antes. El cambio es consecuencia directa de que ahora cada botón muestre su atajo: si el
+    /// atajo dejara de responder al tabular a un botón, el keycap del botón MENTIRÍA — y un cartel
+    /// que miente es peor que no tener cartel.
+    ///
+    /// El precio son dos contextos donde una tecla ya significa otra cosa, y hay que respetarlos:
+    ///   · foco en el FILTRO → Supr borra TEXTO y Ctrl+C copia lo seleccionado del textbox. Robarle
+    ///     esas dos teclas al campo de búsqueda haría que no se pueda ni editar el filtro.
+    ///   · foco en un BOTÓN → Enter es "apretar ESTE botón". Si lo interceptáramos, tabular hasta
+    ///     Borrar y hacer Enter lanzaría el servicio: lo contrario de lo que dice la pantalla.
+    /// Ctrl+Enter y Ctrl+Shift+C sí valen en todos lados: son combos explícitos, no colisionan.
+    /// </summary>
+    private void OnWindowKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter)
-        {
-            if (Ctrl) LaunchMissingWithFeedback(); else PrimaryAction();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Escape) { Close(); e.Handled = true; }
-        else if (e.Key == Key.Down && _rows.Count > 0)
-        {
-            SelectFirstSelectable();
-            ServiceList.Focus();
-            e.Handled = true;
-        }
-    }
+        bool inFilter = FilterBox.IsKeyboardFocused;
+        bool onButton = Keyboard.FocusedElement is System.Windows.Controls.Button;
 
-    private void OnListKeyDown(object sender, KeyEventArgs e)
-    {
         switch (e.Key)
         {
-            case Key.Enter when Ctrl:  LaunchMissingWithFeedback(); e.Handled = true; break;
-            case Key.Enter when Shift: OpenInBrowser();             e.Handled = true; break;
-            case Key.Enter:            PrimaryAction();             e.Handled = true; break;
-            case Key.Escape:           Close();                     e.Handled = true; break;
-            case Key.Delete:           DeleteSelected();            e.Handled = true; break;
-            case Key.F2:               EditSelected();              e.Handled = true; break;
-            case Key.C when Ctrl && Shift: CopyNetwork();   e.Handled = true; break;
-            case Key.C when Ctrl:          CopyLocalhost(); e.Handled = true; break;
+            case Key.Enter when Ctrl:               LaunchMissingWithFeedback(); break;
+            case Key.Enter when Shift && !onButton: OpenInBrowser();             break;
+            case Key.Enter when !onButton:          PrimaryAction();             break;
+            case Key.Escape:                        Close();                     break;
+            case Key.F2:                            EditSelected();              break;
+            case Key.N when Ctrl:                   AddNew();                    break;
+            case Key.Q when Ctrl:                   ShowQr();                    break;
+            case Key.C when Ctrl && Shift:          CopyNetwork();               break;
+            case Key.C when Ctrl && !inFilter:      CopyLocalhost();             break;
+            case Key.Delete when !inFilter:         DeleteSelected();            break;
+
+            case Key.Down when inFilter && _rows.Count > 0:
+                SelectFirstSelectable();
+                ServiceList.Focus();
+                break;
+
+            default: return;  // no es nuestra → que siga su curso normal
         }
+
+        e.Handled = true;
     }
 
     // ── Acciones ──────────────────────────────────────────────────────────────

@@ -176,10 +176,11 @@ public partial class ProjectPathsWindow : Window
         RefreshList();
 
         FilterBox.TextChanged += (_, _) => RefreshList();
-        FilterBox.PreviewKeyDown += OnFilterKeyDown;
-        PathList.PreviewKeyDown += OnListKeyDown;
+        PreviewKeyDown += OnWindowKeyDown;
         PathList.MouseDoubleClick += (_, _) => OpenSelected(claude: false);
 
+        OpenBtn.Click += (_, _) => OpenSelected(claude: Shift);
+        CopyBtn.Click += (_, _) => CopySelected();
         AddBtn.Click += (_, _) => AddNew();
         EditBtn.Click += (_, _) => RenameSelected();
         DefaultBtn.Click += (_, _) => ToggleDefaultSelected();
@@ -376,31 +377,44 @@ public partial class ProjectPathsWindow : Window
 
     // ── Teclado ─────────────────────────────────────────────────────────────────
 
-    private void OnFilterKeyDown(object sender, KeyEventArgs e)
+    /// <summary>
+    /// Atajos de TODA la ventana (PreviewKeyDown del Window), no del filtro y la lista por separado
+    /// como antes. El cambio es consecuencia directa de que ahora cada botón muestre su atajo: si el
+    /// atajo dejara de responder al tabular a un botón, el keycap del botón MENTIRÍA — y un cartel
+    /// que miente es peor que no tener cartel.
+    ///
+    /// El precio son dos contextos donde una tecla ya significa otra cosa, y hay que respetarlos:
+    ///   · foco en el FILTRO → Supr borra TEXTO y Ctrl+C copia lo seleccionado del textbox. Robarle
+    ///     esas dos teclas al campo de búsqueda haría que no se pueda ni editar el filtro.
+    ///   · foco en un BOTÓN → Enter es "apretar ESTE botón". Si lo interceptáramos, tabular hasta
+    ///     Borrar y hacer Enter abriría la variable: lo contrario de lo que dice la pantalla.
+    /// </summary>
+    private void OnWindowKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter)            { OpenSelected(claude: Shift); e.Handled = true; }
-        else if (e.Key == Key.Escape)      { Close(); e.Handled = true; }
-        else if (e.Key == Key.P && Ctrl)   { ToggleAllProjects(); e.Handled = true; }
-        else if (e.Key == Key.Down && PathList.Items.Count > 0)
-        {
-            PathList.SelectedIndex = 0;
-            PathList.Focus();
-            e.Handled = true;
-        }
-    }
+        bool inFilter = FilterBox.IsKeyboardFocused;
+        bool onButton = Keyboard.FocusedElement is System.Windows.Controls.Button;
 
-    private void OnListKeyDown(object sender, KeyEventArgs e)
-    {
         switch (e.Key)
         {
-            case Key.Enter:  OpenSelected(claude: Shift); e.Handled = true; break;
-            case Key.Escape: Close();                     e.Handled = true; break;
-            case Key.Delete: DeleteSelected();            e.Handled = true; break;
-            case Key.F2:     RenameSelected();            e.Handled = true; break;
-            case Key.F3:     ToggleDefaultSelected();     e.Handled = true; break;
-            case Key.P when Ctrl: ToggleAllProjects();    e.Handled = true; break;
-            case Key.C when Ctrl: CopySelected();         e.Handled = true; break;
+            case Key.Enter when !onButton:     OpenSelected(claude: Shift); break;
+            case Key.Escape:                   Close();                     break;
+            case Key.F2:                       RenameSelected();            break;
+            case Key.F3:                       ToggleDefaultSelected();     break;
+            case Key.N when Ctrl:              AddNew();                    break;
+            case Key.K when Ctrl:              PurgeBroken();               break;
+            case Key.P when Ctrl:              ToggleAllProjects();         break;
+            case Key.C when Ctrl && !inFilter: CopySelected();              break;
+            case Key.Delete when !inFilter:    DeleteSelected();            break;
+
+            case Key.Down when inFilter && PathList.Items.Count > 0:
+                PathList.SelectedIndex = 0;
+                PathList.Focus();
+                break;
+
+            default: return;  // no es nuestra → que siga su curso normal
         }
+
+        e.Handled = true;
     }
 
     private static bool Shift => (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
