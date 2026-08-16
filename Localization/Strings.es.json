@@ -297,6 +297,7 @@
   "Paths.SepFolders": "📁  Carpetas / Paths",
   "Paths.SepUrls": "🌐  URLs",
   "Paths.ClaudeOnlyDir": "Sólo se puede abrir un directorio en Claude CLI.",
+  "Paths.Copied": "Copiado",
   "Paths.NotFound": "No existe o no es válido:",
   "Paths.DlgRenameTitle": "Renombrar variable",
   "Paths.DlgRenameLabel": "Título:",

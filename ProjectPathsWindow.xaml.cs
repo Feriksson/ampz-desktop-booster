@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media.Animation;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Interop;
 using AmpzDesktopBooster.Persistence;
@@ -431,7 +432,23 @@ public partial class ProjectPathsWindow : Window
     private void CopySelected()
     {
         if (Selected is not { } row) return;
-        try { Clipboard.SetText(row.Path); } catch { }
+        // El toast se dispara SOLO si la copia salió bien: Clipboard.SetText puede tirar si otro
+        // proceso tiene el portapapeles tomado, y mentirle al usuario con un "Copiado" que no pasó
+        // es peor que no darle feedback (que era el estado anterior).
+        try { Clipboard.SetText(row.Path); } catch { return; }
+        ShowCopyToast(row.Path);
+    }
+
+    /// <summary>
+    /// Flash de "Copiado: &lt;valor&gt;" arriba de la lista. Mostramos el VALOR y no un genérico
+    /// "copiado" porque en esta ventana conviven filas propias, heredadas y globales: ver el texto
+    /// exacto que quedó en el portapapeles confirma que copiaste la fila que creías.
+    /// </summary>
+    private void ShowCopyToast(string value)
+    {
+        CopyToastText.Text = $"{Loc.T("Paths.Copied")}: {value}";
+        if (TryFindResource("CopyToastAnim") is Storyboard sb)
+            sb.Begin(this);
     }
 
     private void DeleteSelected()

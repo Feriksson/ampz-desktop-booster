@@ -297,6 +297,7 @@
   "Paths.SepFolders": "📁  Folders / Paths",
   "Paths.SepUrls": "🌐  URLs",
   "Paths.ClaudeOnlyDir": "Only a directory can be opened in Claude CLI.",
+  "Paths.Copied": "Copied",
   "Paths.NotFound": "Not found or invalid:",
   "Paths.DlgRenameTitle": "Rename variable",
   "Paths.DlgRenameLabel": "Title:",
