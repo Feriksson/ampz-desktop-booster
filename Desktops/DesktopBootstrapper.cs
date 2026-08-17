@@ -37,8 +37,8 @@ public static class DesktopBootstrapper
         // Renombrar índice por índice sólo si difiere (evita writes innecesarios).
         for (int i = 0; i < wanted.Count && i < desktops.Count; i++)
         {
-            if (!string.Equals(desktops.GetName(i), wanted[i], StringComparison.OrdinalIgnoreCase))
-                desktops.SetName(i, wanted[i]);
+            if (!string.Equals(desktops.GetName(i), wanted[i].Name, StringComparison.OrdinalIgnoreCase))
+                desktops.SetName(i, wanted[i].Name);
         }
 
         return created;

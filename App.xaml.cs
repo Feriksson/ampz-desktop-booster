@@ -117,6 +117,11 @@ public partial class App : Application
         // Bootstrap de escritorios: crea/renombra el set gestionado si está activado.
         // Corre ANTES de instalar el hook y de cablear el listener → sin overlay-spam.
         _desktopConfig = DesktopConfig.Load();
+        // El catálogo pasa a ser la fuente de verdad del ROL de cada desk (¿de espacio? ¿el refugio?
+        // ¿protegible?) y de su color. Se inyecta ACÁ, antes de la barra y de los hooks, porque desde
+        // este punto en adelante CUALQUIERA puede preguntar. Antes cada capa deducía el rol del nombre
+        // por su cuenta y un renombre las desincronizaba a todas en silencio. Ver DeskCatalog.
+        DeskCatalog.Config = _desktopConfig;
         if (_desktopConfig.AutoCreate)
         {
             try { DesktopBootstrapper.Ensure(_desktopConfig, desktops); }
@@ -167,7 +172,7 @@ public partial class App : Application
 
         // Hook global de teclado + ruteo (navegación, espacios, paneles, pins, restricciones).
         _hotkeys = new HotkeyService();
-        _router = new HotkeyRouter(_hotkeys, desktops, projects, _appsConfig, pins, restrictions,
+        _router = new HotkeyRouter(_hotkeys, desktops, _desktopConfig, projects, _appsConfig, pins, restrictions,
             appShortcuts, () =>
         {
             int c = desktops.Current;

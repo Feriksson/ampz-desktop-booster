@@ -472,11 +472,12 @@ public partial class BarWindow : Window
     {
         var dot = new SolidColorBrush(DeskPalette.For(name).Active);
 
-        // El modo lo decide el TIPO de desk, no si hay espacio cargado:
-        //   · DESK +N  → SIEMPRE modo DUAL (es un desk de espacio: le reservamos el espacio
-        //                del nombre del espacio aunque hoy esté vacío).
-        //   · MAIN/CONSOLES/MISCS → modo SOLO centrado (nunca aceptan espacio).
-        bool isProjectDesk = name.Contains("DESK +", StringComparison.OrdinalIgnoreCase);
+        // El modo lo decide el ROL del desk (del catálogo), no si hay espacio cargado:
+        //   · rol Espacio → SIEMPRE modo DUAL (le reservamos el lugar del nombre del espacio aunque
+        //                   hoy esté vacío).
+        //   · rol Main / Fijo → modo SOLO centrado (nunca aceptan espacio).
+        // Antes era name.Contains("DESK +"): renombrar el desk le sacaba el panel dual de una.
+        bool isProjectDesk = DeskCatalog.IsSpace(name);
 
         if (isProjectDesk)
         {

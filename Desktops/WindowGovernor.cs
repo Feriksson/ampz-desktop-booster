@@ -60,7 +60,8 @@ public sealed class WindowGovernor : IDisposable
             }
         }
 
-        // 2) Restricción — si el desk donde apareció está restringido y el proc no está permitido → MAIN.
+        // 2) Restricción — si el desk donde apareció está restringido y el proc no está permitido, va
+        //    al desk REFUGIO (el de rol Main, se llame como se llame — antes era el literal "MAIN").
         //    Resolvemos el ÍNDICE actual de la ventana a NOMBRE para consultar el store (clave por nombre).
         int deskOfWindow = VirtualDesktopAccessor.GetWindowDesktopNumber(hwnd);
         string deskOfWindowName = _desktops.GetName(deskOfWindow);
@@ -68,7 +69,7 @@ public sealed class WindowGovernor : IDisposable
             && !_restrictions.IsExempt(proc)
             && !_restrictions.IsWhitelisted(deskOfWindowName, proc))
         {
-            int main = _desktops.FindByNameFragment("MAIN");
+            int main = _desktops.FindByNameFragment(DeskCatalog.FallbackDeskName);
             if (main >= 0 && main != deskOfWindow)
             {
                 VirtualDesktopAccessor.MoveWindowToDesktopNumber(hwnd, main);
@@ -90,7 +91,7 @@ public sealed class WindowGovernor : IDisposable
         // El store está indexado por nombre: traducimos el índice entrante a su nombre actual.
         string deskName = _desktops.GetName(idx);
         if (!_restrictions.IsRestricted(deskName)) return;
-        int main = _desktops.FindByNameFragment("MAIN");
+        int main = _desktops.FindByNameFragment(DeskCatalog.FallbackDeskName);
         if (main < 0 || main == idx) return;
 
         WindowMethods.EnumWindows((hwnd, _) =>

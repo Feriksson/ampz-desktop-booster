@@ -676,7 +676,9 @@ public sealed class ProjectStore
     /// </summary>
     private bool UseProjectScope(string deskName, int deskIdx, out string project, out string module)
     {
-        bool isProjectDesk = deskName.Contains("DESK +", StringComparison.OrdinalIgnoreCase);
+        // El rol sale del CATÁLOGO, no del nombre: renombrar un desk de espacio ya no le apaga el
+        // scope (antes esto era name.Contains("DESK +") y el renombre lo mandaba callado a global).
+        bool isProjectDesk = DeskCatalog.IsSpace(deskName);
         project = GetDeskProject(deskIdx);
         module = project == "" ? "" : GetDeskModule(deskIdx);
         return isProjectDesk && project != "";

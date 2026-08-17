@@ -36,13 +36,16 @@ public sealed class RestrictionStore
     public bool IsRestricted(string deskName) => _restricted.Contains(deskName);
 
     /// <summary>
-    /// Un desk es "restringible" si NO es MAIN y NO es un "DESK +N" (esos son de espacio).
-    /// CONSOLES, MISCS y similares califican. Misma regla que el legacy.
+    /// Un desk es "restringible" sólo si su ROL es <see cref="DeskRole.Fixed"/> — el de propósito
+    /// único. Los otros dos roles quedan afuera por motivos distintos:
+    ///  · Main es el REFUGIO a donde el governor manda lo no permitido: protegerlo haría rebotar
+    ///    una ventana contra sí misma para siempre.
+    ///  · Space rota de espacio y tiene que poder traer cualquier app.
+    /// Misma regla que el legacy, pero leída del catálogo: antes era Contains("MAIN")/Contains("DESK +")
+    /// y renombrar el desk lo volvía protegible (o dejaba de serlo) sin que nadie lo pidiera.
     /// </summary>
     public static bool IsRestrictable(string deskName) =>
-        deskName != "" &&
-        !deskName.Contains("MAIN", StringComparison.OrdinalIgnoreCase) &&
-        !deskName.Contains("DESK +", StringComparison.OrdinalIgnoreCase);
+        deskName != "" && DeskCatalog.RoleOf(deskName) == DeskRole.Fixed;
 
     public void SetRestricted(string deskName, bool on)
     {

@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using AmpzDesktopBooster.Apps;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Interop;
@@ -19,8 +20,9 @@ namespace AmpzDesktopBooster;
 
 /// <summary>
 /// Ventana de configuración con pestañas — el hogar de todo lo ajustable de la app.
-/// Por ahora trae la pestaña DESKTOPS (gestionar el set de escritorios virtuales);
-/// las próximas fases sumarán pestañas (Widgets, Espacios, Pins, etc.) al mismo TabControl.
+/// ESCRITORIOS va primera a propósito: es el cimiento del que cuelga todo lo demás (los espacios sólo
+/// existen en un desk de rol Espacio, las protecciones sólo en uno Fijo, y el atajo del numpad es la
+/// puerta de entrada a la app entera).
 /// </summary>
 public partial class ConfigWindow : Window
 {
@@ -52,16 +54,14 @@ public partial class ConfigWindow : Window
         Icon = AppIcon.TryLoadForWindow(); // ícono real en taskbar / Alt-Tab / título
 
         AutoCreateChk.IsChecked = _config.AutoCreate;
-        RefreshList();
+        RebuildDeskRows();
 
         UpBtn.Click += (_, _) => Move(-1);
         DownBtn.Click += (_, _) => Move(+1);
-        RenameBtn.Click += (_, _) => RenameSelected();
         RemoveBtn.Click += (_, _) => RemoveSelected();
         AddBtn.Click += (_, _) => AddNew();
         ApplyNowBtn.Click += (_, _) => CreateMissingNow();
         SaveBtn.Click += (_, _) => SaveAndApply();
-        DeskList.SelectionChanged += (_, _) => SyncNameBox();
 
         // ── Pestaña Aplicaciones ──
         RefreshApps();
@@ -589,29 +589,249 @@ public partial class ConfigWindow : Window
         RefreshApps();
     }
 
-    /// <summary>Repinta la lista con el estado real (existe / falta) de cada escritorio gestionado.</summary>
-    private void RefreshList()
+    // ── Pestaña Escritorios ────────────────────────────────────────────────────
+    // Cada fila edita una ENTRADA del catálogo (nombre + atajo + rol + color), no un string. El
+    // nombre pasó a ser SÓLO la etiqueta: por eso renombrar acá ya no le apaga el atajo, el scope de
+    // espacios ni el color al escritorio — que era el bug que originó toda esta pantalla.
+    //
+    // Las filas se construyen UNA vez (RebuildDeskRows) y sólo se reconstruyen cuando cambia la
+    // cantidad o el orden. Un cambio dentro de una fila re-emite las propiedades en vez de recrear
+    // los controles: recrearlos te sacaría el foco del textbox en la mitad de una palabra.
+
+    private readonly System.Collections.ObjectModel.ObservableCollection<DeskRow> _deskRows = new();
+
+    /// <summary>Opción del combo de atajo. NumpadKey.None = "sin atajo".</summary>
+    private sealed record KeyChoice(Hotkeys.NumpadKey Key, string Label)
     {
-        int sel = DeskList.SelectedIndex;
-        DeskList.Items.Clear();
-
-        for (int i = 0; i < _config.Managed.Count; i++)
-        {
-            string name = _config.Managed[i];
-            bool exists = _desktops.FindExact(name) >= 0;
-            string status = exists ? Loc.T("Config.DeskExists") : Loc.T("Config.DeskMissing");
-            DeskList.Items.Add($"{i + 1}.  {name}      —  {status}");
-        }
-
-        if (sel >= 0 && sel < DeskList.Items.Count)
-            DeskList.SelectedIndex = sel;
+        public override string ToString() => Label;
     }
 
-    private void SyncNameBox()
+    /// <summary>Opción del combo de rol.</summary>
+    private sealed record RoleChoice(DeskRole Role, string Label)
     {
-        int i = DeskList.SelectedIndex;
-        if (i >= 0 && i < _config.Managed.Count)
-            NameBox.Text = _config.Managed[i];
+        public override string ToString() => Label;
+    }
+
+    private static readonly KeyChoice[] AllKeyChoices =
+        new[] { new KeyChoice(Hotkeys.NumpadKey.None, Loc.T("Config.DeskNoKey")) }
+        .Concat(DesktopConfig.AssignableKeys.Select(k => new KeyChoice(k, Hotkeys.NumpadDecoder.Label(k))))
+        .ToArray();
+
+    private static readonly RoleChoice[] AllRoleChoices =
+    {
+        new(DeskRole.Space, Loc.T("Config.DeskRoleSpace")),
+        new(DeskRole.Fixed, Loc.T("Config.DeskRoleFixed")),
+        new(DeskRole.Main,  Loc.T("Config.DeskRoleMain")),
+    };
+
+    /// <summary>
+    /// Una fila de la lista de escritorios. Escribe DIRECTO sobre la <see cref="ManagedDesktop"/> del
+    /// catálogo (no hay copia intermedia que sincronizar) y avisa por <c>onChanged</c> para que la
+    /// ventana repinte a las hermanas: reasignar una tecla se la SACA a otra fila, y elegir el rol
+    /// Principal se lo saca al que lo tuviera. Esos efectos ocurren en OTRA fila, así que la fila sola
+    /// no puede refrescarse — tiene que avisar hacia arriba.
+    /// </summary>
+    private sealed class DeskRow : System.ComponentModel.INotifyPropertyChanged
+    {
+        private readonly DesktopConfig _config;
+        private readonly Func<string, bool> _exists;
+        private readonly Action _onChanged;
+
+        public DeskRow(ManagedDesktop entry, DesktopConfig config, Func<string, bool> exists, Action onChanged)
+        {
+            Entry = entry;
+            _config = config;
+            _exists = exists;
+            _onChanged = onChanged;
+        }
+
+        public ManagedDesktop Entry { get; }
+
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+        public KeyChoice[] KeyChoices => AllKeyChoices;
+        public RoleChoice[] RoleChoices => AllRoleChoices;
+
+        /// <summary>Posición 1-based = el índice real del escritorio (lo garantiza el bootstrapper).</summary>
+        public string Position => (_config.Managed.IndexOf(Entry) + 1).ToString();
+
+        public string Name
+        {
+            get => Entry.Name;
+            set
+            {
+                string v = (value ?? "").Trim();
+                if (v == "" || v == Entry.Name) return;
+                Entry.Name = v;
+                _onChanged();
+            }
+        }
+
+        public KeyChoice SelectedKey
+        {
+            get => AllKeyChoices.FirstOrDefault(k => k.Key == Entry.ShortcutKey) ?? AllKeyChoices[0];
+            set
+            {
+                if (value is null || value.Key == Entry.ShortcutKey) return;
+                _config.ClaimKey(Entry, value.Key); // una tecla, un solo destino
+                _onChanged();
+            }
+        }
+
+        public RoleChoice SelectedRole
+        {
+            get => AllRoleChoices.FirstOrDefault(r => r.Role == Entry.DeskRole) ?? AllRoleChoices[1];
+            set
+            {
+                if (value is null || value.Role == Entry.DeskRole) return;
+                Entry.DeskRole = value.Role;
+                if (value.Role == DeskRole.Main) _config.ClaimMain(Entry); // el refugio es UNO
+                _onChanged();
+            }
+        }
+
+        /// <summary>El color con el que se va a ver de verdad — ya resuelto por propio → rol.</summary>
+        public Brush Swatch => new SolidColorBrush(DeskPalette.For(Entry.Name).Active);
+
+        public string Status => _exists(Entry.Name) ? Loc.T("Config.DeskExists") : Loc.T("Config.DeskMissing");
+
+        public Brush StatusBrush => _exists(Entry.Name)
+            ? new SolidColorBrush(Color.FromRgb(0x6A, 0xBF, 0x6A))
+            : new SolidColorBrush(Color.FromRgb(0xE5, 0x53, 0x4B));
+
+        /// <summary>Re-lee TODO desde el modelo. Lo dispara la ventana tras cualquier cambio.</summary>
+        public void RaiseAll()
+        {
+            foreach (var p in new[] { nameof(Position), nameof(Name), nameof(SelectedKey),
+                                      nameof(SelectedRole), nameof(Swatch), nameof(Status), nameof(StatusBrush) })
+                PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(p));
+        }
+    }
+
+    /// <summary>Reconstruye las filas desde el catálogo. Sólo al cargar, agregar, quitar o reordenar.</summary>
+    private void RebuildDeskRows(int selectIndex = -1)
+    {
+        _deskRows.Clear();
+        foreach (var entry in _config.Managed)
+            _deskRows.Add(new DeskRow(entry, _config, n => _desktops.FindExact(n) >= 0, OnDeskRowChanged));
+
+        if (DeskList.ItemsSource is null)
+            DeskList.ItemsSource = _deskRows;
+
+        if (selectIndex >= 0 && selectIndex < _deskRows.Count)
+            DeskList.SelectedIndex = selectIndex;
+
+        RefreshNumpadPreview();
+    }
+
+    /// <summary>Cambió algo en una fila: repintar TODAS (los efectos cruzan filas) y el mapa del numpad.</summary>
+    private void OnDeskRowChanged()
+    {
+        foreach (var row in _deskRows) row.RaiseAll();
+        RefreshNumpadPreview();
+    }
+
+    /// <summary>Compatibilidad con los puntos que ya pedían "repintá la lista" (crear faltantes, guardar).</summary>
+    private void RefreshList() => OnDeskRowChanged();
+
+    /// <summary>
+    /// Pinta el mapa 3×3 del numpad con el destino real de cada tecla. Las filas van 7-8-9 / 4-5-6 /
+    /// 1-2-3 como el teclado físico — invertir el orden acá haría que el mapa mienta sobre dónde está
+    /// la tecla, que es exactamente lo que este panel viene a evitar.
+    /// </summary>
+    private void RefreshNumpadPreview()
+    {
+        NumpadPreview.Children.Clear();
+        var order = new[]
+        {
+            Hotkeys.NumpadKey.D7, Hotkeys.NumpadKey.D8, Hotkeys.NumpadKey.D9,
+            Hotkeys.NumpadKey.D4, Hotkeys.NumpadKey.D5, Hotkeys.NumpadKey.D6,
+            Hotkeys.NumpadKey.D1, Hotkeys.NumpadKey.D2, Hotkeys.NumpadKey.D3,
+        };
+
+        foreach (var key in order)
+        {
+            var entry = _config.ByKey(key);
+            var panel = new StackPanel { Margin = new Thickness(2) };
+            panel.Children.Add(new TextBlock
+            {
+                Text = key.ToString().Substring(1), // "D7" → "7"
+                FontSize = 14,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(entry is null
+                    ? Color.FromRgb(0x55, 0x55, 0x55)
+                    : DeskPalette.For(entry.Name).Active),
+                HorizontalAlignment = HorizontalAlignment.Center,
+            });
+            panel.Children.Add(new TextBlock
+            {
+                Text = entry?.Name ?? "—",
+                FontSize = 9,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9A)),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxWidth = 68,
+            });
+            NumpadPreview.Children.Add(new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(0x20, 0x20, 0x20)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3A)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Margin = new Thickness(2),
+                Padding = new Thickness(2, 5, 2, 5),
+                Child = panel,
+            });
+        }
+    }
+
+    // Tocar cualquier control de una fila la SELECCIONA — si no, podías estar tipeando en la fila 3
+    // con la 1 seleccionada y "Subir" movía otra.
+    //
+    // Van DOS handlers y no uno solo con RoutedEventArgs a propósito: el EventSetter valida la FIRMA
+    // exacta del delegado del evento al parsear el XAML (en runtime, no al compilar), así que un
+    // handler genérico compila igual y después revienta con XamlParseException al abrir la ventana.
+    private void DeskRowFocused(object sender, KeyboardFocusChangedEventArgs e) => SelectDeskRow(sender);
+    private void DeskRowClicked(object sender, MouseButtonEventArgs e) => SelectDeskRow(sender);
+
+    private static void SelectDeskRow(object sender)
+    {
+        if (sender is ListBoxItem item) item.IsSelected = true;
+    }
+
+    /// <summary>
+    /// Paleta de color del desk. Incluye "automático" (= sin color propio, lo decide el rol) para que
+    /// se pueda VOLVER atrás: sin esa opción, pintar un desk una vez sería irreversible desde la UI.
+    /// </summary>
+    private void PickDeskColor(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.Tag is not DeskRow row) return;
+
+        var menu = new ContextMenu { PlacementTarget = btn, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+
+        var auto = new MenuItem { Header = Loc.T("Config.DeskColorAuto") };
+        auto.Click += (_, _) => { row.Entry.Color = ""; OnDeskRowChanged(); };
+        menu.Items.Add(auto);
+        menu.Items.Add(new Separator());
+
+        foreach (string hex in DeskPalette.Presets)
+        {
+            string captured = hex;
+            var item = new MenuItem
+            {
+                Header = new Border
+                {
+                    Width = 110,
+                    Height = 16,
+                    CornerRadius = new CornerRadius(3),
+                    Background = new SolidColorBrush(DeskPalette.TryParseHex(captured, out var c) ? c : Colors.Gray),
+                },
+            };
+            item.Click += (_, _) => { row.Entry.Color = captured; OnDeskRowChanged(); };
+            menu.Items.Add(item);
+        }
+
+        menu.IsOpen = true;
     }
 
     private void Move(int dir)
@@ -621,28 +841,16 @@ public partial class ConfigWindow : Window
         if (i < 0 || j < 0 || j >= _config.Managed.Count)
             return;
         (_config.Managed[i], _config.Managed[j]) = (_config.Managed[j], _config.Managed[i]);
-        RefreshList();
-        DeskList.SelectedIndex = j;
-    }
-
-    private void RenameSelected()
-    {
-        int i = DeskList.SelectedIndex;
-        string name = NameBox.Text.Trim();
-        if (i < 0 || name == "")
-            return;
-        _config.Managed[i] = name;
-        RefreshList();
-        DeskList.SelectedIndex = i;
+        RebuildDeskRows(j);
     }
 
     private void RemoveSelected()
     {
         int i = DeskList.SelectedIndex;
-        if (i < 0)
+        if (i < 0 || i >= _config.Managed.Count)
             return;
         _config.Managed.RemoveAt(i);
-        RefreshList();
+        RebuildDeskRows(Math.Min(i, _config.Managed.Count - 1));
     }
 
     private void AddNew()
@@ -650,10 +858,15 @@ public partial class ConfigWindow : Window
         string name = NameBox.Text.Trim();
         if (name == "")
             return;
-        _config.Managed.Add(name);
+
+        // Nace SIN atajo y con rol Fijo: es el default seguro. Darle una tecla automáticamente se la
+        // robaría en silencio a un desk que ya la usa, y asumirle rol Espacio le abriría un scope de
+        // variables que el usuario no pidió. Ambas cosas son un click en la fila.
+        var entry = new ManagedDesktop { Name = name };
+        entry.DeskRole = DeskRole.Fixed;
+        _config.Managed.Add(entry);
         NameBox.Clear();
-        RefreshList();
-        DeskList.SelectedIndex = DeskList.Items.Count - 1;
+        RebuildDeskRows(_config.Managed.Count - 1);
     }
 
     private void CreateMissingNow()

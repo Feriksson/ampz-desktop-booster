@@ -16,8 +16,8 @@ namespace AmpzDesktopBooster.Hotkeys;
 /// (Numpad físico con NumLock OFF), espacios por desk, y el DeskPicker.
 ///
 /// Mapeo (igual que el legacy ampzWinTunner.ahk líneas 1289-1314, 3760, 3905-3906):
-///   Win+Numpad 1/2/3 → MAIN / CONSOLES / MISCS  (fila inferior, la más cómoda)
-///   Win+Numpad 4..9  → DESK +1..+6
+///   Win+Numpad 1..9  → el desk que TENGA esa tecla asignada en el catálogo (pestaña Escritorios)
+///                      Defaults: 1/2/3 → MAIN / CONSOLES / MISCS · 4..9 → DESK +1..+6
 ///   Win+Shift+(nav)  → mandar ventana activa ahí + seguir
 ///   Win+NumpadEnter  → setear espacio del desk actual (sólo DESK+)
 ///   NumpadClear solo → DeskPicker (saltar a un espacio de la sesión)
@@ -30,6 +30,9 @@ namespace AmpzDesktopBooster.Hotkeys;
 public sealed class HotkeyRouter
 {
     private readonly DesktopService _desktops;
+    // El catálogo de escritorios: de acá sale el mapa tecla → desk. Es la MISMA instancia que edita
+    // la ventana de config, así que reasignar un atajo tiene efecto al instante, sin reiniciar.
+    private readonly DesktopConfig _deskConfig;
     private readonly ProjectStore _projects;
     private readonly AppsConfig _apps;
     private readonly PinStore _pins;
@@ -75,11 +78,13 @@ public sealed class HotkeyRouter
                       VK_F9 = 0x78, VK_F11 = 0x7A, VK_F12 = 0x7B,
                       VK_OEM_3 = 0xC0, VK_OEM_2 = 0xBF;
 
-    public HotkeyRouter(HotkeyService hotkeys, DesktopService desktops, ProjectStore projects,
+    public HotkeyRouter(HotkeyService hotkeys, DesktopService desktops, DesktopConfig deskConfig,
+        ProjectStore projects,
         AppsConfig apps, PinStore pins, RestrictionStore restrictions, AppShortcutStore shortcuts,
         Action refreshCurrentDesk, TaskSessionStore taskSession, Action refreshTaskWidget)
     {
         _desktops = desktops;
+        _deskConfig = deskConfig;
         _projects = projects;
         _apps = apps;
         _pins = pins;
@@ -266,40 +271,67 @@ public sealed class HotkeyRouter
             case NumpadKey.D0:       ShowTaskPicker();        return; // Win+NumpadInsert (scancode 0x52)
         }
 
-        // ── Navegación por nombre ──
-        string? target = TargetFor(e.Key);
-        if (target is null)
+        // ── Navegación: la tecla resuelve un desk del catálogo ──
+        int target = ResolveTargetDesk(e.Key);
+        if (target < 0)
             return;
 
         if (e.Shift)
         {
             // Guard de protección: si el desk destino está restringido y la app activa no está en su
             // whitelist, NEGAMOS el envío y avisamos por toast. Sin esto, el WindowGovernor rebotaría
-            // la ventana a MAIN al entrar igual — pero rebotar DESPUÉS (verla saltar y volver) es
+            // la ventana al refugio al entrar igual — pero rebotar DESPUÉS (verla saltar y volver) es
             // confuso; mejor prevenir de entrada y explicar el motivo.
             if (!CanSendForegroundTo(target, out string proc, out string deskName))
             {
                 Toasts.SendBlockedByRestriction(proc, deskName);
                 return;
             }
-            _desktops.SendForegroundWindowToByName(target, follow: true);
+            IntPtr hwnd = WindowMethods.GetForegroundWindow();
+            if (hwnd != IntPtr.Zero && _desktops.Current != target)
+                _desktops.SendWindowTo(hwnd, target, follow: true);
         }
         else
-            _desktops.GoToByName(target);
+            _desktops.GoTo(target);
     }
 
     /// <summary>
-    /// ¿Se puede mandar la ventana activa al desk con ese fragmento de nombre? Resuelve el desk real,
-    /// y si está PROTEGIDO chequea la whitelist. Las exentas (sistema + la propia app) y las
-    /// whitelisteadas pasan; mismo criterio que WindowGovernor. true = se puede enviar; si devuelve
-    /// false, <paramref name="proc"/> y <paramref name="deskName"/> traen el motivo para el toast.
+    /// Tecla del numpad → ÍNDICE del escritorio destino. -1 si esa tecla no tiene desk asignado.
+    ///
+    /// ⚠ ESTE ERA EL BUG (no lo vuelvas a un switch de literales). Antes acá había un
+    /// <c>switch { D1 => "MAIN", D2 => "CONSOLES", ... }</c> hardcodeado: el atajo apuntaba a un
+    /// STRING escrito en el código, no a un escritorio. Renombrabas el desk desde la config, el
+    /// rename funcionaba perfecto… y la tecla quedaba buscando un nombre que ya no existía →
+    /// FindByNameFragment devolvía -1 y la tecla no hacía NADA, sin un solo aviso.
+    ///
+    /// Ahora la tecla la posee la ENTRADA del catálogo y sobrevive al renombre. Se resuelve primero
+    /// por nombre (la identidad del desk sigue siendo su nombre, igual que pins y protecciones) y,
+    /// si ese nombre no aparece en el sistema —lo renombraron por FUERA de la app, desde Windows—,
+    /// caemos a la POSICIÓN en el catálogo, que es el índice real del desktop garantizado por el
+    /// bootstrapper. Así el atajo aguanta las dos formas de renombrar.
     /// </summary>
-    private bool CanSendForegroundTo(string targetFragment, out string proc, out string deskName)
+    private int ResolveTargetDesk(NumpadKey key)
+    {
+        var entry = _deskConfig.ByKey(key);
+        if (entry is null) return -1;
+
+        int byName = _desktops.FindByNameFragment(entry.Name);
+        if (byName >= 0) return byName;
+
+        int byPosition = _deskConfig.Managed.IndexOf(entry);
+        return byPosition >= 0 && byPosition < _desktops.Count ? byPosition : -1;
+    }
+
+    /// <summary>
+    /// ¿Se puede mandar la ventana activa a ese desk? Si está PROTEGIDO chequea la whitelist. Las
+    /// exentas (sistema + la propia app) y las whitelisteadas pasan; mismo criterio que WindowGovernor.
+    /// true = se puede enviar; si devuelve false, <paramref name="proc"/> y <paramref name="deskName"/>
+    /// traen el motivo para el toast.
+    /// </summary>
+    private bool CanSendForegroundTo(int idx, out string proc, out string deskName)
     {
         proc = ""; deskName = "";
-
-        int idx = _desktops.FindByNameFragment(targetFragment);
-        if (idx < 0) return true; // no existe → que SendForegroundWindowToByName devuelva false solo
+        if (idx < 0) return true;
 
         deskName = _desktops.GetName(idx);
         if (!_restrictions.IsRestricted(deskName)) return true; // desk libre → sin restricción
@@ -317,8 +349,9 @@ public sealed class HotkeyRouter
         int idx = _desktops.Current;
         string name = _desktops.GetName(idx);
 
-        // El setter es sólo para los desks "DESK +N" (igual que el legacy).
-        if (!name.Contains("DESK +", StringComparison.OrdinalIgnoreCase))
+        // El setter es sólo para los desks de rol ESPACIO (antes: los que se llamaran "DESK +N" —
+        // por eso renombrar uno te dejaba sin setter y parecía que el atajo estaba roto).
+        if (!DeskCatalog.IsSpace(name))
             return;
 
         // Re-press con el setter abierto → RESET del desk: saca el espacio y cierra. Mismo patrón de
@@ -348,7 +381,7 @@ public sealed class HotkeyRouter
         int idx = _desktops.Current;
         string name = _desktops.GetName(idx);
 
-        if (!name.Contains("DESK +", StringComparison.OrdinalIgnoreCase))
+        if (!DeskCatalog.IsSpace(name))
             return;
 
         string project = _projects.GetDeskProject(idx);
@@ -608,27 +641,10 @@ public sealed class HotkeyRouter
         w.ShowFocused();
     }
 
-    /// <summary>Tecla física del numpad → fragmento de nombre del desktop destino.</summary>
-    /// <remarks>
-    /// Layout reorganizado (pedido del usuario): MAIN/CONSOLES/MISCS bajan a la fila INFERIOR (1-2-3),
-    /// la más cómoda al alcance del pulgar; los DESK+ suben ocupando las filas media y superior.
-    ///   Fila inferior  1 2 3 → MAIN  / CONSOLES / MISCS
-    ///   Fila media     4 5 6 → DESK+1 / DESK+2 / DESK+3
-    ///   Fila superior  7 8 9 → DESK+4 / DESK+5 / DESK+6
-    /// OJO: D5 (Numpad5/Clear) acá es Win+5 → DESK +2. El Numpad5 PELADO (sin Win) sigue abriendo el
-    /// DeskPicker — no colisionan: lo distingue WinDown en Route().
-    /// </remarks>
-    private static string? TargetFor(NumpadKey key) => key switch
-    {
-        NumpadKey.D1 => "MAIN",     // Numpad1 / End
-        NumpadKey.D2 => "CONSOLES", // Numpad2 / Down (ex-MAILS: el usuario renombró el desk)
-        NumpadKey.D3 => "MISCS",    // Numpad3 / PgDn
-        NumpadKey.D4 => "DESK +1",  // Numpad4 / Left
-        NumpadKey.D5 => "DESK +2",  // Numpad5 / Clear
-        NumpadKey.D6 => "DESK +3",  // Numpad6 / Right
-        NumpadKey.D7 => "DESK +4",  // Numpad7 / Home
-        NumpadKey.D8 => "DESK +5",  // Numpad8 / Up
-        NumpadKey.D9 => "DESK +6",  // Numpad9 / PgUp
-        _ => null,
-    };
+    // El layout por defecto (editable desde Config → Escritorios) sigue siendo el que pidió el
+    // usuario: MAIN/CONSOLES/MISCS en la fila INFERIOR (1-2-3), la más cómoda al alcance del pulgar;
+    // los de espacio ocupan las filas media (4-5-6) y superior (7-8-9). Ver DesktopConfig.DefaultManaged.
+    //
+    // OJO: D5 (Numpad5/Clear) con Win es navegación. El Numpad5 PELADO (sin Win) abre el DeskPicker —
+    // no colisionan: lo distingue WinDown en Route().
 }

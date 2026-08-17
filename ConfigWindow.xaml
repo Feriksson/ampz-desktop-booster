@@ -294,6 +294,156 @@
 
     <TabControl x:Name="Tabs" Background="#1E1E1E" BorderThickness="0" UseLayoutRounding="False">
 
+        <!-- ===== Pestaña ESCRITORIOS — VA PRIMERA A PROPÓSITO =====
+             Es el cimiento del que cuelga todo lo demás: los espacios sólo existen en un desk de rol
+             Espacio, las protecciones sólo en uno Fijo, y el atajo del numpad es la puerta de entrada
+             a la app entera. Estaba cuarta y eso la volvía el último lugar donde uno mira cuando algo
+             deja de responder — justo al revés de lo que hace falta.
+
+             Cada fila edita una ENTRADA del catálogo, no un string: el nombre es sólo la etiqueta, y
+             la tecla y el rol viven pegados a la entrada. Por eso ahora renombrar un escritorio no
+             puede romperle el atajo (que era el bug que originó esta pantalla). Ver ManagedDesktop. -->
+        <TabItem Tag="🖥️" Header="{loc:Translate Config.DesktopsTab}">
+            <Grid Margin="14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.ColumnSpan="2" FontSize="16" FontWeight="SemiBold"
+                           Text="{loc:Translate Config.ManagedDesktops}" />
+                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Foreground="{StaticResource FgMuted}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,10"
+                           Text="{loc:Translate Config.ManagedDesktopsHint}" />
+
+                <!-- Encabezado de columnas: sin esto, tres combos seguidos no dicen qué editan. -->
+                <Grid Grid.Row="2" Grid.Column="0" Margin="10,0,10,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="26" />
+                        <ColumnDefinition Width="30" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="150" />
+                        <ColumnDefinition Width="128" />
+                        <ColumnDefinition Width="72" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="2" Text="{loc:Translate Config.DeskColName}"  FontSize="10" Foreground="{StaticResource FgMuted}" />
+                    <TextBlock Grid.Column="3" Text="{loc:Translate Config.DeskColKey}"   FontSize="10" Foreground="{StaticResource FgMuted}" Margin="6,0,0,0" />
+                    <TextBlock Grid.Column="4" Text="{loc:Translate Config.DeskColRole}"  FontSize="10" Foreground="{StaticResource FgMuted}" Margin="6,0,0,0" />
+                    <TextBlock Grid.Column="5" Text="{loc:Translate Config.DeskColState}" FontSize="10" Foreground="{StaticResource FgMuted}" Margin="6,0,0,0" />
+                </Grid>
+
+                <Border Grid.Row="3" Grid.Column="0" Background="{StaticResource Panel}" CornerRadius="4" Padding="2">
+                    <ListBox x:Name="DeskList" Background="Transparent" BorderThickness="0"
+                             Foreground="{StaticResource Fg}" FontSize="13"
+                             HorizontalContentAlignment="Stretch"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemContainerStyle>
+                            <!-- Hereda el estilo global de ListBoxItem y le suma una sola cosa: al
+                                 tocar CUALQUIER control de la fila (el nombre, un combo), la fila
+                                 queda seleccionada. Sin esto podías estar tipeando en la fila 3 y
+                                 tener seleccionada la 1 → "Subir" movía otra. -->
+                            <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                <Setter Property="Padding" Value="6,3" />
+                                <EventSetter Event="PreviewGotKeyboardFocus" Handler="DeskRowFocused" />
+                                <EventSetter Event="PreviewMouseLeftButtonDown" Handler="DeskRowClicked" />
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="26" />
+                                        <ColumnDefinition Width="30" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="128" />
+                                        <ColumnDefinition Width="72" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Grid.Column="0" Text="{Binding Position}" FontSize="11"
+                                               Foreground="{StaticResource FgMuted}" VerticalAlignment="Center" />
+
+                                    <!-- Muestrario de color: click → paleta. El color se ve ACÁ y no en
+                                         un diálogo aparte porque es la misma señal que vas a ver de
+                                         reflejo en la barra y el overlay. -->
+                                    <Button Grid.Column="1" Width="20" Height="20" Padding="0" MinWidth="0"
+                                            Margin="0,0,8,0" Cursor="Hand"
+                                            Background="{Binding Swatch}" BorderBrush="#555"
+                                            ToolTip="{loc:Translate Config.DeskColorTip}"
+                                            Tag="{Binding}" Click="PickDeskColor" />
+
+                                    <TextBox Grid.Column="2" Text="{Binding Name, UpdateSourceTrigger=LostFocus}"
+                                             Background="#2A2A2A" Foreground="{StaticResource Fg}"
+                                             BorderBrush="#444" Padding="6,3" VerticalContentAlignment="Center" />
+
+                                    <ComboBox Grid.Column="3" Margin="6,0,0,0"
+                                              ItemsSource="{Binding KeyChoices}" SelectedItem="{Binding SelectedKey}" />
+
+                                    <ComboBox Grid.Column="4" Margin="6,0,0,0"
+                                              ItemsSource="{Binding RoleChoices}" SelectedItem="{Binding SelectedRole}" />
+
+                                    <TextBlock Grid.Column="5" Margin="8,0,0,0" FontSize="11"
+                                               VerticalAlignment="Center"
+                                               Text="{Binding Status}" Foreground="{Binding StatusBrush}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+
+                <!-- Mapa del numpad: la respuesta de un vistazo a "¿qué tecla me lleva a dónde?".
+                     Es el control que faltaba — el atajo era invisible hasta que dejaba de andar. -->
+                <Border Grid.Row="2" Grid.RowSpan="4" Grid.Column="1" Margin="14,0,0,0" Width="248"
+                        Background="{StaticResource Panel}" CornerRadius="4" Padding="12"
+                        VerticalAlignment="Top">
+                    <StackPanel>
+                        <TextBlock Text="{loc:Translate Config.DeskShortcutMap}" FontSize="12" FontWeight="SemiBold" />
+                        <TextBlock Text="{loc:Translate Config.DeskShortcutMapHint}" FontSize="10" TextWrapping="Wrap"
+                                   Foreground="{StaticResource FgMuted}" Margin="0,3,0,10" />
+                        <UniformGrid x:Name="NumpadPreview" Rows="3" Columns="3" />
+                        <TextBlock Text="{loc:Translate Config.DeskRoleLegend}" FontSize="10" TextWrapping="Wrap"
+                                   Foreground="{StaticResource FgMuted}" Margin="0,12,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Reordenar / quitar -->
+                <StackPanel Grid.Row="4" Grid.Column="0" Orientation="Horizontal" Margin="0,8,0,0">
+                    <Button x:Name="UpBtn"     Content="{loc:Translate Config.MoveUp}" />
+                    <Button x:Name="DownBtn"   Content="{loc:Translate Config.MoveDown}" />
+                    <Button x:Name="RemoveBtn" Content="{loc:Translate Config.Remove}" />
+                </StackPanel>
+
+                <!-- Alta nueva -->
+                <StackPanel Grid.Row="5" Grid.Column="0" Orientation="Horizontal" Margin="0,8,0,0">
+                    <TextBox x:Name="NameBox" Width="320" Background="#2A2A2A"
+                             Foreground="{StaticResource Fg}" BorderBrush="#444" Padding="6,4"
+                             VerticalContentAlignment="Center" />
+                    <Button x:Name="AddBtn" Content="{loc:Translate Config.Add}" Margin="6,0,0,0" />
+                </StackPanel>
+
+                <!-- Footer: autocreate + acciones -->
+                <Grid Grid.Row="6" Grid.ColumnSpan="2" Margin="0,14,0,0">
+                    <CheckBox x:Name="AutoCreateChk" Foreground="{StaticResource Fg}"
+                              VerticalAlignment="Center"
+                              Content="{loc:Translate Config.AutoCreateDesktops}" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="ApplyNowBtn" Content="{loc:Translate Config.CreateMissingNow}" MinWidth="150" />
+                        <Button x:Name="SaveBtn" Content="{loc:Translate Config.Save}" MinWidth="100"
+                                Background="{StaticResource Accent}" Foreground="#10222A" FontWeight="SemiBold" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </TabItem>
+
         <!-- ===== Pestaña ESPACIOS Y CONTEXTOS =====
              Lista PLANA con indentación en vez de un TreeView: el ListBox ya tiene el estilo oscuro
              de esta ventana (hover, selección en acento, foco) y lo comparten todas las demás
@@ -579,63 +729,6 @@
                                Foreground="{StaticResource FgMuted}" FontSize="11"
                                TextTrimming="CharacterEllipsis" />
                 </StackPanel>
-            </Grid>
-        </TabItem>
-
-        <!-- ===== Pestaña DESKTOPS ===== -->
-        <TabItem Tag="🖥️" Header="{loc:Translate Config.DesktopsTab}">
-            <Grid Margin="14">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-
-                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold"
-                           Text="{loc:Translate Config.ManagedDesktops}" />
-                <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
-                           TextWrapping="Wrap" Margin="0,4,0,10"
-                           Text="{loc:Translate Config.ManagedDesktopsHint}" />
-
-                <!-- Alta: textbox + Agregar -->
-                <Grid Grid.Row="1" Margin="0,0,0,0" VerticalAlignment="Bottom" Visibility="Collapsed" />
-
-                <Border Grid.Row="2" Background="{StaticResource Panel}" CornerRadius="4" Padding="2">
-                    <ListBox x:Name="DeskList" Background="Transparent" BorderThickness="0"
-                             Foreground="{StaticResource Fg}" FontSize="13"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
-                </Border>
-
-                <!-- Reordenar / editar -->
-                <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8,0,0">
-                    <Button x:Name="UpBtn"     Content="{loc:Translate Config.MoveUp}" />
-                    <Button x:Name="DownBtn"   Content="{loc:Translate Config.MoveDown}" />
-                    <Button x:Name="RenameBtn" Content="{loc:Translate Config.Rename}" />
-                    <Button x:Name="RemoveBtn" Content="{loc:Translate Config.Remove}" />
-                </StackPanel>
-
-                <!-- Alta nueva -->
-                <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,8,0,0">
-                    <TextBox x:Name="NameBox" Width="320" Background="#2A2A2A"
-                             Foreground="{StaticResource Fg}" BorderBrush="#444" Padding="6,4"
-                             VerticalContentAlignment="Center" />
-                    <Button x:Name="AddBtn" Content="{loc:Translate Config.Add}" Margin="6,0,0,0" />
-                </StackPanel>
-
-                <!-- Footer: autocreate + acciones -->
-                <Grid Grid.Row="5" Margin="0,14,0,0">
-                    <CheckBox x:Name="AutoCreateChk" Foreground="{StaticResource Fg}"
-                              VerticalAlignment="Center"
-                              Content="{loc:Translate Config.AutoCreateDesktops}" />
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <Button x:Name="ApplyNowBtn" Content="{loc:Translate Config.CreateMissingNow}" MinWidth="150" />
-                        <Button x:Name="SaveBtn" Content="{loc:Translate Config.Save}" MinWidth="100"
-                                Background="{StaticResource Accent}" Foreground="#10222A" FontWeight="SemiBold" />
-                    </StackPanel>
-                </Grid>
             </Grid>
         </TabItem>
 

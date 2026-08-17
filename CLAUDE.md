@@ -93,11 +93,41 @@ que `WH_KEYBOARD_LL` y el `PostMessage` de la DLL necesitan.
 
 ## Conceptos de dominio (lo que NO es obvio del código)
 
-### 1. Navegación por NOMBRE, no por índice
-Los desks se identifican por **fragmento de nombre** (case-insensitive), no por posición.
-`Win+Numpad1` va SIEMPRE a "MAIN" aunque lo muevas de lugar. Set gestionado por defecto:
-`MAIN`, `CONSOLES`, `MISCS`, `DESK +1` … `DESK +6` (ver `DesktopConfig.DefaultManaged`).
-`DesktopService` es la capa alta sobre la DLL — **nadie más toca P/Invoke de desktops directo**.
+### 1. El CATÁLOGO de escritorios: nombre, atajo, rol y color (`DesktopConfig` + `ManagedDesktop`)
+Los desks se identifican por **fragmento de nombre** (case-insensitive), no por posición: reordenarlos
+no rompe nada. `DesktopService` es la capa alta sobre la DLL — **nadie más toca P/Invoke de desktops
+directo**. Set gestionado por defecto: `MAIN`, `CONSOLES`, `MISCS`, `DESK +1` … `DESK +6`
+(ver `DesktopConfig.DefaultManaged`).
+
+**⚠ Pero el nombre es SÓLO la etiqueta — no lo vuelvas a cargar de responsabilidades.**
+Durante mucho tiempo el catálogo fue un `List<string>` y ese string hacía de identificador, de ROL y
+de etiqueta a la vez. Renombrar un desk desde la config lo rompía TODO en silencio: el atajo del
+numpad (era un `switch` con literales hardcodeados en `HotkeyRouter`), el setter de Espacios, el scope
+de variables/notas/servicios, el color, la protegibilidad y el panel dual de la barra — seis copias
+de `name.Contains("DESK +")` desperdigadas que un renombre desincronizaba de golpe. Nada avisaba: la
+app seguía andando, sorda.
+
+Hoy cada entrada es un `ManagedDesktop` con **identidad propia** — `name`, `key` (la tecla del numpad),
+`role` y `color`. El atajo y el rol viven pegados a la ENTRADA y sobreviven a cualquier renombre.
+
+| Rol (`DeskRole`) | Qué habilita |
+|---|---|
+| `Main` | El **refugio**: adonde el `WindowGovernor` manda lo no permitido en un desk protegido. Hay UNO solo, y por eso NO es protegible (rebotaría contra sí mismo para siempre). |
+| `Space` | Acepta espacio + contexto, con su scope propio de variables, notas y servicios. Panel dual en la barra. Antes = los que se llamaran `DESK +N`. |
+| `Fixed` | Propósito único. El **único** protegible con whitelist. Rol por defecto de un desk nuevo. |
+
+**`DeskCatalog` es el punto ÚNICO donde se pregunta el rol** (`RoleOf` / `IsSpace` / `ColorOf` /
+`FallbackDeskName`). Es estático e inyectado por `App.OnStartup` — mismo patrón que `Apps.Shell.Desktops`
+— porque la pregunta la hacen capas que no se conocen entre sí y sólo tienen el nombre a mano
+(`ProjectStore`, `DeskPalette`, `RestrictionStore`, `WindowGovernor`, la barra, el router). Un desk
+FUERA del catálogo (creado a mano desde Windows) cae al criterio legado por nombre: nunca devuelve basura.
+
+**La migración del `desktops.json` viejo** (array de strings) corre sola al cargar y persiste enseguida.
+Reparte los atajos en DOS pasadas y el orden importa: (1) por NOMBRE con el mapa histórico, así el que
+todavía se llama igual conserva EXACTAMENTE la tecla que venías usando; (2) los huérfanos toman la
+primera tecla libre. Repartir por posición hubiera sido más simple y habría cambiado de golpe todos los
+atajos de quien reordenó sus escritorios — arreglar uno roto rompiendo ocho sanos no es migrar.
+Justamente el desk renombrado deja su tecla vieja huérfana, así que la 2da pasada se la devuelve.
 
 ### ⚠ VOCABULARIO: en la UI son ESPACIO y CONTEXTO; en el código, `project` y `module`
 Leé esto antes que nada o vas a creer que hay dos modelos, y hay uno solo.
@@ -150,7 +180,7 @@ matar); re-confirmar el MISMO espacio lo conserva. El INI suma la sugerencia `de
 **Cada contexto lleva un COLOR propio** (auto-asignado de `ModulePalette`, ciclable con F3 en el
 picker) y se pinta en overlay, barra y DeskPicker. Esto no es cosmética: la feature nació porque el
 usuario le ERRABA de contexto al cambiar de pantalla — el texto obliga a leer, el color se percibe de
-reflejo. La paleta esquiva a propósito el dorado de `DESK +N` y el verde de MAIN.
+reflejo. La paleta esquiva a propósito el dorado del rol `Space` y el verde del rol `Main`.
 
 **El color vive SÓLO en el contexto; el espacio NO tiene color** (decisión explícita). Costo aceptado:
 los N desks de un mismo espacio no se agrupan visualmente. Se eligió así porque el espacio lo elegís
@@ -163,9 +193,9 @@ re-elegir espacio (el uso frecuente); y la **pestaña Espacios de la config** (v
 obligaría a re-tipear el espacio cada vez que rotás.
 
 ### 4. Scope de variables y notas — herencia de TRES niveles
-`ProjectStore.ResolvePoolWithGlobal` / `GetNotes`: si el desk es un `DESK +N` **con espacio activo
-en la sesión** → scope de espacio. Cualquier otro caso (MAIN/CONSOLES/MISCS, o DESK+ sin espacio)
-→ pool/notas **GLOBAL compartido**. Criterio único en `UseProjectScope`.
+`ProjectStore.ResolvePoolWithGlobal` / `GetNotes`: si el desk es de rol `Space` (vía `DeskCatalog.IsSpace`)
+**y tiene espacio activo en la sesión** → scope de espacio. Cualquier otro caso (rol `Main` o `Fixed`,
+o un `Space` sin espacio cargado) → pool/notas **GLOBAL compartido**. Criterio único en `UseProjectScope`.
 
 Dentro del scope de espacio, las **variables heredan**: pool primaria = contexto (si hay), y se
 anexan de SOLO-LECTURA el espacio padre y la global, en ese orden (el orden de la lista ES el orden
@@ -231,9 +261,12 @@ es una pizarra de trabajo; mezclarle la del espacio la volvería un cajón de sa
 ### 5. Gobierno de ventanas (`WindowGovernor`)
 Motor de enforcement que escucha `EVENT_OBJECT_SHOW` (vía `WinEventHook`) + el cambio de desk:
 - **Pin**: proceso anclado que aparece fuera de su desk → se mueve ahí y se maximiza.
-- **Restricción**: desk restringido solo admite apps de su whitelist; el resto va a MAIN.
+- **Restricción**: desk restringido solo admite apps de su whitelist; el resto va al **refugio**
+  (`DeskCatalog.FallbackDeskName` = el desk de rol `Main`, se llame como se llame).
   Al ENTRAR a un desk restringido, escanea y limpia (cubre apps Electron que no disparan SHOW fiable).
-- Un desk es "restringible" solo si **no** es MAIN ni un `DESK +N` (ver `RestrictionStore.IsRestrictable`).
+- Un desk es "restringible" solo si su rol es `Fixed` (ver `RestrictionStore.IsRestrictable`): el
+  `Main` es el refugio (protegerlo haría rebotar una ventana contra sí misma para siempre) y el
+  `Space` tiene que poder traer cualquier app porque rota de espacio.
 - Procesos del sistema y la propia app están en blocklist/exempt — nunca se anclan ni se mueven.
 
 ---
@@ -247,7 +280,7 @@ legacy guardaba en `A_ScriptDir`; esto se modernizó para que la app sea compart
 |---|---|---|
 | `desk_project_data.json` | JSON | Catálogo durable: `history` (los ESPACIOS), `notes`, `paths` (key = espacio **o** `"Espacio/Contexto"`), `modules` (los CONTEXTOS + su color, por espacio), `defaults` (predeterminado por scope), `services` (cómo levantar lo básico, key = scope) + `shared_services`, `shared_notes`, `shared_paths`, `shared_default`, `folder_notes`. |
 | `settings.ini` | INI custom | `[Projects]` sugerencias (`desk_N` y `desk_N_module`), `[Pins]` `proc.exe=idx`, `[Restricted]` `idx=1`, `[Whitelist_IDX]` `proc.exe=1`. |
-| `desktops.json` | JSON | `DesktopConfig`: lista `managed` + flag `autoCreate`. |
+| `desktops.json` | JSON | `DesktopConfig`: lista `managed` (cada ítem = `name` + `key` + `role` + `color`, ver `ManagedDesktop`) + flag `autoCreate`. El formato VIEJO (`managed` como array de strings) se migra solo al cargar y se persiste enseguida. |
 | `apps.json` | JSON | `AppsConfig`: apps de usuario (`name`, `exePath`, `args` con `{path}`). |
 | `widgets.json` | JSON | `WidgetSettings`: qué widgets de la barra están activos (defaults: Clock + Ram + Ip). |
 | ~~`ports.json`~~ | JSON | **MIGRADO** a `services` del catálogo (ver arriba). `PortStore` queda como legacy de sólo-lectura para `ServiceMigration`; al migrar, el archivo se renombra a `ports.json.migrated`. |
@@ -271,10 +304,9 @@ del hook no se puede bloquear).
 
 | Atajo | Acción |
 |---|---|
-| `Win+Numpad 1/2/3` | Ir a MAIN / CONSOLES / MISCS (fila inferior, la más cómoda) |
-| `Win+Numpad 4..9` | Ir a DESK +1 … +6 |
+| `Win+Numpad 1..9` | Ir al desk que TENGA esa tecla asignada en el catálogo (**configurable** en Config → Escritorios). Defaults: 1/2/3 → MAIN / CONSOLES / MISCS (fila inferior, la más cómoda); 4..9 → DESK +1 … +6 |
 | `Win+Shift+`(navegación) | Enviar la ventana activa a ese desk **y seguirla** |
-| `Win+NumpadEnter` | Setear el **espacio** del desk actual (solo en `DESK +N`) → encadena el picker de **contexto** |
+| `Win+NumpadEnter` | Setear el **espacio** del desk actual (solo en desks de rol `Space`) → encadena el picker de **contexto** |
 | `Win+Numpad .` (Del) | **Contexto** del desk: cambia sólo el sub-scope sin re-elegir espacio (re-press → sin contexto) |
 | `NumpadClear` (Numpad5, **sin Win**) | Abrir el **DeskPicker** (saltar a un espacio de la sesión) |
 | `Win+Numpad *` | **Variables** del espacio/contexto/global (Paths Manager); re-press dispara el predeterminado |
