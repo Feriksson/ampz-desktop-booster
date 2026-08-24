@@ -6,6 +6,9 @@
 
   "General.Title": "General",
   "General.DataPathLabel": "Your configuration is saved in:",
+  "General.Startup": "Startup",
+  "General.StartWithWindows": "Start with Windows",
+  "General.StartWithWindowsHint": "Adds the app to your user's startup (no administrator rights needed). It launches once the Windows desktop is ready, which is what the bar needs to position itself correctly.",
   "General.Language": "Language",
   "General.LanguageHint": "Restart the app to apply the language change.",
   "General.RiskZone": "⚠ Danger zone",
@@ -566,7 +569,6 @@
   "Tray.WidgetNetwork": "Network",
   "Tray.WidgetIp": "IPs (LAN / public)",
   "Tray.WidgetBattery": "Battery",
-  "Tray.RepositionBar": "Reposition bar",
-  "Tray.StartWithWindows": "Start with Windows",
+  "Tray.RepositionBar": "Snap the bar back into place",
   "Tray.Quit": "Quit"
 }

@@ -125,9 +125,7 @@ public partial class BarWindow : Window
             onExit: () => Application.Current.Shutdown(),
             onReposition: () => _appBar?.PositionBar(),
             onToggle: OnWidgetToggled,
-            onOpenConfig: () => OpenConfig?.Invoke(),
-            autoStartEnabled: AutoStartService.IsEnabled(),
-            onToggleAutoStart: AutoStartService.Set);
+            onOpenConfig: () => OpenConfig?.Invoke());
 
         // Aplicamos el estado persistido de los widgets antes del primer render.
         ApplyWidgetVisibility();

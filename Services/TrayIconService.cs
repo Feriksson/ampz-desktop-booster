@@ -34,9 +34,7 @@ public sealed class TrayIconService : IDisposable
         Action onExit,
         Action onReposition,
         Action<WidgetKind, bool> onToggle,
-        Action onOpenConfig,
-        bool autoStartEnabled,
-        Action<bool> onToggleAutoStart)
+        Action onOpenConfig)
     {
         var menu = new ContextMenuStrip();
 
@@ -67,16 +65,15 @@ public sealed class TrayIconService : IDisposable
         menu.Items.Add(widgetsRoot);
 
         menu.Items.Add(new ToolStripSeparator());
+
+        // Rescate manual de la posición de la barra. Se queda acá, y NO en la config, porque no es
+        // una preferencia: es una ACCIÓN que se ejecuta justo cuando la barra quedó mal parada —
+        // y el tray es el único lugar al que llegás siempre, incluso con la barra descolocada.
         menu.Items.Add(Loc.T("Tray.RepositionBar"), null, (_, _) => onReposition());
 
-        // Toggle "iniciar con Windows": el check refleja la clave Run; el click la escribe/borra.
-        var autoStart = new ToolStripMenuItem(Loc.T("Tray.StartWithWindows"))
-        {
-            CheckOnClick = true,
-            Checked = autoStartEnabled,
-        };
-        autoStart.CheckedChanged += (s, _) => onToggleAutoStart(((ToolStripMenuItem)s!).Checked);
-        menu.Items.Add(autoStart);
+        // "Iniciar con Windows" SE MUDÓ a Config → General → Arranque. El tray es para lo que hacés
+        // MIENTRAS la app corre; el autostart se prende una vez en la vida. Era preferencia disfrazada
+        // de acción, y encima el único ítem del menú que tocaba el registro de Windows.
 
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(Loc.T("Tray.Quit"), null, (_, _) => onExit());

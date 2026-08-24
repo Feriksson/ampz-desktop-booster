@@ -101,6 +101,13 @@ public partial class ConfigWindow : Window
         ResetAllBtn.Click += (_, _) => ResetAll();
         SetupLanguageSelector();
 
+        // Arranque con Windows. Se lee el estado REAL de la clave Run cada vez que se abre la config
+        // (no hay copia nuestra del flag): la entrada la puede borrar el usuario desde el Administrador
+        // de tareas o una política de grupo, y mostrar un check desincronizado sería peor que no tenerlo.
+        // Click y no Checked: Checked también se dispara al setear el estado inicial por código.
+        AutoStartChk.IsChecked = AutoStartService.IsEnabled();
+        AutoStartChk.Click += (_, _) => AutoStartService.Set(AutoStartChk.IsChecked == true);
+
         // ── Pestaña Tareas ──
         // OJO orden: cableamos handlers ANTES de InitTasksTab. Si init seteara SelectedIndex con el
         // handler aún sin enganchar, OnAccountSelectionChanged NUNCA corre → _currentAccount queda

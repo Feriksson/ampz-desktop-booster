@@ -1318,10 +1318,22 @@
                                FontFamily="Consolas" TextWrapping="Wrap" />
                 </Border>
 
-                <!-- Selector de idioma (i18n). El cambio se aplica al reiniciar (modelo por reinicio). -->
                 <StackPanel Grid.Row="3" Margin="0,16,0,0" VerticalAlignment="Top">
-                    <TextBlock Text="{loc:Translate General.Language}" Foreground="{StaticResource Fg}"
+
+                    <!-- Arranque. Vivía en el menú del tray y se mudó acá: el tray es para lo que
+                         hacés MIENTRAS la app corre (ver widgets, abrir la config, salir), no para
+                         configurarla. "Iniciar con Windows" se prende UNA vez en la vida y no se
+                         toca más — es preferencia, no acción, y las preferencias van a la config. -->
+                    <TextBlock Text="{loc:Translate General.Startup}" Foreground="{StaticResource Fg}"
                                FontSize="13" FontWeight="SemiBold" />
+                    <CheckBox x:Name="AutoStartChk" Margin="0,8,0,0" FontSize="13"
+                              Content="{loc:Translate General.StartWithWindows}" />
+                    <TextBlock Text="{loc:Translate General.StartWithWindowsHint}" Foreground="{StaticResource FgMuted}"
+                               FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap" />
+
+                    <!-- Selector de idioma (i18n). El cambio se aplica al reiniciar (modelo por reinicio). -->
+                    <TextBlock Text="{loc:Translate General.Language}" Foreground="{StaticResource Fg}"
+                               FontSize="13" FontWeight="SemiBold" Margin="0,20,0,0" />
                     <ComboBox x:Name="LanguageCombo" Width="220" HorizontalAlignment="Left"
                               Margin="0,6,0,0" Padding="6,4" FontSize="13" />
                     <TextBlock Text="{loc:Translate General.LanguageHint}" Foreground="{StaticResource FgMuted}"

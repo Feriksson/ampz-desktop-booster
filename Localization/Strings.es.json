@@ -6,6 +6,9 @@
 
   "General.Title": "General",
   "General.DataPathLabel": "Tu configuración se guarda en:",
+  "General.Startup": "Arranque",
+  "General.StartWithWindows": "Iniciar con Windows",
+  "General.StartWithWindowsHint": "Agrega la app al arranque de tu usuario (sin permisos de administrador). Arranca recién cuando el escritorio de Windows ya está listo, que es lo que la barra necesita para ubicarse bien.",
   "General.Language": "Idioma",
   "General.LanguageHint": "Reiniciá la app para aplicar el cambio de idioma.",
   "General.RiskZone": "⚠ Zona de riesgo",
@@ -566,7 +569,6 @@
   "Tray.WidgetNetwork": "Red",
   "Tray.WidgetIp": "IPs (LAN / pública)",
   "Tray.WidgetBattery": "Batería",
-  "Tray.RepositionBar": "Reposicionar barra",
-  "Tray.StartWithWindows": "Iniciar con Windows",
+  "Tray.RepositionBar": "Reacomodar la barra en pantalla",
   "Tray.Quit": "Salir"
 }
