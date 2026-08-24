@@ -198,9 +198,11 @@
 
   "Config.CmdsTab": "Commands",
   "Config.CmdsTitle": "Commands per space and context",
-  "Config.CmdsHint": "The commands that bring up each scope's basics. This is where they get REORGANIZED, three ways: Ctrl+C (or Ctrl+X to move) on your selection, click the target scope and Ctrl+V; or drag them onto the scope they belong to (hold Ctrl to copy); or use the target below. Pick several with Ctrl and Shift. Only each scope's OWN commands are listed, not inherited ones. ⏩ = joins \"launch all\" · ⚠ = the directory no longer exists · ⛔ = the port is duplicated in the catalog. To launch them and see what's up, Win+Numpad +.",
+  "Config.CmdsHint": "The commands that bring up each scope's basics. This is where they get REORGANIZED, three ways: Ctrl+C (or Ctrl+X to move) on your selection, click the target scope and Ctrl+V; or drag them onto the scope they belong to (hold Ctrl to copy); or use the target below. Pick several with Ctrl and Shift. To make a copy WITHOUT leaving the scope, \"⧉ Duplicate\" (Ctrl+D). Only each scope's OWN commands are listed, not inherited ones. ⏩ = joins \"launch all\" · ⚠ = the directory no longer exists · ⛔ = the port is duplicated in the catalog. To launch them and see what's up, Win+Numpad +.",
   "Config.CmdsScopeHeader": "Commands in {0} ({1})",
   "Config.CmdsEmpty": "This scope has no commands of its own. Add one with \"New\", or drag over the ones you already have in another scope.",
+  "Config.CmdsDuplicate": "⧉ Duplicate",
+  "Config.CmdsDuplicateTip": "Ctrl+D — Makes a copy right here, with \"copy\" appended to the title. The copy doesn't take the original's port: it gets the first free one.",
   "Config.CmdsMonitorOnly": "(monitoring only: no command)",
   "Config.CmdsAutoOn": "⏩ Add to \"launch all\"",
   "Config.CmdsAutoOff": "⏸ Remove from \"launch all\"",

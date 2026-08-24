@@ -204,9 +204,11 @@
 
   "Config.CmdsTab": "Comandos",
   "Config.CmdsTitle": "Comandos por espacio y contexto",
-  "Config.CmdsHint": "Los comandos que levantan lo básico de cada scope. Acá se REORGANIZAN, de tres formas: Ctrl+C (o Ctrl+X para mover) sobre los que elegiste, clic en el scope destino y Ctrl+V; o arrastrá al scope donde tienen que vivir (Ctrl mientras arrastrás = copiar); o usá el destino de abajo. Se pueden elegir varios con Ctrl y Shift. Se ve sólo lo PROPIO de cada scope, no lo heredado. ⏩ = entra en «levantar todo» · ⚠ = el directorio ya no existe · ⛔ = el puerto está duplicado en el catálogo. Para lanzarlos y ver qué está arriba, Win+Numpad +.",
+  "Config.CmdsHint": "Los comandos que levantan lo básico de cada scope. Acá se REORGANIZAN, de tres formas: Ctrl+C (o Ctrl+X para mover) sobre los que elegiste, clic en el scope destino y Ctrl+V; o arrastrá al scope donde tienen que vivir (Ctrl mientras arrastrás = copiar); o usá el destino de abajo. Se pueden elegir varios con Ctrl y Shift. Para sacar una copia SIN salir del scope, «⧉ Duplicar» (Ctrl+D). Se ve sólo lo PROPIO de cada scope, no lo heredado. ⏩ = entra en «levantar todo» · ⚠ = el directorio ya no existe · ⛔ = el puerto está duplicado en el catálogo. Para lanzarlos y ver qué está arriba, Win+Numpad +.",
   "Config.CmdsScopeHeader": "Comandos de {0} ({1})",
   "Config.CmdsEmpty": "Este scope no tiene comandos propios. Agregá uno con «Nuevo», o arrastrá los que ya cargaste en otro scope.",
+  "Config.CmdsDuplicate": "⧉ Duplicar",
+  "Config.CmdsDuplicateTip": "Ctrl+D — Saca una copia acá mismo, con «copy» al final del título. La copia no se lleva el puerto del original: sale con el primero libre.",
   "Config.CmdsMonitorOnly": "(sólo monitoreo: sin comando)",
   "Config.CmdsAutoOn": "⏩ Meter en «levantar todo»",
   "Config.CmdsAutoOff": "⏸ Sacar de «levantar todo»",

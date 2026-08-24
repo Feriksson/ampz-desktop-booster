@@ -2040,6 +2040,7 @@ public partial class ConfigWindow : Window
 
         CmdNewBtn.Click    += (_, _) => NewCommand();
         CmdEditBtn.Click   += (_, _) => EditCommand();
+        CmdDupBtn.Click    += (_, _) => DuplicateCommands();
         CmdDeleteBtn.Click += (_, _) => DeleteCommands();
         CmdAutoBtn.Click   += (_, _) => ToggleCmdAutoStart();
         CmdMoveBtn.Click   += (_, _) => MoveCmdsToComboTarget(copy: false);
@@ -2197,6 +2198,7 @@ public partial class ConfigWindow : Window
     {
         int n = CmdList.SelectedItems.Count;
         CmdEditBtn.IsEnabled   = n == 1;
+        CmdDupBtn.IsEnabled    = n >= 1;
         CmdAutoBtn.IsEnabled   = n == 1;
         CmdDeleteBtn.IsEnabled = n >= 1;
         CmdMoveBtn.IsEnabled   = n >= 1 && CmdTargetCombo.SelectedItem is VarScope;
@@ -2213,6 +2215,7 @@ public partial class ConfigWindow : Window
             case Key.Delete: DeleteCommands();      e.Handled = true; break;
             case Key.F2:     EditCommand();         e.Handled = true; break;
             case Key.F3:     ToggleCmdAutoStart();  e.Handled = true; break;
+            case Key.D when Ctrl: DuplicateCommands();  e.Handled = true; break;
             case Key.C when Ctrl: CopyCmds(cut: false); e.Handled = true; break;
             case Key.X when Ctrl: CopyCmds(cut: true);  e.Handled = true; break;
             case Key.V when Ctrl: PasteCmds();          e.Handled = true; break;
@@ -2257,6 +2260,21 @@ public partial class ConfigWindow : Window
 
         _projects.UpdateService(_cmdScope, row.PoolIndex, entry);
         RefreshCmds();
+    }
+
+    /// <summary>
+    /// Saca una copia de lo elegido EN EL MISMO scope. Es el gesto de "quiero éste pero con otro
+    /// flag/puerto/directorio": el camino que había era Nuevo y re-tipear los cinco campos.
+    ///
+    /// Reusa <see cref="MoveCmdsFrom"/> con origen = destino en vez de tener su propia escritura al
+    /// store — así hereda TAL CUAL las reglas del dominio (la copia no se lleva el puerto y avisa, el
+    /// título sale libre con «copy» al final) y no puede desincronizarse de lo que hace pegar.
+    /// </summary>
+    private void DuplicateCommands()
+    {
+        var indices = SelectedCmdIndices();
+        if (indices.Count == 0) return;
+        MoveCmdsFrom(_cmdScope, _cmdScope, indices, copy: true);
     }
 
     private void DeleteCommands()

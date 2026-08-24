@@ -710,6 +710,10 @@
                         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
                             <Button x:Name="CmdNewBtn"    Content="{loc:Translate Config.VarsNew}"   MinWidth="100" />
                             <Button x:Name="CmdEditBtn"   Content="{loc:Translate Config.VarsEdit}"  MinWidth="100" />
+                            <!-- Duplicar vive acá y no abajo con Mover/Copiar: aquéllos piden un scope
+                                 DESTINO, éste no sale del scope que estás mirando. -->
+                            <Button x:Name="CmdDupBtn"    Content="{loc:Translate Config.CmdsDuplicate}" MinWidth="120"
+                                    ToolTip="{loc:Translate Config.CmdsDuplicateTip}" />
                             <Button x:Name="CmdAutoBtn"   Content="{loc:Translate Config.CmdsAutoOn}" MinWidth="170" />
                             <Button x:Name="CmdDeleteBtn" Content="{loc:Translate Config.VarsDelete}" MinWidth="90"
                                     Foreground="{StaticResource Danger}" />

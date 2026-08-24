@@ -475,12 +475,19 @@ public sealed class ProjectStore
     ///
     /// MOVER no toca el puerto: la entrada se va del origen, así que no hay dos dueños en ningún
     /// momento. Es la misma entrada en otro estante.
+    ///
+    /// ⚠ COPIAR SOBRE EL MISMO SCOPE ES LEGAL — y es justamente el DUPLICAR de la pestaña. Antes se
+    /// rechazaba junto con el mover-a-sí-mismo, y eso dejaba al usuario sin forma de sacar una copia
+    /// de un comando para tocarle un flag: copiaba, pegaba en el mismo scope y la operación se
+    /// plantaba. Mover a sí mismo SÍ se sigue rechazando: es un no-op, y un botón que no hace nada
+    /// se lee igual que un botón roto. La copia toma un título libre (ver <see cref="FreeServiceTitle"/>),
+    /// así que las dos filas se distinguen de un vistazo en vez de quedar clonadas y ambiguas.
     /// </summary>
     public ScopeOpResult MoveServices(string fromScope, string toScope, IEnumerable<int> indices,
                                       bool copy, out List<int> reassignedPorts)
     {
         reassignedPorts = new List<int>();
-        if (Same(fromScope, toScope)) return ScopeOpResult.SameTarget;
+        if (Same(fromScope, toScope) && !copy) return ScopeOpResult.SameTarget;
 
         var src = RawServices(fromScope);
         var picked = indices.Distinct().Where(i => i >= 0 && i < src.Count).OrderBy(i => i).ToList();
@@ -502,7 +509,7 @@ public sealed class ProjectStore
 
             dst.Add(new ServiceEntry
             {
-                Title = e.Title,
+                Title = FreeServiceTitle(dst, e.Title),
                 Command = e.Command,
                 WorkDir = e.WorkDir,
                 Port = port,
@@ -516,6 +523,37 @@ public sealed class ProjectStore
 
         Save();
         return ScopeOpResult.Ok;
+    }
+
+    /// <summary>
+    /// Sufijo de las copias. Va HARDCODEADO y no en las traducciones a propósito: esto no es texto de
+    /// UI, termina escrito DENTRO del dato y persistido. Si dependiera del idioma activo, el mismo
+    /// catálogo terminaría con "api copy" y "api copia" conviviendo según qué día lo duplicaste — y
+    /// cambiar el idioma no podría arreglar los que ya están en disco.
+    /// </summary>
+    private const string CopySuffix = "copy";
+
+    /// <summary>
+    /// Título que no choque con ninguno de <paramref name="pool"/>: devuelve el mismo si está libre,
+    /// y si no "X copy", "X copy 2", "X copy 3"…
+    ///
+    /// Se compara case-insensitive porque el choque que molesta es el VISUAL: dos filas que se leen
+    /// igual son indistinguibles en la lista aunque difieran en una mayúscula. La numeración arranca
+    /// en 2 (la primera copia no lleva número) porque "api copy" es lo que uno escribiría a mano;
+    /// "api copy 1" delata una máquina contando.
+    /// </summary>
+    public static string FreeServiceTitle(IReadOnlyList<ServiceEntry> pool, string title)
+    {
+        if (title == "") return title; // sin título no hay choque de nombres que resolver
+
+        bool Taken(string t) => pool.Any(e => string.Equals(e.Title, t, StringComparison.OrdinalIgnoreCase));
+        if (!Taken(title)) return title;
+
+        string candidate = title + " " + CopySuffix;
+        for (int n = 2; Taken(candidate); n++)
+            candidate = $"{title} {CopySuffix} {n}";
+
+        return candidate;
     }
 
     // ── Predeterminado POR SCOPE ───────────────────────────────────────────────
