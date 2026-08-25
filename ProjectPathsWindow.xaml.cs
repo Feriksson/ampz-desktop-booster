@@ -346,15 +346,44 @@ public partial class ProjectPathsWindow : Window
         Title = text,
     };
 
-    /// <summary>Selecciona la primera fila operable (saltea el separador). Lista vacía → sin selección.</summary>
+    /// <summary>
+    /// Deja la selección donde el Enter tiene más sentido: sobre el PREDETERMINADO si está visible,
+    /// y si no, sobre la primera fila operable (saltea el separador). Lista vacía → sin selección.
+    ///
+    /// El predeterminado gana porque es, por definición, la variable que más vas a abrir de ese
+    /// scope: al abrir la ventana, Enter ya dispara lo mismo que el re-press del atajo, sin tener
+    /// que bajar con las flechas ni filtrar. Si filtraste y el predeterminado quedó fuera de la
+    /// lista, no hay nada raro que hacer: manda la primera, como antes.
+    ///
+    /// Ojo con el ☆ TAPADO: buscamos el que REALMENTE dispara (<see cref="EffectiveDefault"/>) y
+    /// descartamos la fila sombreada del padre — seleccionar la que muestra la estrella hueca sería
+    /// apuntar justo a la que hoy NO manda.
+    ///
+    /// El foco de teclado se queda en el FILTRO a propósito (ver el Loaded del constructor): en esta
+    /// ventana se escribe para buscar, y Enter/flechas ya funcionan igual porque los atajos están en
+    /// el PreviewKeyDown de la VENTANA, no de la lista.
+    /// </summary>
     private void SelectFirstSelectable()
     {
+        string? fire = EffectiveDefault;
+        Row? first = null;
+
         foreach (var item in PathList.Items)
-            if (item is Row { IsSeparator: false })
+        {
+            if (item is not Row { IsSeparator: false } row) continue;
+            first ??= row;
+
+            if (fire is not null && !row.IsShadowed && row.Path == fire)
             {
-                PathList.SelectedItem = item;
+                PathList.SelectedItem = row;
+                PathList.ScrollIntoView(row);
                 return;
             }
+        }
+
+        if (first is null) return;
+        PathList.SelectedItem = first;
+        PathList.ScrollIntoView(first);
     }
 
     /// <summary>Fila seleccionada operable (el separador nunca cuenta). Fallback: única fila si hay una sola.</summary>
