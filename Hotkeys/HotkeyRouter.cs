@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using AmpzDesktopBooster.Apps;
@@ -70,6 +71,21 @@ public sealed class HotkeyRouter
     // (Antes era scope GLOBAL y no dependía del desk: eso era el catálogo de puertos, no los servicios.)
     private ServicesWindow? _servicesWindow;
     private int _servicesWindowDeskIdx;
+
+    /// <summary>
+    /// Marca de "este Close lo pedí YO después de lanzar", para distinguirlo del cierre del usuario.
+    /// El re-press lanza y CIERRA (la ventana ya cumplió: no hay nada que mirar mientras arrancan las
+    /// terminales), y ese cierre automático NO debe borrar la memoria del arranque grupal.
+    /// </summary>
+    private bool _servicesAutoClosing;
+
+    /// <summary>
+    /// Servicios SIN puerto que el arranque grupal ya disparó. Vive ACÁ y no en la ventana porque la
+    /// ventana ahora muere en cada re-press: un set por-ventana no recordaría nada y machacar el
+    /// atajo te apilaría un `queue:work` por pulsación. Se limpia cuando el cierre lo pedís VOS o
+    /// cuando cambiás de desk (otro scope) — ver <see cref="ShowServices"/>.
+    /// </summary>
+    private readonly HashSet<string> _servicesGroupLaunched = new(StringComparer.OrdinalIgnoreCase);
 
     // Virtual-keys de las F que ruteamos (F1..F12 = 0x70..0x7B; backtick = 0xC0; barra /? = 0xBF).
     // F7 (Pin Manager) y F8 (Restricciones) SE QUITARON: eran popups de gestión compleja que hoy
@@ -476,11 +492,14 @@ public sealed class HotkeyRouter
         int idx = _desktops.Current;
 
         // Re-press en el MISMO desk → "levantar lo básico": dispara los servidores que no estén
-        // escuchando ya. Mismo idioma que Variables (re-press dispara el predeterminado): la segunda
-        // pulsación ejecuta la acción principal del scope en vez de abrir otra ventana.
+        // escuchando ya, y CIERRA. Mismo idioma que Variables (re-press dispara el predeterminado y
+        // se va): la segunda pulsación ejecuta la acción principal del scope y saca la ventana del
+        // medio — ya cumplió, y lo que sigue son las terminales arrancando, no esta lista.
         if (_servicesWindow is not null && _servicesWindowDeskIdx == idx)
         {
             _servicesWindow.LaunchMissing();
+            _servicesAutoClosing = true; // el Closed de abajo NO tiene que borrar la memoria del grupo
+            _servicesWindow.Close();
             return;
         }
         // Quedó abierta en OTRO desk → descartarla (Close dispara el handler que limpia la referencia).
@@ -495,9 +514,18 @@ public sealed class HotkeyRouter
         // tiene un solo dueño en toda la app, así que el alta tiene que poder chocar contra un scope
         // que ni siquiera está en pantalla. Ver PortRegistry.
         _servicesWindow = new ServicesWindow(pool, name, parentPool: parentPool, globalPool: globalPool,
-                                             ports: _projects.Ports);
+                                             ports: _projects.Ports,
+                                             groupLaunchedPortless: _servicesGroupLaunched);
         _servicesWindowDeskIdx = idx; // recordamos el desk: el re-press sólo cuenta si seguís acá
-        _servicesWindow.Closed += (_, _) => _servicesWindow = null;
+        _servicesWindow.Closed += (_, _) =>
+        {
+            _servicesWindow = null;
+            // Cierre del USUARIO (Esc, botón) o descarte por cambio de desk → olvidamos lo que ya
+            // disparamos: cerraste a propósito, y "volver a levantar" es exactamente lo que querés
+            // la próxima vez. Sólo el cierre automático del re-press conserva la memoria.
+            if (!_servicesAutoClosing) _servicesGroupLaunched.Clear();
+            _servicesAutoClosing = false;
+        };
         _servicesWindow.ShowFocused();
     }
 

@@ -130,17 +130,24 @@ public partial class ServicesWindow : Window
     /// <summary>
     /// Servicios SIN puerto que este arranque grupal ya disparó (key = comando + directorio). Existe
     /// sólo para que el re-press no te apile workers duplicados — ver <see cref="LaunchMissing"/>.
+    ///
+    /// El dueño del set es el ROUTER, no la ventana: desde que el re-press LANZA Y CIERRA, machacar
+    /// el atajo abre una ventana NUEVA en cada pulsación, y un set por-ventana no recordaría nada —
+    /// justo el escenario para el que existe la marca. El router lo limpia cuando cerrás vos (o
+    /// cuando cambiás de desk), que es cuando "quiero relevantar" vuelve a ser lo esperable.
     /// </summary>
-    private readonly HashSet<string> _groupLaunchedPortless = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _groupLaunchedPortless;
 
     public ServicesWindow(ServicePool pool, string deskName, ServicePool? parentPool = null,
-                          ServicePool? globalPool = null, PortRegistry? ports = null)
+                          ServicePool? globalPool = null, PortRegistry? ports = null,
+                          HashSet<string>? groupLaunchedPortless = null)
     {
         InitializeComponent();
         _pool = pool;
         _parentPool = parentPool;
         _globalPool = globalPool;
         _ports = ports;
+        _groupLaunchedPortless = groupLaunchedPortless ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         Icon = AppIcon.TryLoadForWindow();
 
@@ -413,8 +420,16 @@ public partial class ServicesWindow : Window
     /// "Levantar lo básico": dispara los SERVIDORES (los que declaran puerto) que no estén escuchando
     /// ya. Las tareas sueltas (sin puerto) quedan afuera a propósito — ver ServiceEntry: un `npm ci`
     /// no tiene que salir disparado porque re-presionaste el atajo.
-    /// Incluye las HEREDADAS: si el espacio define el docker compartido, "levantar lo básico" del
-    /// contexto tiene que levantarlo — para eso se hereda.
+    /// Incluye las HEREDADAS del ESPACIO: si el espacio define el docker compartido, "levantar lo
+    /// básico" del contexto tiene que levantarlo — para eso se hereda.
+    ///
+    /// ⚠ Pero NO incluye la GLOBAL cuando estás parado en un espacio/contexto, y esto no es un
+    /// olvido: la global la ven TODOS los scopes a la vez. Con varios espacios abiertos en varios
+    /// desks, cada "levantar todo" intentaba arrancar además todo el bloque global — o sea, N desks
+    /// peleándose por los MISMOS servicios compartidos, cada uno creyendo que los levanta él.
+    /// Estando en un scope de espacio, "todo" significa "todo LO MÍO" (contexto + espacio padre).
+    /// La global se sigue levantando en grupo desde el scope GLOBAL, que es donde es "lo tuyo" —
+    /// y una fila global suelta se puede seguir lanzando a mano con Enter desde acá.
     /// Devuelve cuántos lanzó (0 = ya estaba todo arriba, o no hay nada que levantar).
     ///
     /// Se juntan TODOS primero y se lanzan de UNA (<see cref="ServiceLauncher.LaunchMany"/>), no de a
@@ -427,7 +442,13 @@ public partial class ServicesWindow : Window
         var listening = TcpPortInfo.ListeningPorts();
         var pending = new List<ServiceEntry>();
 
-        foreach (var pool in new[] { _pool, _parentPool, _globalPool })
+        // En scope de espacio/contexto (_globalPool no-null ⇒ la primaria NO es la global) el arranque
+        // grupal se limita a lo propio + lo del espacio padre. Ver el comentario del summary.
+        ServicePool?[] scoped = _globalPool is not null
+            ? new ServicePool?[] { _pool, _parentPool }
+            : new ServicePool?[] { _pool, _parentPool, _globalPool };
+
+        foreach (var pool in scoped)
         {
             if (pool is null) continue;
             foreach (var s in pool.Entries)
