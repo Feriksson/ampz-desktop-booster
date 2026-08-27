@@ -305,6 +305,7 @@ del hook no se puede bloquear).
 | Atajo | Acción |
 |---|---|
 | `Win+Numpad 1..9` | Ir al desk que TENGA esa tecla asignada en el catálogo (**configurable** en Config → Escritorios). Defaults: 1/2/3 → MAIN / CONSOLES / MISCS (fila inferior, la más cómoda); 4..9 → DESK +1 … +6 |
+| `Win+Numpad` (tecla del desk **donde ya estás**) | **Volver al desk anterior** (toggle ida y vuelta, tipo Alt+Tab). El historial vive en `DesktopService.NoteCurrent`/`Previous`, así que cuenta CUALQUIER cambio de desk (DeskPicker, dot de atención, `Win+Ctrl+Flechas`), no sólo los saltos del numpad |
 | `Win+Shift+`(navegación) | Enviar la ventana activa a ese desk **y seguirla** |
 | `Win+NumpadEnter` | Setear el **espacio** del desk actual (solo en desks de rol `Space`) → encadena el picker de **contexto** |
 | `Win+Numpad .` (Del) | **Contexto** del desk: cambia sólo el sub-scope sin re-elegir espacio (re-press → sin contexto) |

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -306,6 +306,25 @@ public sealed class HotkeyRouter
             IntPtr hwnd = WindowMethods.GetForegroundWindow();
             if (hwnd != IntPtr.Zero && _desktops.Current != target)
                 _desktops.SendWindowTo(hwnd, target, follow: true);
+        }
+        else if (_desktops.Current == target)
+        {
+            // ── RE-PRESS en el desk ACTIVO → volver al desk anterior ──────────────────────────
+            // El caso real: estás laburando en un DESK+, saltás a MAIN "a mirar una cosa" y querés
+            // volver. Antes tenías que ACORDARTE de dónde venías y buscar SU tecla; ahora volvés
+            // con la MISMA que te trajo. El toggle es simétrico (el back deja al desk de MAIN como
+            // nuevo "anterior"), así la tecla queda haciendo ping-pong entre los dos lugares.
+            //
+            // La tecla estaba LIBRE: GoTo al desk donde ya estás es no-op, o sea que este atajo no
+            // le pisa el trabajo a nada — le da trabajo a una tecla que no hacía ninguno.
+            //
+            // El historial vive en DesktopService (ver NoteCurrent), NO acá: cambiás de desk por
+            // mil vías que no son el numpad (DeskPicker, dot de atención de la barra, Win+Ctrl+
+            // Flechas, la vista de tareas). Un historial propio del router sólo conocería SUS
+            // saltos y te mandaría a un desk donde no estuviste hace rato.
+            int back = _desktops.Previous;
+            if (back >= 0 && back != target)
+                _desktops.GoTo(back); // si el desk anterior ya no existe, GoTo devuelve false y no pasa nada
         }
         else
             _desktops.GoTo(target);
