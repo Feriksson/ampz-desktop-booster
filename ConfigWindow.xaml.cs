@@ -148,6 +148,9 @@ public partial class ConfigWindow : Window
         TrelloKeyBox.TextChanged          += (_, _) => { if (_currentAccount?.Trello != null && !_loadingFields) _currentAccount.Trello.ApiKey          = TrelloKeyBox.Text; };
         TrelloTokenBox.TextChanged        += (_, _) => { if (_currentAccount?.Trello != null && !_loadingFields) _currentAccount.Trello.Token           = TrelloTokenBox.Text; };
         TrelloIgnoredListsBox.TextChanged += (_, _) => { if (_currentAccount?.Trello != null && !_loadingFields) _currentAccount.Trello.IgnoredListsRaw = TrelloIgnoredListsBox.Text; };
+        ClickUpTokenBox.TextChanged            += (_, _) => { if (_currentAccount?.ClickUp != null && !_loadingFields) _currentAccount.ClickUp.Token              = ClickUpTokenBox.Text; };
+        ClickUpWorkspaceBox.TextChanged        += (_, _) => { if (_currentAccount?.ClickUp != null && !_loadingFields) _currentAccount.ClickUp.WorkspaceId        = ClickUpWorkspaceBox.Text; };
+        ClickUpIgnoredStatusesBox.TextChanged  += (_, _) => { if (_currentAccount?.ClickUp != null && !_loadingFields) _currentAccount.ClickUp.IgnoredStatusesRaw = ClickUpIgnoredStatusesBox.Text; };
         TaskTestBtn.Click += async (_, _) => await TestSelectedAccount();
         TaskSaveBtn.Click += (_, _) => SaveTasksSettings();
         InitTasksTab(); // ahora sí: con todos los handlers ya cableados, SelectedIndex=0 dispara la selección
@@ -931,6 +934,7 @@ public partial class ConfigWindow : Window
         AcctKindCombo.Items.Add(new KindChoice("vikunja", "Vikunja"));
         AcctKindCombo.Items.Add(new KindChoice("jira",    "JIRA (en preparación)"));
         AcctKindCombo.Items.Add(new KindChoice("trello",  "Trello"));
+        AcctKindCombo.Items.Add(new KindChoice("clickup", "ClickUp"));
 
         RefreshAccountsList(preserveSelection: false);
         if (AccountsList.Items.Count > 0)
@@ -1001,6 +1005,7 @@ public partial class ConfigWindow : Window
                 SetIfDifferent(VkUrlBox, ""); SetIfDifferent(VkUserBox, ""); SetIfDifferent(VkTokenBox, "");
                 SetIfDifferent(JiraUrlBox, ""); SetIfDifferent(JiraEmailBox, ""); SetIfDifferent(JiraTokenBox, "");
                 SetIfDifferent(TrelloKeyBox, ""); SetIfDifferent(TrelloTokenBox, ""); SetIfDifferent(TrelloIgnoredListsBox, "");
+                SetIfDifferent(ClickUpTokenBox, ""); SetIfDifferent(ClickUpWorkspaceBox, ""); SetIfDifferent(ClickUpIgnoredStatusesBox, "");
                 return;
             }
 
@@ -1022,6 +1027,10 @@ public partial class ConfigWindow : Window
             SetIfDifferent(TrelloKeyBox,          _currentAccount.Trello?.ApiKey          ?? "");
             SetIfDifferent(TrelloTokenBox,        _currentAccount.Trello?.Token           ?? "");
             SetIfDifferent(TrelloIgnoredListsBox, _currentAccount.Trello?.IgnoredListsRaw ?? "");
+
+            SetIfDifferent(ClickUpTokenBox,           _currentAccount.ClickUp?.Token              ?? "");
+            SetIfDifferent(ClickUpWorkspaceBox,       _currentAccount.ClickUp?.WorkspaceId        ?? "");
+            SetIfDifferent(ClickUpIgnoredStatusesBox, _currentAccount.ClickUp?.IgnoredStatusesRaw ?? "");
         }
         finally { _loadingFields = prev; }
     }
@@ -2475,6 +2484,7 @@ public partial class ConfigWindow : Window
             case "vikunja": a.Vikunja ??= new VikunjaSettings(); break;
             case "jira":    a.Jira    ??= new JiraSettings();    break;
             case "trello":  a.Trello  ??= new TrelloSettings();  break;
+            case "clickup": a.ClickUp ??= new ClickUpSettings(); break;
         }
     }
 
@@ -2490,6 +2500,7 @@ public partial class ConfigWindow : Window
         VikunjaPanel.Visibility = kind == "vikunja" ? Visibility.Visible : Visibility.Collapsed;
         JiraPanel.Visibility    = kind == "jira"    ? Visibility.Visible : Visibility.Collapsed;
         TrelloPanel.Visibility  = kind == "trello"  ? Visibility.Visible : Visibility.Collapsed;
+        ClickUpPanel.Visibility = kind == "clickup" ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void AddAccount()
@@ -2544,6 +2555,11 @@ public partial class ConfigWindow : Window
             {
                 a.Trello.ApiKey = a.Trello.ApiKey.Trim();
                 a.Trello.Token = a.Trello.Token.Trim();
+            }
+            if (a.ClickUp != null)
+            {
+                a.ClickUp.Token = a.ClickUp.Token.Trim();
+                a.ClickUp.WorkspaceId = a.ClickUp.WorkspaceId.Trim();
             }
         }
         _tasks.Save();

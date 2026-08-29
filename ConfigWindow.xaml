@@ -1126,6 +1126,39 @@
                                        Text="{loc:Translate Config.TrelloStorageWarning}" />
                         </StackPanel>
                     </Border>
+
+                    <!-- ClickUp -->
+                    <Border x:Name="ClickUpPanel" Background="{StaticResource Panel}" CornerRadius="4"
+                            Padding="12" Margin="0,0,0,8" Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock Text="ClickUp" FontWeight="SemiBold" Margin="0,0,0,8" />
+
+                            <TextBlock Text="{loc:Translate Config.ClickUpToken}" Foreground="{StaticResource FgMuted}"
+                                       FontSize="11" Margin="0,0,0,2" />
+                            <TextBox x:Name="ClickUpTokenBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
+                                     BorderBrush="#444" Padding="6,4" Margin="0,0,0,8"
+                                     VerticalContentAlignment="Center"
+                                     ToolTip="{loc:Translate Config.ClickUpTokenTooltip}" />
+
+                            <TextBlock Text="{loc:Translate Config.ClickUpWorkspace}" Foreground="{StaticResource FgMuted}"
+                                       FontSize="11" Margin="0,0,0,2" />
+                            <TextBox x:Name="ClickUpWorkspaceBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
+                                     BorderBrush="#444" Padding="6,4" Margin="0,0,0,8"
+                                     VerticalContentAlignment="Center"
+                                     ToolTip="{loc:Translate Config.ClickUpWorkspaceTooltip}" />
+
+                            <TextBlock Text="{loc:Translate Config.ClickUpIgnoredStatuses}"
+                                       Foreground="{StaticResource FgMuted}" FontSize="11" Margin="0,0,0,2" />
+                            <TextBox x:Name="ClickUpIgnoredStatusesBox" Background="#2A2A2A" Foreground="{StaticResource Fg}"
+                                     BorderBrush="#444" Padding="6,4" MinHeight="60"
+                                     AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                                     ToolTip="{loc:Translate Config.ClickUpIgnoredStatusesTooltip}" />
+
+                            <TextBlock Foreground="{StaticResource FgMuted}" FontSize="11" FontStyle="Italic"
+                                       TextWrapping="Wrap" Margin="0,8,0,0"
+                                       Text="{loc:Translate Config.ClickUpStorageWarning}" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
                           </StackPanel>
                         </ScrollViewer>

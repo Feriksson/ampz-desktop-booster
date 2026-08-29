@@ -9,7 +9,7 @@ namespace AmpzDesktopBooster.Services.Tasks;
 ///
 /// Por qué un solo TaskAccount con tres sub-objetos opcionales en vez de jerarquía polimórfica:
 /// la persistencia es JSON plano (igual que el resto del proyecto); los polimórficos en
-/// System.Text.Json necesitan TypeDiscriminator/converters, ruido innecesario para 3 kinds. Sólo el
+/// System.Text.Json necesitan TypeDiscriminator/converters, ruido innecesario para 4 kinds. Sólo el
 /// sub-objeto que matchea Kind tiene valor — los otros quedan null y no se persisten.
 ///
 /// Id es un guid estable: la UI referencia cuentas por Id, no por DisplayName (que el usuario edita).
@@ -21,7 +21,7 @@ public sealed class TaskAccount
     /// <summary>Guid estable. La UI referencia cuentas por este Id, no por DisplayName.</summary>
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
 
-    /// <summary>Qué gestor: "vikunja" | "jira" | "trello". Define qué sub-objeto de credenciales aplica.</summary>
+    /// <summary>Qué gestor: "vikunja" | "jira" | "trello" | "clickup". Define qué sub-objeto de credenciales aplica.</summary>
     public string Kind { get; set; } = "vikunja";
 
     /// <summary>Nombre que ve el usuario (ej. "Trello — Cliente Coca"). Editable.</summary>
@@ -34,4 +34,5 @@ public sealed class TaskAccount
     public VikunjaSettings? Vikunja { get; set; }
     public JiraSettings? Jira { get; set; }
     public TrelloSettings? Trello { get; set; }
+    public ClickUpSettings? ClickUp { get; set; }
 }

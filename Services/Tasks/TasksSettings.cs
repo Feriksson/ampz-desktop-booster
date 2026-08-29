@@ -164,3 +164,36 @@ public sealed class TrelloSettings
         return parts;
     }
 }
+
+/// <summary>
+/// Credenciales de ClickUp. Un solo campo obligatorio: el API token personal (pk_...), que se saca
+/// de ClickUp → Settings → Apps → API Token. No hace falta email ni usuario: el adapter resuelve
+/// QUIÉN sos con GET /v2/user y filtra por ese id, así que "lo mío" queda cubierto por la credencial.
+///
+/// WorkspaceId es OPCIONAL y existe por rendimiento, no por permisos: vacío = recorre TODOS los
+/// workspaces a los que el token accede (lo que suele querer un consultor). Fijarlo acota el fetch
+/// a uno cuando la cuenta ve muchos y sólo te interesa uno — es el id numérico que aparece en la URL
+/// de ClickUp (app.clickup.com/{workspaceId}/...).
+///
+/// IgnoredStatusesRaw: estados EXTRA a filtrar (uno por línea o separados por coma). A diferencia de
+/// Trello NO hay defaults hardcoded — ClickUp tipa el cierre nativamente (`status.type` closed/done)
+/// y eso ya se filtra siempre. Esto es sólo para estados propios del workspace que no querés ver en
+/// el picker (ej. "En review", "Bloqueado"). Match por Contains case-insensitive.
+/// </summary>
+public sealed class ClickUpSettings
+{
+    public string Token { get; set; } = "";
+    public string WorkspaceId { get; set; } = "";
+    public string IgnoredStatusesRaw { get; set; } = "";
+
+    /// <summary>
+    /// Tokens parseados de IgnoredStatusesRaw: splitea por coma O salto de línea, trimea, descarta
+    /// vacíos. Cero alocs si está vacío — devuelve array vacío.
+    /// </summary>
+    public string[] GetIgnoredTokens()
+    {
+        if (string.IsNullOrWhiteSpace(IgnoredStatusesRaw)) return System.Array.Empty<string>();
+        return IgnoredStatusesRaw.Split(new[] { ',', '\n', '\r' },
+            System.StringSplitOptions.RemoveEmptyEntries | System.StringSplitOptions.TrimEntries);
+    }
+}

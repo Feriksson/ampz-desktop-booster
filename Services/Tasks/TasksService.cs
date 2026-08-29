@@ -27,6 +27,7 @@ public static class TasksService
         "vikunja" => account.Vikunja is null ? null : new VikunjaTaskProvider(account, account.Vikunja),
         "jira"    => account.Jira    is null ? null : new JiraTaskProvider(account, account.Jira),
         "trello"  => account.Trello  is null ? null : new TrelloTaskProvider(account, account.Trello),
+        "clickup" => account.ClickUp is null ? null : new ClickUpTaskProvider(account, account.ClickUp),
         _         => null,
     };
 
