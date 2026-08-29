@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Input;
 using AmpzDesktopBooster.Services.Localization;
 using AmpzDesktopBooster.Services.Tasks;
@@ -46,7 +48,71 @@ public partial class TaskPickerWindow : Window
         public string Title         => Task.Title;
         public string StageInParens => string.IsNullOrEmpty(Task.Stage)   ? "" : $"({Task.Stage})";
         public string ProjectName   => Task.Project ?? "";
+
+        /// <summary>
+        /// Etiqueta del GRUPO al que cae la fila. Es el nombre CRUDO del estado tal como lo llama tu
+        /// gestor ("In progress", "Doing", "En curso") — NO uno normalizado. Normalizarlo sería
+        /// mentirte: si tu tablero dice "Haciendo", el divisor tiene que decir "Haciendo".
+        ///
+        /// Los estados se agrupan CRUZANDO cuentas a propósito: un "Doing" de ClickUp y uno de Trello
+        /// caen juntos. Lo que querés ver al abrir el picker es "qué tengo en curso", no "qué tengo
+        /// en curso en Trello" — y de qué cuenta vino cada fila ya lo dice el chip [cuenta].
+        /// </summary>
+        public string GroupLabel => Task.IsCustom
+                                      ? Loc.T("TaskPicker.GroupCustom")
+                                      : (string.IsNullOrWhiteSpace(Task.Stage)
+                                            ? Loc.T("TaskPicker.GroupNoStage")
+                                            : Task.Stage!.Trim());
+
+        /// <summary>Rango de flujo del grupo (menor = más arriba). Ver StageRank.</summary>
+        public int GroupOrder => Task.IsCustom ? 90 : StageRank(Task.Stage);
     }
+
+    /// <summary>
+    /// Ordena los grupos por ETAPA DEL FLUJO, no alfabéticamente. Dos razones para que exista:
+    ///
+    /// 1. Sin un orden explícito, los grupos saldrían en el orden en que la API devolvió las tareas
+    ///    — que cambia entre fetches. Una lista que navegás por teclado y que se reordena sola entre
+    ///    aperturas es inusable: la memoria muscular ("la segunda de arriba") deja de valer.
+    /// 2. Alfabético tampoco sirve: "Backlog" quedaría arriba de "Doing" y lo que estás haciendo AHORA
+    ///    terminaría enterrado abajo. El picker se abre para RETOMAR algo, así que lo que ya está en
+    ///    marcha va primero y el pozo sin fondo (backlog) va último.
+    ///
+    /// Match por Contains case-insensitive sobre el nombre del estado — mismo criterio que la
+    /// heurística de listas terminales de Trello, porque el problema es el mismo: los nombres los
+    /// pone el usuario y no hay taxonomía común entre gestores. Un estado que no matchea nada cae al
+    /// medio (50), NUNCA se pierde ni se mezcla con otro grupo.
+    /// </summary>
+    private static int StageRank(string? stage)
+    {
+        if (string.IsNullOrWhiteSpace(stage)) return 95; // sin estado: al fondo, antes de las personales
+
+        foreach (var (rank, tokens) in StageBuckets)
+            foreach (var t in tokens)
+                if (stage.Contains(t, StringComparison.OrdinalIgnoreCase))
+                    return rank;
+
+        return 50; // estado propio no reconocido → al medio, con su propio divisor
+    }
+
+    /// <summary>
+    /// Tokens de flujo (ES + EN). El ORDEN de este array importa: se evalúa de arriba abajo y gana el
+    /// primer match, así que los buckets más específicos van antes que los genéricos.
+    /// </summary>
+    private static readonly (int Rank, string[] Tokens)[] StageBuckets =
+    {
+        // Lo que está EN MARCHA — lo primero que querés ver al abrir el picker.
+        (10, new[] { "progress", "doing", "curso", "haciendo", "desarrollo", "wip", "working", "activo" }),
+        // Empezado pero DETENIDO por algo/alguien: sigue siendo tuyo y urge destrabarlo.
+        (20, new[] { "block", "bloque", "hold", "pausa", "espera", "waiting", "impedimento" }),
+        // Empezado y en manos de OTRO (revisión/QA): no lo trabajás, pero lo seguís.
+        (30, new[] { "review", "revis", "qa", "testing", "prueba", "verificaci", "aprobaci" }),
+        // Listo para agarrar.
+        (40, new[] { "to do", "todo", "to-do", "por hacer", "pendiente", "open", "abierto",
+                     "nuevo", "new", "next", "sprint", "planificado" }),
+        // El pozo sin fondo: último SIEMPRE, aunque alfabéticamente iría primero.
+        (80, new[] { "backlog", "icebox", "idea", "algún día", "someday", "futuro" }),
+    };
 
     private readonly Action<TaskItem> _onPick;
 
@@ -54,6 +120,12 @@ public partial class TaskPickerWindow : Window
     // (durables, del store, cargadas al abrir). RefreshList las mezcla filtradas.
     private readonly List<Row> _webRows = new();
     private readonly List<Row> _customRows = new();
+
+    // Lo que la ListBox muestra HOY (ya filtrado y ordenado). Es el ItemsSource: tiene que ser una
+    // colección propia y no TaskList.Items, porque el agrupado sólo anda sobre una vista real
+    // (ver la nota del constructor). ObservableCollection y no List para que la vista se entere de
+    // los cambios sin tener que refrescarla a mano en cada tecla del filtro.
+    private readonly ObservableCollection<Row> _visibleRows = new();
     private readonly CustomTaskStore _customStore = CustomTaskStore.Load();
 
     public TaskPickerWindow(string deskName, Action<TaskItem> onPick)
@@ -62,6 +134,25 @@ public partial class TaskPickerWindow : Window
 
         _onPick = onPick;
         SubHeaderText.Text = deskName;
+
+        FitToScreen();
+
+        // Agrupado por estado. Va por ItemsSource + colección propia, y NO por TaskList.Items.
+        //
+        // ⚠ NO lo "simplifiques" volviendo a TaskList.Items.Add(): se probó y NO agrupa. La
+        // ItemCollection de una ListBox implementa ICollectionView, pero en MODO DIRECTO (Items.Add)
+        // usa una vista interna que no soporta agrupamiento: acepta el GroupDescription sin chistar
+        // y lo IGNORA. Falla en silencio — instrumentado, daba groupDescriptions=1 pero
+        // isGrouping=False y Groups=null, así que el HeaderTemplate no se ejecutaba nunca y el
+        // divisor no aparecía. Sólo con ItemsSource la vista es una ListCollectionView real, que sí
+        // agrupa.
+        //
+        // Los headers que genera NO son items seleccionables → las flechas, el Enter y el
+        // SelectedIndex=0 del searchbox siguen funcionando igual. TaskList.Items sigue siendo válido
+        // para LEER (Count / indexador / SelectedItem): refleja el ItemsSource.
+        TaskList.ItemsSource = _visibleRows;
+        CollectionViewSource.GetDefaultView(_visibleRows)
+            .GroupDescriptions.Add(new PropertyGroupDescription(nameof(Row.GroupLabel)));
 
         FilterBox.TextChanged += (_, _) => { UpdateFilterPlaceholder(); RefreshList(); };
         FilterBox.PreviewKeyDown += OnFilterKeyDown;
@@ -83,6 +174,32 @@ public partial class TaskPickerWindow : Window
         this.CloseOnDeactivate();
 
         Loaded += (_, _) => FilterBox.Focus();
+    }
+
+    /// <summary>
+    /// Ancho de la ventana y alto de la lista, dimensionados contra el WorkArea del monitor.
+    ///
+    /// Por qué en runtime y no números fijos más grandes en el XAML: la ventana es NoResize +
+    /// CenterScreen, así que un ancho fijo que no entre en la pantalla NO se puede arreglar
+    /// arrastrando — se sale y punto. Los valores del XAML (1360 / 320) quedan como el tamaño
+    /// "cómodo" al que aspiramos; acá lo recortamos si el monitor no da, y lo estiramos si sobra.
+    ///
+    /// El alto va por la LISTA, no por la ventana: con SizeToContent="Height" el alto total lo
+    /// manda el contenido, así que agrandar Window.Height no haría nada — es ListArea la que tiene
+    /// que crecer. El 0.62 deja aire para cabecera, filtro, hints y botón, y el WorkArea ya excluye
+    /// el alto de nuestra AppBar (está registrada como tal), así que no la tapamos.
+    /// </summary>
+    private void FitToScreen()
+    {
+        var wa = SystemParameters.WorkArea;
+
+        // Ancho: aspiramos a 1360, nunca más que la pantalla menos un margen, nunca menos que 910
+        // (abajo de eso las 4 columnas de la fila se empiezan a pisar).
+        Width = Math.Max(910, Math.Min(1360, wa.Width - 80));
+
+        // Alto de la lista: ~62% del área útil, con piso y techo. El techo evita que en un monitor
+        // vertical la lista se estire hasta lo absurdo.
+        ListArea.Height = Math.Max(320, Math.Min(820, wa.Height * 0.62));
     }
 
     /// <summary>Inyecta las tareas web ya traídas. Oculta el loader y arma la lista filtrable.</summary>
@@ -124,10 +241,27 @@ public partial class TaskPickerWindow : Window
     private void RefreshList()
     {
         string filter = FilterBox.Text.Trim();
-        TaskList.Items.Clear();
-        // Web primero (el grueso), personales al final — pero ambas en el MISMO listado filtrable.
-        foreach (var r in _webRows)    if (Matches(r, filter)) TaskList.Items.Add(r);
-        foreach (var r in _customRows) if (Matches(r, filter)) TaskList.Items.Add(r);
+        _visibleRows.Clear();
+
+        // Web + personales en el MISMO listado filtrable, pero AGRUPADAS por estado.
+        //
+        // El orden de inserción ES el orden de los divisores: PropertyGroupDescription crea cada
+        // grupo la primera vez que ve su clave, así que agrupar bien exige insertar ya ordenado.
+        // Por eso el OrderBy va acá y no en la vista.
+        //
+        // Desempates, en orden: rango de flujo (StageRank) → nombre del estado (dos estados del
+        // mismo rango, ej. "Doing" y "En curso" de gestores distintos, quedan siempre en el mismo
+        // orden entre aperturas) → vencimiento (dentro del grupo, lo que vence antes va arriba;
+        // las sin fecha al final) → título (desempate final estable).
+        var visible = _webRows.Concat(_customRows)
+            .Where(r => Matches(r, filter))
+            .OrderBy(r => r.GroupOrder)
+            .ThenBy(r => r.GroupLabel, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(r => r.Task.DueDate ?? DateTimeOffset.MaxValue)
+            .ThenBy(r => r.Task.Title, StringComparer.CurrentCultureIgnoreCase);
+
+        foreach (var r in visible) _visibleRows.Add(r);
+
     }
 
     private void OnFilterKeyDown(object sender, KeyEventArgs e)

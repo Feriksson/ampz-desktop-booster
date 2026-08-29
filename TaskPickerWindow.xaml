@@ -4,7 +4,7 @@
         xmlns:local="clr-namespace:AmpzDesktopBooster"
         xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
         Title="{loc:Translate TaskPicker.WindowTitle}"
-        Width="910" SizeToContent="Height"
+        Width="1360" SizeToContent="Height"
         WindowStyle="None" ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="False" Topmost="True"
@@ -14,6 +14,9 @@
         <!-- Convierte string vacío → Collapsed (sin esto, los campos opcionales dejarían huecos
              visuales con su Margin/Padding). -->
         <local:EmptyStringToCollapsedConverter x:Key="EmptyToCollapsed" />
+
+        <!-- Mayúsculas SÓLO de presentación para los divisores de grupo (ver UpperCaseConverter). -->
+        <local:UpperCaseConverter x:Key="Upper" />
 
         <!-- Template de fila: tabla de 4 columnas. Las columnas Auto (Account, Identifier, Project)
              usan SharedSizeGroup para sincronizar sus anchos ENTRE FILAS — sin esto cada fila se
@@ -55,6 +58,15 @@
                            Visibility="{Binding ProjectName, Converter={StaticResource EmptyToCollapsed}}" />
             </Grid>
         </DataTemplate>
+
+        <!-- Tipografía compartida por los dos TextBlock del divisor (nombre y contador), para que no
+             se desalineen si mañana se toca el tamaño en uno solo. La APARIENCIA del divisor (banda,
+             acento, regla) vive en el GroupStyle de la ListBox, más abajo. -->
+        <Style x:Key="GroupHeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
     </Window.Resources>
 
     <Border BorderBrush="#33FFFFFF" BorderThickness="1" Padding="16">
@@ -77,14 +89,54 @@
 
             <!-- Grid contenedor: la ListBox y el overlay de loading coexisten en la misma celda.
                  El overlay se Colapsa cuando termina la carga (ver TaskPickerWindow.SetItems). -->
-            <Grid Height="320">
+            <Grid x:Name="ListArea" Height="320">
                 <ListBox x:Name="TaskList"
                          FontFamily="Segoe UI" FontSize="13"
                          Background="#161616" Foreground="#E6E6EA" BorderBrush="#333"
                          ItemTemplate="{StaticResource RowTemplate}"
                          Grid.IsSharedSizeScope="True"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         HorizontalContentAlignment="Stretch" />
+                         HorizontalContentAlignment="Stretch">
+
+                    <!-- EL DIVISOR entre estados. Es una BANDA, no un texto suelto: fondo propio +
+                         línea de acento a la izquierda + regla inferior. Un título pelado entre
+                         filas se lee como una fila más — que es justo el problema que vinimos a
+                         resolver. Mayúsculas + celeste de acento para que se identifique como
+                         "encabezado de sección" sin tener que compararlo con lo de al lado.
+                         ItemCount al costado: la vista de grupo ya lo trae gratis y contesta
+                         "¿cuánto tengo en curso?" sin contar a ojo. -->
+                    <ListBox.GroupStyle>
+                        <GroupStyle>
+                            <GroupStyle.HeaderTemplate>
+                                <DataTemplate>
+                                    <!-- Margin superior 10 / inferior 0: el aire va ARRIBA del
+                                         divisor, así queda pegado a SUS filas y separado de las del
+                                         grupo anterior. Al revés, el header flotaría en el medio y
+                                         no se sabría a qué bloque pertenece. El primer grupo no
+                                         necesita ese aire, pero cuesta menos que un trigger. -->
+                                    <Border Background="#12FFFFFF" BorderBrush="#2E2E34"
+                                            BorderThickness="0,0,0,1" Padding="8,5"
+                                            Margin="0,10,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <!-- Línea de acento: ancla el ojo al arranque de cada
+                                                 sección cuando scrolleás rápido. -->
+                                            <Border Background="#4FC3F7" Width="3" CornerRadius="1.5"
+                                                    Margin="0,0,8,0" />
+                                            <TextBlock Text="{Binding Name, Converter={StaticResource Upper}}"
+                                                       Foreground="#4FC3F7"
+                                                       Style="{StaticResource GroupHeaderStyle}"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding ItemCount}" Foreground="#6E6E78"
+                                                       Style="{StaticResource GroupHeaderStyle}"
+                                                       FontWeight="Normal" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </GroupStyle.HeaderTemplate>
+                        </GroupStyle>
+                    </ListBox.GroupStyle>
+                </ListBox>
 
                 <Border x:Name="LoadingOverlay" Background="#161616" BorderBrush="#333" BorderThickness="1">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">

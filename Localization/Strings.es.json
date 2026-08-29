@@ -409,6 +409,8 @@
   "TaskPicker.ErrorHint": "Cerrá y volvé a intentar, o revisá Config → Tareas.",
   "TaskPicker.FilterPlaceholder": "Filtrar tareas… (Ctrl+Enter: crear personal)",
   "TaskPicker.CustomTag": "✎ personal",
+  "TaskPicker.GroupNoStage": "SIN ESTADO",
+  "TaskPicker.GroupCustom": "PERSONALES",
 
   "TaskDetail.WindowTitle": "Tarea activa",
   "TaskDetail.BtnUnpin": "Desanclar",
