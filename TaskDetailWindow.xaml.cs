@@ -30,6 +30,8 @@ public partial class TaskDetailWindow : Window
         _onPickAnother = onPickAnother;
         _onUnpin = onUnpin;
 
+        FitToScreen();
+
         IdText.Text = task.Identifier;
         IdText.Visibility = string.IsNullOrEmpty(task.Identifier) ? Visibility.Collapsed : Visibility.Visible;
         ProjectText.Text = string.IsNullOrEmpty(task.Project) ? "" : task.Project;
@@ -56,6 +58,26 @@ public partial class TaskDetailWindow : Window
         this.CloseOnDeactivate();
 
         Loaded += (_, _) => PositionAboveBar();
+    }
+
+    /// <summary>
+    /// Ancho de la ventana y techo del panel de descripción, dimensionados contra el WorkArea.
+    ///
+    /// Mismo criterio que el picker: la ventana es NoResize, así que un ancho fijo que no entre en
+    /// pantalla no se puede corregir arrastrando. Los valores del XAML (820 / 600) son el tamaño al
+    /// que aspiramos; acá se recortan si el monitor no da.
+    ///
+    /// El alto NO se setea: con SizeToContent="Height" la ventana crece con el contenido. Lo que
+    /// acotamos es el TECHO del scroller de la descripción — sin él, una tarea con un body enorme
+    /// haría una ventana más alta que la pantalla, y como se ancla por el borde INFERIOR
+    /// (PositionAboveBar), lo que se saldría de cuadro es el título. El 0.55 deja lugar para el
+    /// título, los botones y los hints.
+    /// </summary>
+    private void FitToScreen()
+    {
+        var wa = SystemParameters.WorkArea;
+        Width = Math.Max(460, Math.Min(820, wa.Width - 40));
+        BodyScroller.MaxHeight = Math.Max(260, Math.Min(600, wa.Height * 0.55));
     }
 
     /// <summary>Pega la ventana abajo-derecha, arriba de la barra. WorkArea ya excluye el alto de la

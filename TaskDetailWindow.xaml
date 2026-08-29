@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
         Title="{loc:Translate TaskDetail.WindowTitle}"
-        Width="460" SizeToContent="Height"
+        Width="820" SizeToContent="Height"
         WindowStyle="None" ResizeMode="NoResize"
         ShowInTaskbar="False" Topmost="True"
         Background="#1E1E1E" UseLayoutRounding="True">
@@ -27,7 +27,7 @@
                  largas no se coman la pantalla — la ventana sigue creciendo, pero hasta ahí. -->
             <Border x:Name="BodyPanel" Background="#0CFFFFFF" CornerRadius="4" Padding="10,8"
                     Margin="0,0,0,14" Visibility="Collapsed">
-                <ScrollViewer MaxHeight="260" VerticalScrollBarVisibility="Auto"
+                <ScrollViewer x:Name="BodyScroller" MaxHeight="600" VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
                     <TextBlock x:Name="BodyText" Foreground="#C8C8CC" FontFamily="Segoe UI" FontSize="12"
                                TextWrapping="Wrap" />
