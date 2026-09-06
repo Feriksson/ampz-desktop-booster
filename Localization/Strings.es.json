@@ -1,4 +1,4 @@
-{
+﻿{
   "Language.Spanish": "Español",
   "Language.English": "Inglés",
 
@@ -549,6 +549,10 @@
   "Toast.PublicIpChanged": "Cambió tu IP pública",
   "Toast.LocalIpChanged": "Cambió tu IP de red local",
 
+  "Router.DeskHasNoSpaces": "{0} no lleva espacios",
+  "Router.DeskHasNoSpacesHint": "Sólo los escritorios de rol Espacio. Cambiá el rol en Configuración → Escritorios.",
+  "Router.NoSpaceYet": "{0} todavía no tiene espacio",
+  "Router.NoSpaceYetHint": "Asignale uno con Win+Intro (numpad) antes de elegir contexto.",
   "Router.CannotPin": "'{0}' no puede anclarse.",
   "Router.PinTitle": "Anclar",
   "Router.UnpinConfirm": "'{0}' está anclado a '{1}'.\n¿Desanclar?",

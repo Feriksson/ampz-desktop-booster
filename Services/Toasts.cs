@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Media;
@@ -50,6 +50,14 @@ public static class Toasts
 
     public static void TaskUnassigned(string task, string deskName) =>
         Show(Kind.Info, $"🗒  {Loc.T("Toast.TaskRemovedFrom")}  {deskName}", task);
+
+    /// <summary>
+    /// El atajo NO aplica en el desk actual. Existe porque el silencio, aunque CORRECTO (no abrir
+    /// una ventana que no corresponde), se lee igual que "la app no responde" — y un atajo mudo
+    /// no se distingue de uno roto. Ámbar, la misma familia que las de protección: acción
+    /// legítimamente negada, con el motivo y la salida a mano.
+    /// </summary>
+    public static void NotHere(string title, string detail = "") => Show(Kind.Protect, $"🚫  {title}", detail);
 
     public static void Info(string title, string detail = "", string extra = "") => Show(Kind.Info, title, detail, extra);
     public static void Error(string title, string detail = "") => Show(Kind.Error, title, detail);

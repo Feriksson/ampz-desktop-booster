@@ -31,6 +31,9 @@ public partial class ModulePickerWindow : Window
     private readonly ProjectStore _store;
     private readonly Action _onChanged;
 
+    /// <summary>Contexto activo del desk al abrir. Sirve para nacer parado sobre él en la lista.</summary>
+    private readonly string _current;
+
     public ModulePickerWindow(int deskIdx, string deskName, string project, ProjectStore store, Action onChanged)
     {
         InitializeComponent();
@@ -39,17 +42,17 @@ public partial class ModulePickerWindow : Window
         _project = project;
         _store = store;
         _onChanged = onChanged;
+        _current = store.GetDeskModule(deskIdx);
 
         Icon = AppIcon.TryLoadForWindow();
         HeaderText.Text = string.Format(Loc.T("Modules.Header"), project);
         SubHeaderText.Text = deskName;
 
-        // Pre-cargar con el contexto activo o, si no hay, la sugerencia persistida — misma regla que
-        // el setter de espacio: la sesión manda, el INI sólo pre-llena.
-        string seed = store.GetDeskModule(deskIdx);
-        if (seed == "") seed = store.GetModuleSuggestion(deskIdx);
-        FilterBox.Text = seed;
-
+        // El filtro arranca VACÍO a propósito. Antes se pre-cargaba con el contexto activo (copiando
+        // al setter de espacio), pero acá el textbox FILTRA la lista: sembrarlo con el contexto actual
+        // dejaba a la vista una sola fila — justo la que YA tenías — y para ver las otras había que
+        // borrar el texto primero. Este picker se abre para CAMBIAR de contexto, así que la lista se
+        // muestra ENTERA y el contexto actual viene SELECCIONADO: una flecha y ya estás en el de al lado.
         RefreshList();
 
         FilterBox.TextChanged += (_, _) => RefreshList();
@@ -59,7 +62,14 @@ public partial class ModulePickerWindow : Window
         NoModuleBtn.Click += (_, _) => ClearAndClose();
         CloseBtn.Click += (_, _) => Close();
 
-        Loaded += (_, _) => { FilterBox.Focus(); FilterBox.SelectAll(); };
+        // El foco arranca donde la próxima tecla sirve: si el desk YA tiene contexto, en la LISTA
+        // (parado sobre él → flecha = contexto de al lado, Enter = confirmar). Si no tiene ninguno,
+        // en el filtro, que es donde se tipea uno nuevo o se busca entre muchos.
+        Loaded += (_, _) =>
+        {
+            if (ModuleList.SelectedItem is not null) ModuleList.Focus();
+            else                                     FilterBox.Focus();
+        };
     }
 
     /// <summary>
@@ -86,6 +96,15 @@ public partial class ModulePickerWindow : Window
         // El hint de "todavía no hay contextos" mira el CATÁLOGO, no el filtro: si tenés contextos pero
         // el filtro no matchea, no hace falta explicarte qué es un contexto — ya lo sabés.
         EmptyHint.Visibility = modules.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        // Nacer PARADO sobre el contexto activo: es el punto de partida del movimiento con flechas y,
+        // de paso, el único feedback de "en cuál estás" ahora que el filtro ya no lo muestra escrito.
+        if (_current != "")
+        {
+            ModuleList.SelectedItem = ModuleList.Items.OfType<Row>()
+                .FirstOrDefault(r => string.Equals(r.Name, _current, StringComparison.OrdinalIgnoreCase));
+            if (ModuleList.SelectedItem is not null) ModuleList.ScrollIntoView(ModuleList.SelectedItem);
+        }
     }
 
     private void OnFilterKeyDown(object sender, KeyEventArgs e)

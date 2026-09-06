@@ -386,8 +386,12 @@ public sealed class HotkeyRouter
 
         // El setter es sólo para los desks de rol ESPACIO (antes: los que se llamaran "DESK +N" —
         // por eso renombrar uno te dejaba sin setter y parecía que el atajo estaba roto).
+        // No abrir es lo correcto; irse en SILENCIO no: sin feedback el atajo se lee como colgado.
         if (!DeskCatalog.IsSpace(name))
+        {
+            Toasts.NotHere(string.Format(Loc.T("Router.DeskHasNoSpaces"), name), Loc.T("Router.DeskHasNoSpacesHint"));
             return;
+        }
 
         // Re-press con el setter abierto → RESET del desk: saca el espacio y cierra. Mismo patrón de
         // instancia única que Variables (Win+*) y Notas (Win+/): la 2da pulsación NO abre otra ventana,
@@ -408,8 +412,10 @@ public sealed class HotkeyRouter
     /// atajo del uso frecuente — rotás de "Plataforma" a "App Mobile" del mismo cliente sin pasar
     /// por el setter. El camino completo (espacio → contexto) sigue siendo Win+NumpadEnter.
     ///
-    /// Sin espacio en el desk no hay nada que sub-dividir: en vez de abrir una ventana vacía,
-    /// mandamos al setter de espacio, que es lo que realmente hace falta primero.
+    /// Sin espacio en el desk el atajo NO HACE NADA (silencio deliberado). Antes desviaba al setter
+    /// de espacio, y eso estaba mal: este atajo es de UNA capa (el sub-scope), y abrir la ventana de
+    /// OTRA capa porque la primera falta es un secuestro — apretás "contexto" y te aparece "espacio".
+    /// El que quiere setear espacio tiene Win+NumpadEnter; el contexto sin espacio no existe.
     /// </summary>
     private void ShowModulePicker()
     {
@@ -417,12 +423,17 @@ public sealed class HotkeyRouter
         string name = _desktops.GetName(idx);
 
         if (!DeskCatalog.IsSpace(name))
+        {
+            Toasts.NotHere(string.Format(Loc.T("Router.DeskHasNoSpaces"), name), Loc.T("Router.DeskHasNoSpacesHint"));
             return;
+        }
 
         string project = _projects.GetDeskProject(idx);
         if (project == "")
         {
-            ShowProjectSetter(); // no hay espacio todavía → arrancá por ahí
+            // Sin espacio no hay nada que sub-dividir → no abrimos NADA, pero lo DECIMOS y apuntamos
+            // al atajo que sí corresponde. Seguimos sin secuestrar la capa: informamos, no desviamos.
+            Toasts.NotHere(string.Format(Loc.T("Router.NoSpaceYet"), name), Loc.T("Router.NoSpaceYetHint"));
             return;
         }
 

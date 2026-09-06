@@ -1,4 +1,4 @@
-{
+﻿{
   "Language.Spanish": "Spanish",
   "Language.English": "English",
 
@@ -549,6 +549,10 @@
   "Toast.PublicIpChanged": "Your public IP changed",
   "Toast.LocalIpChanged": "Your local network IP changed",
 
+  "Router.DeskHasNoSpaces": "{0} does not hold spaces",
+  "Router.DeskHasNoSpacesHint": "Only desktops with the Space role. Change the role in Settings → Desktops.",
+  "Router.NoSpaceYet": "{0} has no space yet",
+  "Router.NoSpaceYetHint": "Assign one with Win+Enter (numpad) before picking a context.",
   "Router.CannotPin": "'{0}' cannot be pinned.",
   "Router.PinTitle": "Pin",
   "Router.UnpinConfirm": "'{0}' is pinned to '{1}'.\nUnpin?",
