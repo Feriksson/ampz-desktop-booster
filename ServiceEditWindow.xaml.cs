@@ -54,12 +54,17 @@ public partial class ServiceEditWindow : Window
         // Puerto 0 = "sin puerto" (es una tarea) → el campo se muestra VACÍO, no con un "0" que el
         // usuario tendría que borrar y que además se lee como un puerto real mal cargado.
         PortBox.Text = initial.Port > 0 ? initial.Port.ToString() : "";
+        UrlBox.Text = initial.Url;
         AutoStartBox.IsChecked = initial.AutoStart; // null = indeterminado = "seguí el default"
 
         // El hint tiene que decir qué haría el default HOY, y el default depende del puerto → se
         // recalcula mientras tipeás. Si no, el usuario lee "arranca solo" con el checkbox en gris
         // mientras vacía el puerto, y la frase pasa a ser mentira sin que nada se mueva.
         PortBox.TextChanged += (_, _) => UpdateAutoStartHint();
+        // Comando y URL también mueven el default: vaciar el comando y cargar una URL convierte la
+        // fila en "sólo URL", que arranca sola. Sin esto el hint quedaría diciendo lo contrario.
+        CommandBox.TextChanged += (_, _) => UpdateAutoStartHint();
+        UrlBox.TextChanged += (_, _) => UpdateAutoStartHint();
         AutoStartBox.Checked += (_, _) => UpdateAutoStartHint();
         AutoStartBox.Unchecked += (_, _) => UpdateAutoStartHint();
         AutoStartBox.Indeterminate += (_, _) => UpdateAutoStartHint();
@@ -75,6 +80,13 @@ public partial class ServiceEditWindow : Window
         PortBox.TextChanged += (_, _) => UpdateConflict();
         UpdateConflict();
 
+        // La URL se previsualiza YA RESUELTA por el mismo motivo que el comando: con {port} adentro,
+        // lo que tipeaste y lo que se va a abrir no son el mismo texto, y la única forma de verificar
+        // que apunta a donde creés es verlo escrito.
+        UrlBox.TextChanged += (_, _) => UpdateUrlHint();
+        PortBox.TextChanged += (_, _) => UpdateUrlHint();
+        UpdateUrlHint();
+
         OkBtn.Click += (_, _) => Accept();
         CancelBtn.Click += (_, _) => { DialogResult = false; };
         Loaded += (_, _) => { TitleBox.Focus(); TitleBox.SelectAll(); };
@@ -84,13 +96,61 @@ public partial class ServiceEditWindow : Window
     private void UpdateAutoStartHint()
     {
         bool hasPort = int.TryParse(PortBox.Text.Trim(), out int p) && p > 0;
+        // Una entrada de SOLO URL arranca sola aunque no declare puerto (ver ServiceEntry): el hint
+        // tiene que decir ESO y no "sin puerto no arranca", que para esta fila sería falso.
+        bool urlOnly = CommandBox.Text.Trim() == "" && UrlBox.Text.Trim() != "";
+
         AutoStartHint.Text = AutoStartBox.IsChecked switch
         {
             true  => Loc.T("Services.AutoStartOn"),
             false => Loc.T("Services.AutoStartOff"),
+            _ when urlOnly => Loc.T("Services.AutoStartAutoUrl"),
             _     => Loc.T(hasPort ? "Services.AutoStartAutoOn" : "Services.AutoStartAutoOff"),
         };
     }
+
+    /// <summary>
+    /// Qué se va a abrir de verdad con esta URL. Muestra el resultado de
+    /// <see cref="ServiceUrlOpener.Resolve"/> —tokens expandidos y esquema puesto— y avisa cuando lo
+    /// tipeado no parece una dirección: enterarte de eso al APRETAR "levantar todo", con las
+    /// terminales ya arrancando, es enterarte en el peor momento posible.
+    /// </summary>
+    private void UpdateUrlHint()
+    {
+        string raw = UrlBox.Text.Trim();
+        if (raw == "")
+        {
+            UrlHint.Text = Loc.T("Services.UrlHintEmpty");
+            UrlHint.Foreground = MutedBrush;
+            return;
+        }
+
+        int.TryParse(PortBox.Text.Trim(), out int port);
+        string resolved = ServiceUrlOpener.Resolve(raw, port);
+
+        if (!UrlHelper.IsUrl(resolved))
+        {
+            UrlHint.Text = string.Format(Loc.T("Services.UrlHintInvalid"), resolved);
+            UrlHint.Foreground = WarnBrush;
+            return;
+        }
+
+        // Se dice EXPLÍCITAMENTE a qué puerto le va a esperar: es la parte de la feature que el
+        // usuario no puede deducir mirando el campo (el puerto puede salir de la URL y no de acá
+        // arriba), y es justo la que decide si la pestaña abre a tiempo o contra un server booteando.
+        int wait = ServiceUrlOpener.WaitPort(resolved, port);
+        UrlHint.Text = "→ " + resolved + "\n"
+                     + (wait > 0 ? string.Format(Loc.T("Services.UrlHintWaits"), wait)
+                                 : Loc.T("Services.UrlHintNoWait"));
+        UrlHint.Foreground = OkBrush;
+    }
+
+    private static readonly System.Windows.Media.Brush MutedBrush =
+        new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x6E, 0x6E, 0x78));
+    private static readonly System.Windows.Media.Brush OkBrush =
+        new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x7F, 0xB8, 0xD4));
+    private static readonly System.Windows.Media.Brush WarnBrush =
+        new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xE5, 0xA0, 0xA0));
 
     /// <summary>
     /// Muestra el comando REAL que se va a ejecutar. Sólo aparece si el comando usa tokens: para el
@@ -185,11 +245,26 @@ public partial class ServiceEditWindow : Window
 
         string title = TitleBox.Text.Trim();
         string command = CommandBox.Text.Trim();
+        string url = UrlBox.Text.Trim();
+
+        // Se BLOQUEA lo que no parece una dirección (con los tokens ya expandidos, así que
+        // "localhost:{port}/x" con puerto cargado pasa). No se bloquea si quedó un token sin
+        // resolver — ese caso ya lo canta el hint en rojo y puede ser un borrador a medio cargar —,
+        // pero un "asdf" guardado silenciosamente sería una URL que nunca abre nada y que nadie
+        // relaciona con lo que tipeó tres semanas atrás.
+        if (url != "" && !UrlHelper.IsUrl(ServiceUrlOpener.Resolve(url, port))
+            && !CommandTokens.HasTokens(url))
+        {
+            MessageBox.Show(Loc.T("Services.InvalidUrl"), Loc.T("Services.WindowTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         // Sin título no se puede identificar la fila en la lista. Caemos al comando (que es lo que
         // el servicio HACE) y, si tampoco hay, al puerto — mismo criterio de "autocompletar el título"
         // que traía el catálogo de puertos, para que nunca quede una fila anónima.
         if (title == "")
             title = command != "" ? command
+                  : url != "" ? url
                   : port > 0 ? string.Format(Loc.T("Services.AutoTitle"), port)
                   : "";
         if (title == "")
@@ -205,6 +280,7 @@ public partial class ServiceEditWindow : Window
             Command = command,
             WorkDir = WorkDirBox.Text.Trim(),
             Port = port,
+            Url = url,
             AutoStart = AutoStartBox.IsChecked, // null si quedó indeterminado → default por puerto
         };
         DialogResult = true;

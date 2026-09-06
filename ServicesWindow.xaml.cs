@@ -38,6 +38,12 @@ namespace AmpzDesktopBooster;
 /// editan ni se borran desde acá: se tocan parándote en el scope donde viven, para que no puedas
 /// romperle el servicio a otro contexto sin darte cuenta.
 ///
+/// URLs: una entrada puede declarar además una URL (<c>ServiceEntry.Url</c>) que se abre cuando el
+/// servicio se lanza y en "levantar todo". Con comando vacío la entrada es SÓLO eso —un enlace que
+/// entra en el arranque grupal—, que es el caso de "abrime /platform cuando levante el front". La
+/// espera al puerto la maneja <see cref="ServiceUrlOpener"/>, no esta ventana: el re-press del atajo
+/// la CIERRA, y una espera colgada de acá moriría con ella.
+///
 /// POR QUÉ EL ESTADO ES EL PUERTO Y NO EL PID (limitación asumida, no la re-pelees): guardar el PID
 /// que lanzamos sería exacto en teoría e inútil acá — se lanza vía wt.exe, que delega en el proceso
 /// MONARCA de Windows Terminal, así que el PID que devuelve Process.Start NO es el del dev server; y
@@ -61,6 +67,8 @@ public partial class ServicesWindow : Window
         public required string Command { get; init; }
         public required string WorkDir { get; init; }
         public required int Port { get; init; }
+        /// <summary>URL que abre esta entrada al lanzarse, o "" si no abre ninguna.</summary>
+        public required string Url { get; init; }
         public required bool IsBroken { get; init; }
         /// <summary>Su puerto lo declara además OTRA entrada del catálogo (choque preexistente).</summary>
         public required bool IsPortDuplicated { get; init; }
@@ -87,13 +95,29 @@ public partial class ServicesWindow : Window
         public bool HasPort => Port > 0;
         public bool HasCommand => Command.Trim() != "";
 
+        public bool HasUrl => Url.Trim() != "";
+
         public string PortText => Port > 0 ? Port.ToString() : "";
-        public string LocalhostUrl => $"http://localhost:{Port}";
+
+        /// <summary>
+        /// La URL que abre el botón Visitar / Shift+Enter. La CARGADA gana sobre la derivada del
+        /// puerto: si el usuario se tomó el trabajo de escribir "localhost:6080/platform" es porque
+        /// la raíz del server no es el lugar al que quiere ir, y mandarlo igual a "/" sería ignorar
+        /// el único dato que agregó a mano.
+        /// </summary>
+        public string VisitUrl =>
+            HasUrl ? ServiceUrlOpener.Resolve(Url, Port)
+          : Port > 0 ? $"http://localhost:{Port}"
+          : "";
 
         /// <summary>
         /// ⚠ delante cuando el directorio ya no existe (la señal más importante de la fila) y ⏩ atrás
         /// cuando el servicio entra en "levantar todo" — mismo ícono que el botón, para que de un
         /// vistazo sepas QUÉ va a arrancar sin tener que abrir el editor de cada fila.
+        ///
+        /// 🌐 atrás cuando la entrada abre una URL al lanzarse — se ve en la fila y no sólo en su
+        /// columna porque una URL larga se corta, y lo que importa de un vistazo no es CUÁL es sino
+        /// que ESTA fila además te va a abrir el browser.
         ///
         /// ⛔ atrás cuando el puerto está duplicado en el catálogo. Va acá y no en un cartel aparte
         /// porque el choque es INVISIBLE por naturaleza: la otra entrada vive en un scope que no
@@ -106,6 +130,7 @@ public partial class ServicesWindow : Window
             get
             {
                 string t = AutoStarts ? Title + " ⏩" : Title;
+                if (HasUrl) t += " 🌐";
                 if (IsPortDuplicated) t += " ⛔";
                 return IsBroken ? "⚠ " + t : t;
             }
@@ -220,9 +245,14 @@ public partial class ServicesWindow : Window
         double free = Width - fixedCols - chrome;
         if (free <= 0) return; // pantalla absurdamente chica: dejamos los anchos de arranque del XAML
 
-        TitleCol.Width   = free * 0.24;
-        CommandCol.Width = free * 0.36;
-        WorkDirCol.Width = free * 0.40;
+        TitleCol.Width   = free * 0.21;
+        CommandCol.Width = free * 0.29;
+        WorkDirCol.Width = free * 0.32;
+        // La URL se lleva la tajada más chica de las cuatro y no por descuido: es la ÚNICA que se
+        // lee de izquierda a derecha y cuya parte identificatoria está al principio (el host y el
+        // path), así que es la que menos sufre quedarse corta. Un comando y un path, al revés,
+        // esconden al FINAL lo que se necesita ver.
+        UrlCol.Width     = free * 0.18;
     }
 
     // ── Lista ───────────────────────────────────────────────────────────────────
@@ -263,7 +293,7 @@ public partial class ServicesWindow : Window
             {
                 Scope = RowScope.Separator, PoolIndex = -1,
                 Title = string.Format(Loc.T("Services.SectionInherited"), header),
-                Command = "", WorkDir = "", Port = 0, IsBroken = false, AutoStarts = false,
+                Command = "", WorkDir = "", Port = 0, Url = "", IsBroken = false, AutoStarts = false,
                 IsPortDuplicated = false,
             });
         }
@@ -278,6 +308,7 @@ public partial class ServicesWindow : Window
                 Command = e.Command,
                 WorkDir = e.WorkDir,
                 Port = e.Port,
+                Url = e.Url,
                 IsBroken = IsBrokenDir(e),
                 IsPortDuplicated = e.Port > 0 && duplicated.Contains(e.Port),
                 AutoStarts = ServiceLauncher.IsGroupLaunchable(e),
@@ -291,6 +322,7 @@ public partial class ServicesWindow : Window
         || e.Title.Contains(filter, StringComparison.OrdinalIgnoreCase)
         || e.Command.Contains(filter, StringComparison.OrdinalIgnoreCase)
         || e.WorkDir.Contains(filter, StringComparison.OrdinalIgnoreCase)
+        || e.Url.Contains(filter, StringComparison.OrdinalIgnoreCase)
         || e.Port.ToString().Contains(filter);
 
     /// <summary>
@@ -302,7 +334,7 @@ public partial class ServicesWindow : Window
     /// </summary>
     public static bool IsBrokenDir(ServiceEntry e)
     {
-        if (e.Command.Trim() == "") return false;
+        if (e.Command.Trim() == "") return false;  // sólo monitoreo o sólo URL: no corre nada
         string dir = e.WorkDir.Trim();
         return dir == "" || !Directory.Exists(dir);
     }
@@ -390,8 +422,17 @@ public partial class ServicesWindow : Window
     private void PrimaryAction()
     {
         if (Selected is not { } row || row.IsSeparator) return;
-        if (row.HasCommand) LaunchRow(row);
-        else if (row.HasPort) OpenInBrowser();
+
+        if (row.HasCommand)
+        {
+            LaunchRow(row);
+            // La URL de la entrada sale junto con su comando, esperando al puerto igual que en el
+            // arranque grupal: lanzar el front y abrirle la pantalla es UN gesto, no dos.
+            if (row.HasUrl) ServiceUrlOpener.Open(row.Url, row.Port);
+            return;
+        }
+
+        if (row.HasUrl || row.HasPort) OpenInBrowser();
     }
 
     private void LaunchRow(Row row)
@@ -430,7 +471,8 @@ public partial class ServicesWindow : Window
     /// Estando en un scope de espacio, "todo" significa "todo LO MÍO" (contexto + espacio padre).
     /// La global se sigue levantando en grupo desde el scope GLOBAL, que es donde es "lo tuyo" —
     /// y una fila global suelta se puede seguir lanzando a mano con Enter desde acá.
-    /// Devuelve cuántos lanzó (0 = ya estaba todo arriba, o no hay nada que levantar).
+    /// Devuelve cuántos lanzó (0 = ya estaba todo arriba, o no hay nada que levantar). Las URLs
+    /// cuentan: para el usuario "abrió tres pestañas" es tan "hizo algo" como "arrancó tres servers".
     ///
     /// Se juntan TODOS primero y se lanzan de UNA (<see cref="ServiceLauncher.LaunchMany"/>), no de a
     /// uno adentro del lazo. No es un detalle de estilo: uno por uno abría una VENTANA de terminal por
@@ -441,6 +483,7 @@ public partial class ServicesWindow : Window
     {
         var listening = TcpPortInfo.ListeningPorts();
         var pending = new List<ServiceEntry>();
+        var urls = new List<(string Url, int Port)>();
 
         // En scope de espacio/contexto (_globalPool no-null ⇒ la primaria NO es la global) el arranque
         // grupal se limita a lo propio + lo del espacio padre. Ver el comentario del summary.
@@ -467,15 +510,28 @@ public partial class ServicesWindow : Window
                     // Mitigación: recordamos lo que ya disparó ESTA ventana. Cubre el caso real
                     // (re-press seguido); cerrar y reabrir vuelve a permitirlo, que es lo que querés
                     // si cerraste a propósito para relevantar.
-                    string key = s.Command.Trim() + " " + s.WorkDir.Trim();
+                    // La URL entra en la huella: una entrada de SOLO URL no tiene comando ni
+                    // directorio, así que sin ella todas las URLs sueltas compartirían la MISMA key
+                    // y sólo se abriría la primera.
+                    string key = string.Join("\n", s.Command.Trim(), s.WorkDir.Trim(), s.Url.Trim());
                     if (!_groupLaunchedPortless.Add(key)) continue;
                 }
 
-                pending.Add(s);
+                if (s.Command.Trim() != "") pending.Add(s);
+                if (s.Url.Trim() != "") urls.Add((s.Url.Trim(), s.Port));
             }
         }
 
-        return ServiceLauncher.LaunchMany(pending);
+        // Primero los procesos y después las URLs, aunque las URLs no esperen a que la lista de
+        // comandos termine de resolverse: el que abre las pestañas ya sabe esperar al puerto por su
+        // cuenta (ver ServiceUrlOpener), así que este orden es sólo para que el trabajo pesado —una
+        // sola llamada a wt.exe con todas las pestañas— arranque cuanto antes.
+        int launched = ServiceLauncher.LaunchMany(pending);
+        ServiceUrlOpener.OpenAll(urls);
+
+        // Las URLs cuentan como "algo que se hizo": si no, un scope de puras URLs dispararía el
+        // browser y acto seguido te avisaría que no había nada que levantar.
+        return launched + urls.Count;
     }
 
     private void LaunchMissingWithFeedback()
@@ -500,10 +556,10 @@ public partial class ServicesWindow : Window
     private void OpenInBrowser()
     {
         if (Selected is not { } row || row.IsSeparator) return;
-        if (!row.HasPort) { NeedsPort(); return; }
+        if (row.VisitUrl == "") { NeedsPort(); return; }
 
         IntPtr monitor = WindowMethods.MonitorOf(new WindowInteropHelper(this).Handle);
-        PathOpener.Open(row.LocalhostUrl, monitor);
+        PathOpener.Open(row.VisitUrl, monitor);
         Close();
     }
 
@@ -514,22 +570,22 @@ public partial class ServicesWindow : Window
 
     private void CopyLocalhost()
     {
-        if (Selected is not { } row || !row.HasPort) return;
-        TryCopy(row.LocalhostUrl);
+        if (Selected is not { } row || row.VisitUrl == "") return;
+        TryCopy(row.VisitUrl);
     }
 
     private void CopyNetwork()
     {
-        if (Selected is not { } row || !row.HasPort) return;
+        if (Selected is not { } row) return;
         if (_networkIp is null) { NoNetwork(); return; }
-        TryCopy(NetworkUrl(row));
+        if (NetworkUrl(row) is { } url) TryCopy(url);
     }
 
     private void ShowQr()
     {
-        if (Selected is not { } row || !row.HasPort) return;
+        if (Selected is not { } row) return;
         if (_networkIp is null) { NoNetwork(); return; }
-        string url = NetworkUrl(row);
+        if (NetworkUrl(row) is not { } url) return;
         new QrWindow(url, $"{row.Title} — {url}") { Owner = this }.ShowDialog();
     }
 
@@ -537,8 +593,27 @@ public partial class ServicesWindow : Window
         MessageBox.Show(Loc.T("Services.NoNetworkMsg"), Loc.T("Services.WindowTitle"),
             MessageBoxButton.OK, MessageBoxImage.Warning);
 
-    /// <summary>URL del servicio con la IP de red (para entrar desde otro dispositivo de la LAN).</summary>
-    private string NetworkUrl(Row row) => $"http://{_networkIp}:{row.Port}";
+    /// <summary>
+    /// URL del servicio con la IP de red (para entrar desde otro dispositivo de la LAN), o null si
+    /// la fila no tiene ninguna URL que traducir.
+    ///
+    /// Con URL cargada NO se arma "http://IP:PUERTO" y listo: se le cambia el HOST a la URL real,
+    /// conservando puerto y path. Si no, el QR del celu te llevaría a la raíz del server y no a la
+    /// pantalla que cargaste — que es justo la razón por la que cargaste la URL.
+    /// Una URL que ya apunta a otro host (un Jira, un staging) se devuelve tal cual: no hay nada
+    /// "local" que reemplazar, y el QR sigue sirviendo para abrirla en el celu.
+    /// </summary>
+    private string? NetworkUrl(Row row)
+    {
+        if (!row.HasUrl)
+            return row.HasPort ? $"http://{_networkIp}:{row.Port}" : null;
+
+        if (!Uri.TryCreate(row.VisitUrl, UriKind.Absolute, out var uri)) return null;
+        bool local = uri.Host is "localhost" or "127.0.0.1" or "0.0.0.0";
+        if (!local) return uri.ToString();
+
+        return new UriBuilder(uri) { Host = _networkIp }.Uri.ToString();
+    }
 
     private static void TryCopy(string text)
     {
@@ -552,7 +627,7 @@ public partial class ServicesWindow : Window
         var entry = ServiceEditWindow.Show(this, Loc.T("Services.DlgNewTitle"), _pool.Label,
                                            ports: _ports);
         if (entry is null) return;
-        _pool.Add(entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.AutoStart);
+        _pool.Add(entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.Url, entry.AutoStart);
         RefreshList();
     }
 
@@ -567,7 +642,8 @@ public partial class ServicesWindow : Window
         var entry = ServiceEditWindow.Show(this, Loc.T("Services.DlgEditTitle"), _pool.Label,
                                            _pool.Entries[row.PoolIndex], _ports);
         if (entry is null) return;
-        _pool.Update(row.PoolIndex, entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.AutoStart);
+        _pool.Update(row.PoolIndex, entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.Url,
+                     entry.AutoStart);
         RefreshList();
     }
 

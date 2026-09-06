@@ -424,7 +424,7 @@ public sealed class ProjectStore
             : Array.Empty<ServiceEntry>();
     }
 
-    /// <summary>Reescribe los cinco campos de un servicio (la edición es del formulario entero).</summary>
+    /// <summary>Reescribe TODOS los campos de un servicio (la edición es del formulario entero).</summary>
     public void UpdateService(string scopeKey, int index, ServiceEntry values)
     {
         var list = RawServices(scopeKey);
@@ -435,6 +435,7 @@ public sealed class ProjectStore
         e.Command = values.Command.Trim();
         e.WorkDir = values.WorkDir.Trim();
         e.Port = values.Port;
+        e.Url = values.Url.Trim();
         e.AutoStart = values.AutoStart;
         Save();
     }
@@ -513,6 +514,7 @@ public sealed class ProjectStore
                 Command = e.Command,
                 WorkDir = e.WorkDir,
                 Port = port,
+                Url = e.Url,
                 AutoStart = e.AutoStart,
             });
         }
@@ -1118,6 +1120,7 @@ public sealed class ProjectStore
                 Command = e.Command,
                 WorkDir = e.WorkDir,
                 Port = port,
+                Url = e.Url,
                 AutoStart = e.AutoStart,
             });
         }

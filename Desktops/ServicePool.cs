@@ -11,7 +11,7 @@ namespace AmpzDesktopBooster.Desktops;
 /// y toda mutación persiste de inmediato llamando al callback de guardado.
 ///
 /// Se copia la forma de PathPool a propósito y no se "generaliza" las dos en una clase con genéricos:
-/// las entradas no comparten campos (una tiene Path, la otra Command/WorkDir/Port) y el molde común
+/// las entradas no comparten campos (una tiene Path, la otra Command/WorkDir/Port/Url) y el molde común
 /// terminaría siendo una lista con un save() — o sea, nada. Dos clases chatas y legibles le ganan a
 /// una abstracción que no abstrae.
 /// </summary>
@@ -32,7 +32,8 @@ public sealed class ServicePool
 
     public IReadOnlyList<ServiceEntry> Entries => _entries;
 
-    public void Add(string title, string command, string workDir, int port, bool? autoStart = null)
+    public void Add(string title, string command, string workDir, int port, string url,
+                    bool? autoStart = null)
     {
         _entries.Add(new ServiceEntry
         {
@@ -40,6 +41,7 @@ public sealed class ServicePool
             Command = command.Trim(),
             WorkDir = workDir.Trim(),
             Port = port,
+            Url = url.Trim(),
             AutoStart = autoStart,
         });
         _save();
@@ -52,8 +54,9 @@ public sealed class ServicePool
         _save();
     }
 
-    /// <summary>Reescribe una entrada completa (la edición es de los 4 campos a la vez, en un diálogo).</summary>
-    public void Update(int index, string title, string command, string workDir, int port, bool? autoStart)
+    /// <summary>Reescribe una entrada completa (la edición es de todos los campos a la vez, en un diálogo).</summary>
+    public void Update(int index, string title, string command, string workDir, int port, string url,
+                       bool? autoStart)
     {
         if (index < 0 || index >= _entries.Count) return;
         var e = _entries[index];
@@ -61,6 +64,7 @@ public sealed class ServicePool
         e.Command = command.Trim();
         e.WorkDir = workDir.Trim();
         e.Port = port;
+        e.Url = url.Trim();
         e.AutoStart = autoStart;
         _save();
     }

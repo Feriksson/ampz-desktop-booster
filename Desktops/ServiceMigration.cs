@@ -36,7 +36,7 @@ public static class ServiceMigration
                 // duplicamos una entrada de sólo-monitoreo que ya tenga el mismo puerto.
                 if (pool.Entries.Any(s => s.Port == e.Port && s.Command == ""))
                     continue;
-                pool.Add(e.Title, command: "", workDir: "", port: e.Port);
+                pool.Add(e.Title, command: "", workDir: "", port: e.Port, url: "");
             }
 
             File.Move(path, path + ".migrated", overwrite: true);

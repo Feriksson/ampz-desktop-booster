@@ -101,10 +101,14 @@ public static class ServiceLauncher
 
     /// <summary>
     /// ¿Este servicio entra en el arranque grupal ("levantar lo básico")? Lo decide
-    /// <see cref="ServiceEntry.AutoStartEffective"/> —NO el puerto— más lo obvio: sin comando no hay
-    /// nada que lanzar. Ver <see cref="ServiceEntry.AutoStart"/> para por qué el puerto no alcanzaba
-    /// (los workers de Laravel corren para siempre sin escuchar nada).
+    /// <see cref="ServiceEntry.AutoStartEffective"/> —NO el puerto— más lo obvio: que haya ALGO que
+    /// hacer con la entrada. Ver <see cref="ServiceEntry.AutoStart"/> para por qué el puerto no
+    /// alcanzaba (los workers de Laravel corren para siempre sin escuchar nada).
+    ///
+    /// "Algo que hacer" ya no es sólo un comando: una entrada de SOLO URL no levanta ningún proceso
+    /// pero SÍ tiene una acción de arranque grupal (abrirla). Si acá se siguiera exigiendo comando,
+    /// la URL quedaría cargada y muda — que es justo lo contrario de para qué se carga.
     /// </summary>
     public static bool IsGroupLaunchable(ServiceEntry s) =>
-        s.AutoStartEffective && s.Command.Trim() != "";
+        s.AutoStartEffective && (s.Command.Trim() != "" || s.Url.Trim() != "");
 }

@@ -84,6 +84,22 @@ public sealed class ServiceEntry
     [JsonPropertyName("port")]    public int Port { get; set; }
 
     /// <summary>
+    /// URL que se abre en el browser cuando el servicio se lanza (y en "levantar todo"). VACÍA = el
+    /// servicio no abre nada.
+    ///
+    /// Es un CAMPO de la entrada y no un tipo de entrada aparte, y eso no es un ahorro de código: la
+    /// URL de un dev server no es una cosa suelta, es PARTE del servicio — "levantá el front y abrime
+    /// /platform" es UN gesto. Modelándola como fila propia habría que mantener a mano dos filas
+    /// acopladas (mismo puerto, mismo scope, mismo autoStart) que nada obliga a moverse juntas.
+    /// Como el resto de los campos son opcionales, la entrada de SOLO URL (sin comando ni puerto)
+    /// sale gratis: es el mismo caso degenerado que ya existía para el sólo-monitoreo.
+    ///
+    /// Se guarda TAL CUAL la tipeó el usuario; el esquema lo antepone <see cref="Desktops.UrlHelper"/>
+    /// al abrir, igual que en las variables — así "localhost:6080/platform" también vale.
+    /// </summary>
+    [JsonPropertyName("url")]     public string Url { get; set; } = "";
+
+    /// <summary>
     /// ¿Entra en "levantar todo"? NULLABLE a propósito: <c>null</c> = "no lo decidí, usá el default
     /// inteligente" (<see cref="AutoStartEffective"/>).
     ///
@@ -98,9 +114,17 @@ public sealed class ServiceEntry
     /// Si entra o no en el arranque grupal. Default cuando el usuario no se pronunció: lo dicta el
     /// puerto (con puerto = servidor = arranca; sin puerto = tarea suelta = no). Cubre el 95% sin que
     /// tengas que tocar nada, y deja el worker sin puerto a un solo clic.
+    ///
+    /// La entrada de SOLO URL (sin comando) es la excepción y arranca por default: cargar una URL
+    /// suelta en esta lista no tiene otro propósito que abrirla con el resto — si no arrancara sola,
+    /// la feature nacería apagada y habría que ir a tildarla entrada por entrada.
     /// </summary>
     [JsonIgnore]
-    public bool AutoStartEffective => AutoStart ?? Port > 0;
+    public bool AutoStartEffective => AutoStart ?? (Port > 0 || IsUrlOnly);
+
+    /// <summary>Entrada de SOLO URL: no sabe levantar nada, sólo abrir el browser.</summary>
+    [JsonIgnore]
+    public bool IsUrlOnly => Command.Trim() == "" && Url.Trim() != "";
 }
 
 /// <summary>

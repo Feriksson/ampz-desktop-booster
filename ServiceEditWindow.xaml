@@ -80,12 +80,20 @@
             <TextBlock Text="{loc:Translate Services.FldPort}" />
             <TextBox x:Name="PortBox" Margin="0,0,0,4" />
 
+
             <!-- El choque de puerto se avisa MIENTRAS tipeás, no recién al aceptar: enterarte de que
                  el 3000 está tomado después de cargar los cuatro campos es enterarte tarde. El
                  MessageBox de Aceptar queda igual como red (podés no mirar acá), pero el camino
                  normal es que nunca lo veas. -->
             <TextBlock x:Name="PortConflictText" TextWrapping="Wrap" FontSize="11"
                        Foreground="#E5A0A0" Visibility="Collapsed" Margin="0,0,0,10" />
+            <!-- La URL va DESPUÉS del puerto a propósito: lo más común es escribirla apoyándose en
+                 el puerto que acabás de cargar ("localhost:6080/platform"), y el atajo de abajo la
+                 completa sola con ese número. Ponerla antes obligaría a saltar hacia adelante. -->
+            <TextBlock Text="{loc:Translate Services.FldUrl}" Margin="0,8,0,3" />
+            <TextBox x:Name="UrlBox" Margin="0,0,0,4" />
+            <TextBlock x:Name="UrlHint" TextWrapping="Wrap" FontSize="10"
+                       Foreground="#6E6E78" Margin="0,0,0,10" />
 
             <!-- Tri-estado REAL (IsThreeState): tildado / destildado / indeterminado = "seguí el
                  default según el puerto". Sin el tercer estado, abrir y aceptar el diálogo sin tocar

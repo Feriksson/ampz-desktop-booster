@@ -2027,7 +2027,8 @@ public partial class ConfigWindow : Window
 
     /// <summary>Un servicio del scope elegido. <see cref="PoolIndex"/> es su índice REAL en la pool.</summary>
     private sealed record CmdRow(int PoolIndex, string Title, string Command, string WorkDir,
-                                 int Port, bool AutoStarts, bool IsBroken, bool PortDuplicated);
+                                 int Port, string Url, bool AutoStarts, bool IsBroken,
+                                 bool PortDuplicated);
 
     private const string CmdDragFormat = "AmpzDesktopBooster.CommandDrag";
 
@@ -2116,10 +2117,11 @@ public partial class ConfigWindow : Window
                 !e.Title.Contains(filter, StringComparison.OrdinalIgnoreCase) &&
                 !e.Command.Contains(filter, StringComparison.OrdinalIgnoreCase) &&
                 !e.WorkDir.Contains(filter, StringComparison.OrdinalIgnoreCase) &&
+                !e.Url.Contains(filter, StringComparison.OrdinalIgnoreCase) &&
                 !e.Port.ToString().Contains(filter))
                 continue;
 
-            rows.Add(new CmdRow(i, e.Title, e.Command, e.WorkDir, e.Port,
+            rows.Add(new CmdRow(i, e.Title, e.Command, e.WorkDir, e.Port, e.Url,
                 ServiceLauncher.IsGroupLaunchable(e),
                 ServicesWindow.IsBrokenDir(e),
                 e.Port > 0 && duplicated.Contains(e.Port)));
@@ -2148,7 +2150,8 @@ public partial class ConfigWindow : Window
     {
         var panel = new StackPanel();
 
-        string marks = (row.AutoStarts ? " ⏩" : "") + (row.PortDuplicated ? " ⛔" : "");
+        string marks = (row.AutoStarts ? " ⏩" : "") + (row.Url != "" ? " 🌐" : "")
+                     + (row.PortDuplicated ? " ⛔" : "");
         panel.Children.Add(new TextBlock
         {
             Text = (row.IsBroken ? "⚠ " : "") + row.Title + marks,
@@ -2162,8 +2165,14 @@ public partial class ConfigWindow : Window
         // consulta de un vistazo (es la identidad del servidor y la clave del registro de puertos),
         // y una columna propia lo alejaría del texto que lo explica.
         string sub = row.Port > 0 ? $":{row.Port}  ·  " : "";
-        sub += row.Command == "" ? Loc.T("Config.CmdsMonitorOnly") : row.Command;
+        // Sin comando la fila puede ser de sólo monitoreo (puerto pelado, migrada del viejo
+        // ports.json) o de SÓLO URL. Rotularlas igual haría que la segunda se lea como si le
+        // faltara algo, cuando en realidad está completa: su acción es abrir el browser.
+        sub += row.Command != "" ? row.Command
+             : row.Url != "" ? Loc.T("Config.CmdsUrlOnly")
+             : Loc.T("Config.CmdsMonitorOnly");
         if (row.WorkDir != "") sub += "  ·  " + row.WorkDir;
+        if (row.Url != "") sub += "  ·  " + row.Url;
 
         panel.Children.Add(new TextBlock
         {
@@ -2248,7 +2257,8 @@ public partial class ConfigWindow : Window
         if (entry is null) return;
 
         _projects.GetServicePoolFor(_cmdScope)
-                 .Add(entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.AutoStart);
+                 .Add(entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.Url,
+                      entry.AutoStart);
         RefreshCmdScopes(_cmdScope);
     }
 
@@ -2352,12 +2362,12 @@ public partial class ConfigWindow : Window
     // ── Portapapeles de comandos (Ctrl+C / Ctrl+X / Ctrl+V) ────────────────────
 
     /// <summary>
-    /// Huella de un servicio: sus CINCO campos. Van todos y no sólo el título porque el título es
+    /// Huella de un servicio: TODOS sus campos. Van todos y no sólo el título porque el título es
     /// justo el que más se re-tipea sin que la entrada cambie de identidad, y editar el puerto o el
     /// directorio de lo que tenés copiado es exactamente el caso que la revalidación debe cazar.
     /// </summary>
     private static string CmdFingerprint(ServiceEntry e) => ScopeClipboard.Fingerprint(
-        e.Title, e.Command, e.WorkDir, e.Port.ToString(), e.AutoStart?.ToString() ?? "");
+        e.Title, e.Command, e.WorkDir, e.Port.ToString(), e.Url, e.AutoStart?.ToString() ?? "");
 
     private static List<string> CmdFingerprints(IReadOnlyList<ServiceEntry> entries) =>
         entries.Select(CmdFingerprint).ToList();

@@ -206,6 +206,11 @@
                                             DisplayMemberBinding="{Binding Command}" />
                             <GridViewColumn x:Name="WorkDirCol" Header="{loc:Translate Services.ColWorkDir}" Width="330"
                                             DisplayMemberBinding="{Binding WorkDir}" />
+                            <!-- URL que la entrada abre al lanzarse. Columna propia y no pegada al
+                                 comando: una entrada de SOLO URL no tiene comando ni directorio, y
+                                 mezclarlas dejaría la fila leyéndose como si le faltaran datos. -->
+                            <GridViewColumn x:Name="UrlCol" Header="{loc:Translate Services.ColUrl}" Width="240"
+                                            DisplayMemberBinding="{Binding Url}" />
                             <GridViewColumn Header="{loc:Translate Services.ColPort}" Width="80"
                                             DisplayMemberBinding="{Binding PortText}" />
                         </GridView>
