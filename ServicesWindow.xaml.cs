@@ -378,6 +378,12 @@ public partial class ServicesWindow : Window
     /// El precio son dos contextos donde una tecla ya significa otra cosa, y hay que respetarlos:
     ///   · foco en el FILTRO → Supr borra TEXTO y Ctrl+C copia lo seleccionado del textbox. Robarle
     ///     esas dos teclas al campo de búsqueda haría que no se pueda ni editar el filtro.
+    ///     ⚠ Pero la cesión se decide por lo que el filtro TIENE PARA HACER, no por dónde está el
+    ///     foco (mismo fix que ProjectPathsWindow, donde se cazó): la ventana ABRE con el foco en el
+    ///     filtro, así que con `IsKeyboardFocused` solo, el Ctrl+C del caso más común — entrar y
+    ///     copiar la fila que YA viene seleccionada — se lo comía el TextBox sin nada seleccionado y
+    ///     no pasaba NADA, obligando a clickear con el mouse. Hoy Ctrl+C es del filtro sólo si hay
+    ///     TEXTO SELECCIONADO adentro, y Supr sólo si el filtro tiene texto.
     ///   · foco en un BOTÓN → Enter es "apretar ESTE botón". Si lo interceptáramos, tabular hasta
     ///     Borrar y hacer Enter lanzaría el servicio: lo contrario de lo que dice la pantalla.
     /// Ctrl+Enter y Ctrl+Shift+C sí valen en todos lados: son combos explícitos, no colisionan.
@@ -386,6 +392,11 @@ public partial class ServicesWindow : Window
     {
         bool inFilter = FilterBox.IsKeyboardFocused;
         bool onButton = Keyboard.FocusedElement is System.Windows.Controls.Button;
+
+        // Cesión POR TAREA, no por foco (ver el doc del método): el filtro sólo se queda la tecla si
+        // de verdad tiene algo que hacer con ella. Si no, es de la fila.
+        bool filterCopies = inFilter && FilterBox.SelectionLength > 0;
+        bool filterDeletes = inFilter && FilterBox.Text.Length > 0;
 
         switch (e.Key)
         {
@@ -397,8 +408,8 @@ public partial class ServicesWindow : Window
             case Key.N when Ctrl:                   AddNew();                    break;
             case Key.Q when Ctrl:                   ShowQr();                    break;
             case Key.C when Ctrl && Shift:          CopyNetwork();               break;
-            case Key.C when Ctrl && !inFilter:      CopyLocalhost();             break;
-            case Key.Delete when !inFilter:         DeleteSelected();            break;
+            case Key.C when Ctrl && !filterCopies:  CopyLocalhost();             break;
+            case Key.Delete when !filterDeletes:    DeleteSelected();            break;
 
             case Key.Down when inFilter && _rows.Count > 0:
                 SelectFirstSelectable();

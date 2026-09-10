@@ -415,6 +415,13 @@ public partial class ProjectPathsWindow : Window
     /// El precio son dos contextos donde una tecla ya significa otra cosa, y hay que respetarlos:
     ///   · foco en el FILTRO → Supr borra TEXTO y Ctrl+C copia lo seleccionado del textbox. Robarle
     ///     esas dos teclas al campo de búsqueda haría que no se pueda ni editar el filtro.
+    ///     ⚠ Pero la cesión se decide por lo que el filtro TIENE PARA HACER, no por dónde está el
+    ///     foco. La ventana ABRE con el foco en el filtro (ver el Loaded), así que preguntar sólo
+    ///     `IsKeyboardFocused` dejaba MUDO el Ctrl+C del caso más común: entrar, ver la variable ya
+    ///     seleccionada y querer copiarla — el TextBox se comía la tecla sin texto seleccionado y no
+    ///     pasaba NADA. Había que clickear la fila con el mouse para que copiara, justo lo que esta
+    ///     app existe para evitar. Hoy: Ctrl+C sólo es del filtro si hay TEXTO SELECCIONADO adentro,
+    ///     y Supr sólo si el filtro tiene texto — si no, van a la fila, como dice el keycap del botón.
     ///   · foco en un BOTÓN → Enter es "apretar ESTE botón". Si lo interceptáramos, tabular hasta
     ///     Borrar y hacer Enter abriría la variable: lo contrario de lo que dice la pantalla.
     /// </summary>
@@ -422,6 +429,11 @@ public partial class ProjectPathsWindow : Window
     {
         bool inFilter = FilterBox.IsKeyboardFocused;
         bool onButton = Keyboard.FocusedElement is System.Windows.Controls.Button;
+
+        // Cesión POR TAREA, no por foco (ver el doc del método): el filtro sólo se queda la tecla si
+        // de verdad tiene algo que hacer con ella. Si no, es de la fila.
+        bool filterCopies = inFilter && FilterBox.SelectionLength > 0;
+        bool filterDeletes = inFilter && FilterBox.Text.Length > 0;
 
         switch (e.Key)
         {
@@ -432,8 +444,8 @@ public partial class ProjectPathsWindow : Window
             case Key.N when Ctrl:              AddNew();                    break;
             case Key.K when Ctrl:              PurgeBroken();               break;
             case Key.P when Ctrl:              ToggleAllProjects();         break;
-            case Key.C when Ctrl && !inFilter: CopySelected();              break;
-            case Key.Delete when !inFilter:    DeleteSelected();            break;
+            case Key.C when Ctrl && !filterCopies:  CopySelected();         break;
+            case Key.Delete when !filterDeletes:    DeleteSelected();       break;
 
             case Key.Down when inFilter && PathList.Items.Count > 0:
                 PathList.SelectedIndex = 0;
