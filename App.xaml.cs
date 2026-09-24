@@ -46,6 +46,10 @@ public partial class App : Application
     private Apps.AppsConfig _appsConfig = new();
     private ConfigWindow? _configWindow;
 
+    // La barra. Se guarda porque la config le avisa cambios (la marca) DESPUÉS del arranque, y
+    // ShowConfig no la recibe por parámetro.
+    private BarWindow? _bar;
+
     // Una app que vive en tu escritorio NUNCA crashea en silencio.
     private static readonly string LogPath =
         Path.Combine(AppContext.BaseDirectory, "ampz-crash.log");
@@ -172,6 +176,7 @@ public partial class App : Application
 
         // La barra: AppBar real + tray + widget de desktop a la derecha.
         var bar = new BarWindow();
+        _bar = bar;   // la config necesita avisarle cuando cambia la marca (ver ShowConfig)
         bar.OpenConfig = () => ShowConfig(desktops, projects, restrictions, pins, () =>
         {
             int c = desktops.Current;
@@ -401,6 +406,9 @@ public partial class App : Application
         }
 
         _configWindow = new ConfigWindow(_desktopConfig, _appsConfig, desktops, projects, restrictions, pins, onApplied);
+        // La marca (PNG + rótulo del extremo izquierdo) se guarda sola desde su pestaña, así que no
+        // pasa por onApplied —que es el "Guardar" de Escritorios—: la barra la recarga cuando avisa.
+        _configWindow.OnBrandChanged = () => _bar?.ReloadBrand();
         _configWindow.Closed += (_, _) => _configWindow = null;
         _configWindow.ShowFocused();
     }

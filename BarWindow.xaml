@@ -27,9 +27,37 @@
                 <ColumnDefinition Width="Auto" />   <!-- Bloque derecho: sistema -->
             </Grid.ColumnDefinitions>
 
-            <!-- ===== Izquierda: Fecha (día completo, ej. "Viernes 30 de mayo") ===== -->
-            <StackPanel x:Name="DateWidget" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock x:Name="DateText" Style="{StaticResource WidgetLabel}" Margin="0,1,0,0" />
+            <!-- ===== Izquierda: Marca del usuario + Fecha ===== -->
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+
+                <!-- MARCA: PNG propio + rótulo opcional. Va primero de todo — el extremo izquierdo es
+                     el lugar de firma de cualquier barra (Windows pone ahí su botón de Inicio) y es lo
+                     único que NUNCA cambia de ancho por un dato que llegó: la fecha crece, la IP
+                     cambia de largo, el desk rota. Una firma que se corre no se lee como firma.
+                     Todo lo pinta ApplyBrand en el code-behind (imagen, texto y de qué lado va cada
+                     uno); acá sólo está el esqueleto, oculto hasta que haya marca cargada. -->
+                <StackPanel x:Name="BrandWidget" Orientation="Horizontal" VerticalAlignment="Center"
+                            Visibility="Collapsed">
+                    <TextBlock x:Name="BrandLabelBefore" Style="{StaticResource WidgetLabel}"
+                               Margin="0,1,7,0" Visibility="Collapsed" />
+                    <!-- Height FIJA y Stretch=Uniform: la barra mide 32px, así que la imagen se acota
+                         a 18 y el ANCHO sale de su propia proporción. Al revés (ancho fijo) un logo
+                         apaisado se pasaría de alto y lo comería el borde de la barra. -->
+                    <Image x:Name="BrandImage" Height="18" Stretch="Uniform" VerticalAlignment="Center"
+                           RenderOptions.BitmapScalingMode="HighQuality" Visibility="Collapsed" />
+                    <TextBlock x:Name="BrandLabelAfter" Style="{StaticResource WidgetLabel}"
+                               Margin="7,1,0,0" Visibility="Collapsed" />
+                    <!-- Separador contra la fecha. Vive DENTRO del bloque de marca para que se vaya
+                         con él; ApplyBrand además lo oculta si la fecha está apagada, o quedaría una
+                         rayita colgando en el borde izquierdo (mismo criterio que FixUpSeparators). -->
+                    <Rectangle x:Name="BrandSeparator" Width="1" Height="16"
+                               Fill="{StaticResource Separator}" Margin="14,0" />
+                </StackPanel>
+
+                <!-- Fecha (día completo, ej. "Viernes 30 de mayo") -->
+                <StackPanel x:Name="DateWidget" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="DateText" Style="{StaticResource WidgetLabel}" Margin="0,1,0,0" />
+                </StackPanel>
             </StackPanel>
 
             <!-- ===== Derecha: widgets de sistema (cada uno con su separador) ===== -->

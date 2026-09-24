@@ -1394,5 +1394,98 @@
             </Grid>
         </TabItem>
 
+        <!-- ===== Pestaña MARCA ===== -->
+        <TabItem Tag="🏷️" Header="{loc:Translate Config.BrandTab}">
+            <Grid Margin="14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Text="{loc:Translate Config.BrandTitle}" />
+                <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,4,0,12" Text="{loc:Translate Config.BrandHint}" />
+
+                <CheckBox Grid.Row="2" x:Name="BrandEnabledChk" FontSize="13"
+                          Content="{loc:Translate Config.BrandEnabled}" />
+
+                <StackPanel Grid.Row="3" Margin="0,16,0,0">
+
+                    <!-- Imagen -->
+                    <TextBlock Text="{loc:Translate Config.BrandImage}" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <TextBlock Foreground="{StaticResource FgMuted}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"
+                               Text="{loc:Translate Config.BrandImageHint}" />
+                    <Grid Margin="0,0,0,18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Miniatura sobre fondo OSCURO a propósito: un logo con transparencia o con
+                             tinta blanca se ve "vacío" sobre el fondo claro de un explorador y perfecto
+                             sobre la barra. El chequeo tiene que hacerse contra el fondo REAL. -->
+                        <Border Grid.Column="0" Background="#12181B" CornerRadius="4" Padding="8,6"
+                                Width="120" Height="44" Margin="0,0,10,0">
+                            <Image x:Name="BrandThumb" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
+                        </Border>
+
+                        <TextBlock Grid.Column="1" x:Name="BrandFileText" VerticalAlignment="Center"
+                                   Foreground="{StaticResource FgMuted}" FontSize="11"
+                                   TextWrapping="Wrap" Margin="0,0,10,0" />
+
+                        <Button Grid.Column="2" x:Name="BrandBrowseBtn" Content="{loc:Translate Config.BrandChoose}"
+                                MinWidth="120" Padding="10,4" Margin="0,0,8,0" VerticalAlignment="Center" />
+                        <Button Grid.Column="3" x:Name="BrandClearBtn" Content="{loc:Translate Config.BrandRemove}"
+                                MinWidth="90" Padding="10,4" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <!-- Rótulo -->
+                    <TextBlock Text="{loc:Translate Config.BrandLabel}" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <TextBlock Foreground="{StaticResource FgMuted}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"
+                               Text="{loc:Translate Config.BrandLabelHint}" />
+                    <TextBox x:Name="BrandLabelBox" MaxLength="40" Padding="6,4" FontSize="13"
+                             HorizontalAlignment="Left" Width="280" Margin="0,0,0,14" />
+
+                    <TextBlock Text="{loc:Translate Config.BrandSide}" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
+                        <RadioButton x:Name="BrandAfterRadio" GroupName="BrandSide" FontSize="13"
+                                     Content="{loc:Translate Config.BrandSideAfter}" Margin="0,0,24,0" />
+                        <RadioButton x:Name="BrandBeforeRadio" GroupName="BrandSide" FontSize="13"
+                                     Content="{loc:Translate Config.BrandSideBefore}" />
+                    </StackPanel>
+
+                    <!-- Vista previa EN VIVO. Existe porque la barra mide 32px y el resultado depende
+                         de cosas que no se ven en un formulario: el alto real del logo, si el texto lo
+                         desequilibra, si con fondo oscuro se lee. Tener que guardar y mirar la barra
+                         para enterarte convierte cada ajuste en un viaje de ida y vuelta. -->
+                    <TextBlock Text="{loc:Translate Config.BrandPreview}" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <Border Background="#12181B" BorderBrush="#2A4FC3F7" BorderThickness="0,1,0,0"
+                            CornerRadius="0" Height="32" HorizontalAlignment="Stretch">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0">
+                            <TextBlock x:Name="PrevLabelBefore" Foreground="#C9D6DC" FontSize="12"
+                                       VerticalAlignment="Center" Margin="0,0,7,0" Visibility="Collapsed" />
+                            <Image x:Name="PrevImage" Height="18" Stretch="Uniform" VerticalAlignment="Center"
+                                   RenderOptions.BitmapScalingMode="HighQuality" Visibility="Collapsed" />
+                            <TextBlock x:Name="PrevLabelAfter" Foreground="#C9D6DC" FontSize="12"
+                                       VerticalAlignment="Center" Margin="7,0,0,0" Visibility="Collapsed" />
+                            <Rectangle x:Name="PrevSeparator" Width="1" Height="16" Fill="#33FFFFFF" Margin="14,0" />
+                            <TextBlock x:Name="PrevDateText" Foreground="#C9D6DC" FontSize="12"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                    <Button x:Name="BrandSaveBtn" Content="{loc:Translate Config.Save}" MinWidth="100" Padding="10,4"
+                            Background="{StaticResource Accent}" Foreground="#10222A" FontWeight="SemiBold" />
+                </StackPanel>
+            </Grid>
+        </TabItem>
+
     </TabControl>
 </Window>

@@ -24,6 +24,10 @@ public partial class BarWindow : Window
     private readonly SystemMonitor _monitor = new();
     private readonly WidgetSettings _settings = WidgetSettings.Load();
 
+    // La marca del usuario (PNG + rótulo) que va al extremo izquierdo. Se recarga entera desde disco
+    // cuando la config avisa — ver ReloadBrand.
+    private BrandSettings _brand = BrandSettings.Load();
+
     // IPs (LAN + pública). NO va en el tick de 1s como el resto de las métricas: la local es barata
     // pero la pública es una consulta de RED — se maneja por eventos del SO + un poll largo, todo
     // adentro del servicio. Corre SIEMPRE, esté el widget prendido o no: el aviso de "te cambió la IP
@@ -223,6 +227,79 @@ public partial class BarWindow : Window
         RenderIps(); // al re-prenderlo desde el tray, que muestre el último valor sin esperar red
 
         FixUpSeparators();
+        ApplyBrand();  // su separador depende de si la fecha quedó visible
+    }
+
+    /// <summary>
+    /// La config tocó la marca: se relee de DISCO y se repinta. Se recarga el objeto entero en vez de
+    /// pasarlo por parámetro porque la config trabaja sobre su PROPIA instancia (la edita y la
+    /// guarda); compartir la misma referencia habría hecho que la barra reflejara cada tecla tipeada
+    /// en el campo del rótulo, incluso si después cancelás.
+    /// </summary>
+    public void ReloadBrand()
+    {
+        _brand = BrandSettings.Load();
+        ApplyBrand();
+    }
+
+    /// <summary>
+    /// Pinta la marca: imagen, rótulo, y de qué lado va cada uno. Todo se resuelve acá y no en el
+    /// XAML porque el orden de los dos textos es DATO (LabelBefore), no estructura: hay dos TextBlock
+    /// declarados —uno a cada lado de la imagen— y se prende el que corresponda. Mover un mismo
+    /// TextBlock de lugar en runtime sería reordenar el árbol visual para escribir la misma palabra.
+    /// </summary>
+    private void ApplyBrand()
+    {
+        if (!_brand.HasContent)
+        {
+            BrandWidget.Visibility = Visibility.Collapsed;
+            BrandImage.Source = null;   // soltamos el bitmap: si lo cambiaste, el viejo no queda vivo
+            return;
+        }
+
+        BrandWidget.Visibility = Visibility.Visible;
+
+        string label = _brand.Label.Trim();
+        bool hasLabel = label != "";
+        BrandLabelBefore.Text = label;
+        BrandLabelAfter.Text = label;
+        BrandLabelBefore.Visibility = Vis(hasLabel && _brand.LabelBefore);
+        BrandLabelAfter.Visibility = Vis(hasLabel && !_brand.LabelBefore);
+
+        BrandImage.Source = LoadBrandImage();
+        BrandImage.Visibility = Vis(BrandImage.Source is not null);
+
+        // Sin fecha a la derecha no hay nada que separar: la rayita quedaría colgando en el borde.
+        BrandSeparator.Visibility = DateWidget.Visibility;
+    }
+
+    /// <summary>
+    /// Carga el PNG de la marca, o null si no hay / no se pudo leer (un archivo corrupto o un
+    /// formato que WPF no banca NO puede voltear la barra).
+    ///
+    /// <c>CacheOption.OnLoad</c> es obligatorio, no una optimización: por default WPF lee el archivo
+    /// en forma diferida y lo deja ABIERTO, así que el próximo "elegir otro logo" no podría borrar
+    /// ni reemplazar el anterior (queda tomado por nuestro propio proceso hasta cerrar la app).
+    /// </summary>
+    private System.Windows.Media.Imaging.BitmapImage? LoadBrandImage()
+    {
+        if (!_brand.HasImage) return null;
+
+        try
+        {
+            var bmp = new System.Windows.Media.Imaging.BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            bmp.CreateOptions = System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreImageCache;
+            bmp.UriSource = new Uri(_brand.ImagePath);
+            bmp.EndInit();
+            bmp.Freeze();  // inmutable y cross-thread: es un recurso de sólo lectura
+            return bmp;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>El separador del primer widget visible se oculta; los demás se muestran.</summary>
