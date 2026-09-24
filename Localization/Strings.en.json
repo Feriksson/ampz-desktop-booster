@@ -336,6 +336,7 @@
   "Paths.PurgeNone": "No broken paths to purge. Everything points to something that exists.",
   "Paths.PurgeConfirm": "{0} variable(s) whose path no longer exists on disk will be deleted. This cannot be undone. Continue?",
   "Paths.SepGlobals": "──  Globals (shared)  ──",
+  "Paths.SepAutoWiden": "🔎  No matches in Global — searching all spaces",
   "Paths.SepFolders": "📁  Folders / Paths",
   "Paths.SepUrls": "🌐  URLs",
   "Paths.ClaudeOnlyDir": "Only a directory can be opened in Claude CLI.",
