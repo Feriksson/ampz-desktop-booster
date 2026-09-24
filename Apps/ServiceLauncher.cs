@@ -59,13 +59,21 @@ public static class ServiceLauncher
     /// La cura NO es esperar entre lanzadas —eso sería arreglar una carrera con timing, que en este
     /// repo ya sabemos que no se sostiene— sino que deje de haber N decisiones independientes: se arma
     /// UN solo comando de terminal con todas las pestañas. Ver <see cref="Shell.RunMany"/>.
+    ///
+    /// <paramref name="failures"/> es para la lanzada de una SELECCIÓN explícita (multi-selección en
+    /// el popup): ahí las filas las eligió el usuario una por una, y que una no arranque en silencio
+    /// se leería como "el botón ignoró la mitad". El arranque grupal no lo pasa y sigue mudo.
     /// </summary>
-    public static int LaunchMany(IEnumerable<ServiceEntry> services)
+    public static int LaunchMany(IEnumerable<ServiceEntry> services,
+                                 ICollection<(ServiceEntry Service, LaunchResult Result)>? failures = null)
     {
         var jobs = new List<ShellJob>();
         foreach (var s in services)
-            if (Resolve(s, out var job) == LaunchResult.Ok)
-                jobs.Add(job);
+        {
+            var result = Resolve(s, out var job);
+            if (result == LaunchResult.Ok) jobs.Add(job);
+            else failures?.Add((s, result));
+        }
 
         if (jobs.Count == 0) return 0;
         Shell.RunMany(jobs);

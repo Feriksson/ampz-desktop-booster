@@ -357,6 +357,19 @@ public partial class ServicesWindow : Window
 
     private Row? Selected => ServiceList.SelectedItem as Row;
 
+    /// <summary>
+    /// TODAS las filas seleccionadas (el ListView es multi-selección: Ctrl/Shift+clic, Shift+flechas),
+    /// en el orden de la LISTA y no en el que las fuiste clickeando. Lanzar y Matar actúan sobre esto;
+    /// antes leían <see cref="Selected"/>, que devuelve UNA sola fila, y el resto de la selección se
+    /// ignoraba en silencio — la lista te dejaba marcar diez y el botón actuaba sobre una.
+    /// Editar/QR/Copiar siguen sobre <see cref="Selected"/>: son acciones de UNA fila por naturaleza.
+    /// </summary>
+    private List<Row> SelectedRows =>
+        ServiceList.SelectedItems.OfType<Row>()
+            .Where(r => !r.IsSeparator)
+            .OrderBy(r => _rows.IndexOf(r))
+            .ToList();
+
     /// <summary>La pool a la que pertenece una fila (para editar/borrar sobre la correcta).</summary>
     private ServicePool? PoolOf(Row row) => row.Scope switch
     {
@@ -435,7 +448,10 @@ public partial class ServicesWindow : Window
     /// </summary>
     private void PrimaryAction()
     {
-        if (Selected is not { } row || row.IsSeparator) return;
+        var rows = SelectedRows;
+        if (rows.Count > 1) { LaunchRows(rows); return; }
+
+        if (rows.FirstOrDefault() is not { } row) return;
 
         if (row.HasCommand)
         {
@@ -459,6 +475,50 @@ public partial class ServicesWindow : Window
 
         MessageBox.Show(LaunchErrorText(result, row), Loc.T("Services.WindowTitle"),
             MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
+    /// <summary>
+    /// Lanzar sobre una SELECCIÓN de varias filas. Misma semántica por fila que la acción primaria
+    /// (comando → se lanza y su URL sale detrás; sin comando → se abre en el browser), pero todo de
+    /// UNA: los comandos van por <see cref="ServiceLauncher.LaunchMany"/> —una ventana de terminal con
+    /// una pestaña por servicio, no N ventanas (el porqué está ahí)— y las URLs por
+    /// <see cref="ServiceUrlOpener.OpenAll"/>, que respeta el orden y espera a cada puerto.
+    /// A diferencia del arranque grupal, acá lo que no pudo arrancar SE AVISA, todo junto en un
+    /// solo mensaje: estas filas las elegiste vos.
+    /// </summary>
+    private void LaunchRows(List<Row> rows)
+    {
+        var entries = new List<ServiceEntry>();
+        var owner = new Dictionary<ServiceEntry, Row>();
+        var urls = new List<(string Url, int Port)>();
+
+        foreach (var row in rows)
+        {
+            if (row.HasCommand)
+            {
+                if (PoolOf(row) is { } pool && row.PoolIndex >= 0 && row.PoolIndex < pool.Entries.Count)
+                {
+                    var entry = pool.Entries[row.PoolIndex];
+                    entries.Add(entry);
+                    owner[entry] = row;
+                }
+                if (row.HasUrl) urls.Add((row.Url.Trim(), row.Port));
+            }
+            else if (row.VisitUrl != "")
+            {
+                urls.Add((row.HasUrl ? row.Url.Trim() : row.VisitUrl, row.Port));
+            }
+        }
+
+        var failures = new List<(ServiceEntry Service, LaunchResult Result)>();
+        ServiceLauncher.LaunchMany(entries, failures);
+        ServiceUrlOpener.OpenAll(urls);
+
+        if (failures.Count == 0) return;
+        string list = string.Join("\n", failures.Select(f =>
+            $"• {owner[f.Service].Title}: {LaunchErrorText(f.Result, owner[f.Service])}"));
+        MessageBox.Show(string.Format(Loc.T("Services.LaunchManyFailed"), list),
+            Loc.T("Services.WindowTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private static string LaunchErrorText(LaunchResult result, Row row) => result switch
@@ -654,7 +714,10 @@ public partial class ServicesWindow : Window
     /// </summary>
     private void KillSelected()
     {
-        if (Selected is not { } row || row.IsSeparator) return;
+        var rows = SelectedRows;
+        if (rows.Count > 1) { KillRows(rows); return; }
+
+        if (rows.FirstOrDefault() is not { } row) return;
 
         // Sin puerto declarado no hay a quién buscar: una tarea suelta (npm ci, un worker sin puerto)
         // no tiene socket que la identifique. Se explica en vez de dejar el botón mudo.
@@ -698,6 +761,93 @@ public partial class ServicesWindow : Window
         }
 
         RefreshStatus();
+    }
+
+    /// <summary>
+    /// Matar sobre una SELECCIÓN de varias filas. Mismo criterio por fila que <see cref="KillSelected"/>
+    /// (árbol entero, confirmado, nombrando proceso y PID), pero con UN solo diálogo que lista todo lo
+    /// que se va a llevar puesto — diez confirms seguidos entrenan el reflejo de apretar "Sí" sin leer,
+    /// que es justo lo que el confirm vino a evitar.
+    ///
+    /// Las filas que no tienen a quién matar (sin puerto, o puerto libre) NO frenan al resto: se
+    /// informan en el mismo diálogo y se saltean. Dos filas con el MISMO dueño (un server que atiende
+    /// dos puertos) se matan una sola vez.
+    /// </summary>
+    private void KillRows(List<Row> rows)
+    {
+        var targets = new List<(int Pid, string Name, List<Row> Rows)>();
+        var skipped = new List<string>();
+
+        foreach (var row in rows)
+        {
+            if (!row.HasPort) { skipped.Add($"• {row.Title}: {Loc.T("Services.KillManyNoPort")}"); continue; }
+
+            int pid = TcpPortInfo.PidForPort(row.Port);
+            if (pid <= 0)
+            {
+                skipped.Add($"• {row.Title} (:{row.Port}): {Loc.T("Services.KillManyNoOwner")}");
+                continue;
+            }
+
+            int existing = targets.FindIndex(t => t.Pid == pid);
+            if (existing >= 0) { targets[existing].Rows.Add(row); continue; }
+
+            string name;
+            try { using var p = Process.GetProcessById(pid); name = p.ProcessName; }
+            catch { name = "?"; }
+            targets.Add((pid, name, new List<Row> { row }));
+        }
+
+        string skippedText = skipped.Count == 0 ? ""
+            : "\n\n" + Loc.T("Services.KillManySkipped") + "\n" + string.Join("\n", skipped);
+
+        if (targets.Count == 0)
+        {
+            RefreshStatus();
+            MessageBox.Show(Loc.T("Services.KillManyNothing") + skippedText,
+                Loc.T("Services.WindowTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        string list = string.Join("\n", targets.Select(t =>
+            $"• «{t.Name}» (PID {t.Pid}) — {string.Join(", ", t.Rows.Select(r => $"{r.Title} :{r.Port}"))}"));
+
+        var answer = MessageBox.Show(
+            string.Format(Loc.T("Services.KillManyConfirm"), targets.Count, list) + skippedText,
+            Loc.T("Services.WindowTitle"), MessageBoxButton.YesNo, MessageBoxImage.Warning,
+            MessageBoxResult.No);  // default NO, igual que el de una fila
+        if (answer != MessageBoxResult.Yes) return;
+
+        // Primero se disparan TODOS los Kill y después se espera: esperar adentro del lazo sumaría
+        // hasta 3s POR proceso antes de siquiera tocar el siguiente.
+        var dying = new List<Process>();
+        var failed = new List<string>();
+        foreach (var t in targets)
+        {
+            try
+            {
+                var proc = Process.GetProcessById(t.Pid);
+                proc.Kill(entireProcessTree: true);
+                dying.Add(proc);
+            }
+            catch (Exception ex) { failed.Add($"• «{t.Name}» (PID {t.Pid}): {ex.Message}"); }
+        }
+
+        var deadline = Stopwatch.StartNew();
+        foreach (var proc in dying)
+        {
+            using (proc)
+            {
+                int left = Math.Max(0, 3000 - (int)deadline.ElapsedMilliseconds);
+                try { proc.WaitForExit(left); } catch { /* ya murió o no es nuestro: da igual */ }
+            }
+        }
+
+        RefreshStatus();
+
+        if (failed.Count > 0)
+            MessageBox.Show(string.Format(Loc.T("Services.KillManyFailed"), string.Join("\n", failed)),
+                Loc.T("Services.WindowTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     // ── Alta / edición / borrado (SÓLO sobre el scope primario) ────────────────
