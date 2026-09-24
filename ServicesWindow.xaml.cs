@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -202,6 +203,7 @@ public partial class ServicesWindow : Window
         AddBtn.Click += (_, _) => AddNew();
         EditBtn.Click += (_, _) => EditSelected();
         DeleteBtn.Click += (_, _) => DeleteSelected();
+        KillBtn.Click += (_, _) => KillSelected();
         CopyLocalBtn.Click += (_, _) => CopyLocalhost();
         CopyNetBtn.Click += (_, _) => CopyNetwork();
         QrBtn.Click += (_, _) => ShowQr();
@@ -410,6 +412,7 @@ public partial class ServicesWindow : Window
             case Key.C when Ctrl && Shift:          CopyNetwork();               break;
             case Key.C when Ctrl && !filterCopies:  CopyLocalhost();             break;
             case Key.Delete when !filterDeletes:    DeleteSelected();            break;
+            case Key.K when Ctrl:                   KillSelected();              break;
 
             case Key.Down when inFilter && _rows.Count > 0:
                 SelectFirstSelectable();
@@ -629,6 +632,72 @@ public partial class ServicesWindow : Window
     private static void TryCopy(string text)
     {
         try { Clipboard.SetText(text); } catch { /* el portapapeles a veces está tomado por otro proceso */ }
+    }
+
+    // ── Matar el proceso que tiene el puerto ──────────────────────────────────
+
+    /// <summary>
+    /// Cierra el proceso que HOY tiene tomado el puerto de la fila. Nace de un caso real y repetido:
+    /// cerrás la terminal, el punto queda VERDE, y no es que el estado mienta ni que refresque tarde
+    /// (se recalcula al abrir y cada 2.5s) — es que el server SIGUE VIVO. `artisan serve`, `npm run
+    /// dev` y compañía no escuchan ellos mismos: lanzan un NIETO a través de un cmd.exe, y al matar la
+    /// consola ese nieto queda HUÉRFANO con el socket abierto. Hasta hoy la única salida era irse al
+    /// Administrador de tareas a buscar un php.exe entre quince — o esperar, que fue lo que pasó.
+    ///
+    /// Se mata el ÁRBOL (<c>entireProcessTree</c>) y no sólo al dueño del socket: si el que escucha
+    /// resulta ser un supervisor con un worker colgando, matar al padre dejaría al hijo vivo tomando
+    /// el puerto y el punto seguiría verde — o sea, el mismo problema que vinimos a resolver.
+    ///
+    /// Va CONFIRMADO siempre: es irreversible y cae sobre un proceso que puede tener trabajo a medio
+    /// hacer. El diálogo nombra proceso y PID porque matar "el puerto 5175" a ciegas no le dice a
+    /// nadie qué se está por llevar puesto.
+    /// </summary>
+    private void KillSelected()
+    {
+        if (Selected is not { } row || row.IsSeparator) return;
+
+        // Sin puerto declarado no hay a quién buscar: una tarea suelta (npm ci, un worker sin puerto)
+        // no tiene socket que la identifique. Se explica en vez de dejar el botón mudo.
+        if (!row.HasPort) { MessageBox.Show(Loc.T("Services.KillNoPort"), Loc.T("Services.WindowTitle"),
+                                            MessageBoxButton.OK, MessageBoxImage.Information); return; }
+
+        int pid = TcpPortInfo.PidForPort(row.Port);
+        if (pid <= 0)
+        {
+            // O ya está apagado, o el dueño corre elevado y no podemos verlo. Refrescamos primero:
+            // si estaba apagado, el punto se apaga en el mismo gesto y el mensaje deja de sorprender.
+            RefreshStatus();
+            MessageBox.Show(string.Format(Loc.T("Services.KillNoOwner"), row.Port),
+                Loc.T("Services.WindowTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        string name;
+        try { using var p = Process.GetProcessById(pid); name = p.ProcessName; }
+        catch { name = "?"; }  // murió entre que leímos la tabla y ahora: el confirm igual sirve
+
+        var answer = MessageBox.Show(
+            string.Format(Loc.T("Services.KillConfirm"), row.Port, name, pid, row.Title),
+            Loc.T("Services.WindowTitle"), MessageBoxButton.YesNo, MessageBoxImage.Warning,
+            MessageBoxResult.No);  // default NO: la tecla Enter de reflejo no puede matarte un server
+        if (answer != MessageBoxResult.Yes) return;
+
+        try
+        {
+            using var proc = Process.GetProcessById(pid);
+            proc.Kill(entireProcessTree: true);
+            // Esperamos a que muera de verdad antes de repintar: sin esto, el refresh corre con el
+            // socket todavía abierto y el punto se queda verde 2.5s más — justo la sensación de
+            // "no hizo nada" que el botón viene a sacar.
+            proc.WaitForExit(3000);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(string.Format(Loc.T("Services.KillFailed"), name, pid, ex.Message),
+                Loc.T("Services.WindowTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+
+        RefreshStatus();
     }
 
     // ── Alta / edición / borrado (SÓLO sobre el scope primario) ────────────────

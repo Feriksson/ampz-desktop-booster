@@ -231,6 +231,11 @@
                 <Button x:Name="AddBtn"       Content="{loc:Translate Services.BtnAdd}" Tag="{loc:Translate Keys.CtrlN}" MinWidth="90" Margin="0,0,6,6" Padding="10,4" />
                 <Button x:Name="EditBtn"      Content="{loc:Translate Services.BtnEdit}" Tag="{loc:Translate Keys.F2}" MinWidth="90" Margin="0,0,6,6" Padding="10,4" />
                 <Button x:Name="DeleteBtn"    Content="{loc:Translate Services.BtnDelete}" Tag="{loc:Translate Keys.Delete}" MinWidth="70" Margin="0,0,6,6" Padding="10,4" />
+                <!-- MATAR ≠ BORRAR, y por eso son dos botones y no uno con dos modos: Borrar saca la
+                     ENTRADA del catálogo (papel), Matar cierra el PROCESO que tiene el puerto (vida).
+                     Va pegado a Borrar porque son las dos destructivas, pero con atajo propio: Supr
+                     nunca puede llegar a matar un server por error. -->
+                <Button x:Name="KillBtn"      Content="{loc:Translate Services.BtnKill}" Tag="{loc:Translate Keys.CtrlK}" MinWidth="70" Margin="0,0,6,6" Padding="10,4" />
                 <Button x:Name="CopyLocalBtn" Content="{loc:Translate Services.BtnCopyLocal}" Tag="{loc:Translate Keys.CtrlC}" MinWidth="120" Margin="0,0,6,6" Padding="10,4" />
                 <Button x:Name="CopyNetBtn"   Content="{loc:Translate Services.BtnCopyNetwork}" Tag="{loc:Translate Keys.CtrlShiftC}" MinWidth="120" Margin="0,0,6,6" Padding="10,4" />
                 <Button x:Name="QrBtn"        Content="{loc:Translate Services.BtnQr}" Tag="{loc:Translate Keys.CtrlQ}" MinWidth="60" Margin="0,0,6,6" Padding="10,4" />
