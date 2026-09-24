@@ -24,6 +24,17 @@ internal static partial class WindowMethods
     [LibraryImport("user32.dll")]
     public static partial IntPtr GetForegroundWindow();
 
+    [LibraryImport("user32.dll", EntryPoint = "FindWindowW", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial IntPtr FindWindowW(string? lpClassName, string? lpWindowName);
+
+    /// <summary>
+    /// HWND de la taskbar del shell (Shell_TrayWnd), o <see cref="IntPtr.Zero"/> si el shell TODAVÍA
+    /// no la armó. Lo usa <c>App.OnStartup</c> para esperar a que explorer esté vivo antes de
+    /// registrar la AppBar: con la tarea programada arrancando por LogonTrigger, podemos ganarle de
+    /// mano al shell (ver el comentario en App.xaml.cs).
+    /// </summary>
+    public static IntPtr FindShellTray() => FindWindowW("Shell_TrayWnd", null);
+
     [LibraryImport("user32.dll", SetLastError = true)]
     public static partial uint SendInput(uint nInputs, [In] INPUT[] pInputs, int cbSize);
 

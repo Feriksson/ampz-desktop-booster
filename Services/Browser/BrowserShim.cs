@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using Microsoft.Win32;
 using AmpzDesktopBooster.Apps;
+using AmpzDesktopBooster.Interop;
 
 namespace AmpzDesktopBooster.Services.Browser;
 
@@ -72,7 +73,9 @@ public static class BrowserShim
                 // No hay navegador real detectable. Último recurso: el handler default del SO. OJO: si
                 // ESTA app es el default elegido, esto recursaría — pero el caso "default = nosotros y
                 // sin navegador real instalado" es prácticamente imposible (no podrías navegar nada).
-                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+                // De-elevado vía explorer.exe (StartShellTarget) — el browser default no debería nacer
+                // con nuestro token admin.
+                UnelevatedLauncher.StartShellTarget(url);
                 return;
             }
 
@@ -90,7 +93,7 @@ public static class BrowserShim
                     psi.Environment.Remove(k);
                 }
             }
-            Process.Start(psi);
+            UnelevatedLauncher.Start(psi);
         }
         catch { /* si el spawn falla, no hay nada útil que hacer — no volteamos la app por un link */ }
     }
@@ -195,7 +198,7 @@ public static class BrowserShim
     /// <summary>Abre Configuración de Windows en "Apps predeterminadas" para que el usuario nos elija.</summary>
     public static void OpenWindowsDefaultApps()
     {
-        try { Process.Start(new ProcessStartInfo("ms-settings:defaultapps") { UseShellExecute = true }); }
+        try { UnelevatedLauncher.StartShellTarget("ms-settings:defaultapps"); }
         catch { /* sin Settings (raro) → el usuario lo abre a mano */ }
     }
 }

@@ -8,7 +8,7 @@
   "General.DataPathLabel": "Your configuration is saved in:",
   "General.Startup": "Startup",
   "General.StartWithWindows": "Start with Windows",
-  "General.StartWithWindowsHint": "Adds the app to your user's startup (no administrator rights needed). It launches once the Windows desktop is ready, which is what the bar needs to position itself correctly.",
+  "General.StartWithWindowsHint": "Registers a scheduled task that launches the app at logon, elevated, with no UAC prompt. Creating the task needs administrator rights once (you may see a single UAC prompt when you turn this on); after that it starts automatically, as early as possible, without asking again.",
   "General.Language": "Language",
   "General.LanguageHint": "Restart the app to apply the language change.",
   "General.RiskZone": "⚠ Danger zone",

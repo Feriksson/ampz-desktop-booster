@@ -8,7 +8,7 @@
   "General.DataPathLabel": "Tu configuración se guarda en:",
   "General.Startup": "Arranque",
   "General.StartWithWindows": "Iniciar con Windows",
-  "General.StartWithWindowsHint": "Agrega la app al arranque de tu usuario (sin permisos de administrador). Arranca recién cuando el escritorio de Windows ya está listo, que es lo que la barra necesita para ubicarse bien.",
+  "General.StartWithWindowsHint": "Registra una tarea programada que arranca la app al iniciar sesión, elevada, sin pedir confirmación de UAC. Crear la tarea necesita permisos de administrador una vez (puede aparecer un único prompt de UAC al activarlo); después arranca sola, lo antes posible, sin volver a preguntar.",
   "General.Language": "Idioma",
   "General.LanguageHint": "Reiniciá la app para aplicar el cambio de idioma.",
   "General.RiskZone": "⚠ Zona de riesgo",

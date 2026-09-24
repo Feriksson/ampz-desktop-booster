@@ -106,7 +106,18 @@ public partial class ConfigWindow : Window
         // de tareas o una política de grupo, y mostrar un check desincronizado sería peor que no tenerlo.
         // Click y no Checked: Checked también se dispara al setear el estado inicial por código.
         AutoStartChk.IsChecked = AutoStartService.IsEnabled();
-        AutoStartChk.Click += (_, _) => AutoStartService.Set(AutoStartChk.IsChecked == true);
+        // Set() ahora puede disparar un prompt de UAC (crear la tarea programada elevada requiere
+        // admin) y corre schtasks.exe de forma SÍNCRONA — se saca del hilo de UI con Task.Run para
+        // no colgar la ventana mientras el usuario responde. El check se resincroniza con el
+        // resultado REAL (no con lo que se pidió): si cancela el UAC, el toggle no debe mentir.
+        AutoStartChk.Click += async (_, _) =>
+        {
+            bool want = AutoStartChk.IsChecked == true;
+            AutoStartChk.IsEnabled = false;
+            bool ok = await System.Threading.Tasks.Task.Run(() => AutoStartService.Set(want));
+            AutoStartChk.IsChecked = ok;
+            AutoStartChk.IsEnabled = true;
+        };
 
         // ── Pestaña Tareas ──
         // OJO orden: cableamos handlers ANTES de InitTasksTab. Si init seteara SelectedIndex con el
