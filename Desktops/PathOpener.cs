@@ -54,7 +54,9 @@ public static class PathOpener
             {
                 // Un archivo abre una app/pestaña de ventana NO identificable de antemano: no podemos
                 // garantizar foco ni monitor, así que no lo intentamos (sería humo). Abrir y listo.
-                Process.Start(new ProcessStartInfo(value) { UseShellExecute = true });
+                // Vía explorer.exe (StartShellTarget) para que, si corremos elevados, el handler
+                // asociado nazca de-elevado — ver UnelevatedLauncher.
+                UnelevatedLauncher.StartShellTarget(value);
                 return Result.Opened;
             }
             return Result.NotFound;
@@ -91,7 +93,7 @@ public static class PathOpener
         // objetivo no hay a dónde traerla. En ambos casos caemos al comportamiento simple: abrir.
         if (leaf == "" || targetMonitor == IntPtr.Zero)
         {
-            Process.Start(new ProcessStartInfo(dir) { UseShellExecute = true });
+            UnelevatedLauncher.StartShellTarget(dir);
             return;
         }
 
@@ -122,7 +124,7 @@ public static class PathOpener
         // 2) No hay ninguna en mi monitor (sólo en otro, o ninguna) → abrir una NUEVA y traerla acá.
         //    explorer /n fuerza ventana nueva; sin /n, Explorer reactivaría la del otro monitor → salto.
         var seen = new HashSet<IntPtr>(existing);
-        Process.Start("explorer.exe", $"/n,\"{dir}\"");
+        UnelevatedLauncher.Start(new ProcessStartInfo("explorer.exe") { Arguments = $"/n,\"{dir}\"", UseShellExecute = false });
         WindowFocuser.FocusWhenReady(
             match: h => IsThisFolder(h) && !seen.Contains(h), // la NUEVA, no las que ya estaban
             onReady: h =>

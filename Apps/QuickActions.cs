@@ -34,7 +34,7 @@ public static class QuickActions
 
         // No había en este desk → abrir nueva (explorer la lanza en el desktop actual) y, como la
         // crea explorer.exe (no nosotros), forzarle el foreground cuando aparezca.
-        try { Process.Start(new ProcessStartInfo("explorer.exe") { Arguments = "shell:Downloads", UseShellExecute = true }); }
+        try { UnelevatedLauncher.Start(new ProcessStartInfo("explorer.exe") { Arguments = "shell:Downloads", UseShellExecute = true }); }
         catch { return; }
         WindowFocuser.FocusWhenReady(hwnd => IsDownloadsOn(hwnd, current));
     }

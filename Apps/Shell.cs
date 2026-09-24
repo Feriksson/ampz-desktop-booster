@@ -132,7 +132,7 @@ public static class Shell
             AddTabArgs(psi, jobs[i].WorkingDir, jobs[i].Command);
         }
 
-        Process.Start(psi);
+        UnelevatedLauncher.Start(psi);
 
         if (target == "new" && current >= 0)
             WindowFocuser.FocusWhenReady(hwnd => IsTerminalOn(hwnd, current), preserveMaximized: true);
@@ -161,7 +161,7 @@ public static class Shell
         psi.ArgumentList.Add("-w");
         psi.ArgumentList.Add(target);
         AddTabArgs(psi, workingDir, command);
-        Process.Start(psi);
+        UnelevatedLauncher.Start(psi);
 
         // FOCO GARANTIZADO a la ventana NUEVA. El reuse ("last") ya hizo ForceForeground arriba;
         // el caso pendiente es "new". Aunque sea un Process.Start, la ventana NO siempre nace con
@@ -281,7 +281,7 @@ public static class Shell
     /// </summary>
     private static void LaunchDirect(string workingDir, string? command)
     {
-        Process.Start(new ProcessStartInfo(PreferredExe)
+        UnelevatedLauncher.Start(new ProcessStartInfo(PreferredExe)
         {
             UseShellExecute = true,
             WorkingDirectory = workingDir,

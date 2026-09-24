@@ -106,7 +106,18 @@ public partial class ConfigWindow : Window
         // de tareas o una política de grupo, y mostrar un check desincronizado sería peor que no tenerlo.
         // Click y no Checked: Checked también se dispara al setear el estado inicial por código.
         AutoStartChk.IsChecked = AutoStartService.IsEnabled();
-        AutoStartChk.Click += (_, _) => AutoStartService.Set(AutoStartChk.IsChecked == true);
+        // Set() ahora puede disparar un prompt de UAC (crear la tarea programada elevada requiere
+        // admin) y corre schtasks.exe de forma SÍNCRONA — se saca del hilo de UI con Task.Run para
+        // no colgar la ventana mientras el usuario responde. El check se resincroniza con el
+        // resultado REAL (no con lo que se pidió): si cancela el UAC, el toggle no debe mentir.
+        AutoStartChk.Click += async (_, _) =>
+        {
+            bool want = AutoStartChk.IsChecked == true;
+            AutoStartChk.IsEnabled = false;
+            bool ok = await System.Threading.Tasks.Task.Run(() => AutoStartService.Set(want));
+            AutoStartChk.IsChecked = ok;
+            AutoStartChk.IsEnabled = true;
+        };
 
         // ── Pestaña Tareas ──
         // OJO orden: cableamos handlers ANTES de InitTasksTab. Si init seteara SelectedIndex con el
@@ -160,6 +171,134 @@ public partial class ConfigWindow : Window
 
         // ── Pestaña Navegador ──
         InitBrowserTab();
+
+        // ── Pestaña Marca ──
+        InitBrandTab();
+    }
+
+    // ── Pestaña Marca ───────────────────────────────────────────────────────────
+    // El PNG del usuario + su rótulo, al extremo izquierdo de la barra. Config propia (brand.json),
+    // igual que Navegador, Atención y Tareas: no pasa por el constructor ni por App.OnStartup.
+
+    /// <summary>
+    /// Se dispara al GUARDAR para que la barra recargue la marca de disco. Lo setea App (la config no
+    /// conoce a la BarWindow, ni tiene por qué).
+    /// </summary>
+    public Action? OnBrandChanged { get; set; }
+
+    private readonly BrandSettings _brand = BrandSettings.Load();
+
+    private void InitBrandTab()
+    {
+        BrandEnabledChk.IsChecked = _brand.Enabled;
+        BrandLabelBox.Text = _brand.Label;
+        BrandBeforeRadio.IsChecked = _brand.LabelBefore;
+        BrandAfterRadio.IsChecked = !_brand.LabelBefore;
+
+        BrandBrowseBtn.Click += (_, _) => BrowseBrandImage();
+        BrandClearBtn.Click += (_, _) => { _brand.ClearImage(); RefreshBrandPreview(); };
+        BrandSaveBtn.Click += (_, _) => SaveBrand();
+
+        // La vista previa sigue a cada tecla y a cada clic: es el único lugar donde se ve el
+        // resultado real antes de tocar la barra.
+        BrandLabelBox.TextChanged += (_, _) => RefreshBrandPreview();
+        BrandEnabledChk.Checked += (_, _) => RefreshBrandPreview();
+        BrandEnabledChk.Unchecked += (_, _) => RefreshBrandPreview();
+        BrandBeforeRadio.Checked += (_, _) => RefreshBrandPreview();
+        BrandAfterRadio.Checked += (_, _) => RefreshBrandPreview();
+
+        RefreshBrandPreview();
+    }
+
+    /// <summary>
+    /// La imagen se importa YA (se copia a %APPDATA%) sin esperar al Guardar, y no es un descuido:
+    /// la vista previa tiene que mostrar el logo de VERDAD —escalado a 18px sobre fondo oscuro— y
+    /// para eso el archivo tiene que existir donde la barra lo va a leer. El Guardar decide si la
+    /// marca se PRENDE y con qué rótulo; la imagen ya está en la mochila.
+    /// </summary>
+    private void BrowseBrandImage()
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = Loc.T("Config.BrandChooseTitle"),
+            Filter = Loc.T("Config.BrandChooseFilter"),
+            CheckFileExists = true,
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        if (!_brand.ImportImage(dlg.FileName))
+        {
+            MessageBox.Show(Loc.T("Config.BrandImportFailed"), Loc.T("Config.BrandTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        // Elegir un logo es, en los hechos, querer verlo: prenderlo solo evita el "cargué la imagen
+        // y no pasó nada" de tener que descubrir después que faltaba tildar el checkbox de arriba.
+        BrandEnabledChk.IsChecked = true;
+        RefreshBrandPreview();
+    }
+
+    private void RefreshBrandPreview()
+    {
+        string label = BrandLabelBox.Text.Trim();
+        bool before = BrandBeforeRadio.IsChecked == true;
+        bool on = BrandEnabledChk.IsChecked == true;
+
+        var img = LoadBrandThumb();
+        BrandThumb.Source = img;
+        BrandFileText.Text = _brand.HasImage
+            ? string.Format(Loc.T("Config.BrandFileFrom"), _brand.SourceName)
+            : Loc.T("Config.BrandNoFile");
+
+        // La previa muestra lo que se va a ver: apagada o sin contenido, la barra arranca en la
+        // fecha. Mentirle al usuario acá sería peor que no tener previa.
+        bool shows = on && (img is not null || label != "");
+        PrevImage.Source = img;
+        PrevImage.Visibility = shows && img is not null ? Visibility.Visible : Visibility.Collapsed;
+        PrevLabelBefore.Text = label;
+        PrevLabelAfter.Text = label;
+        PrevLabelBefore.Visibility = shows && label != "" && before ? Visibility.Visible : Visibility.Collapsed;
+        PrevLabelAfter.Visibility = shows && label != "" && !before ? Visibility.Visible : Visibility.Collapsed;
+        PrevSeparator.Visibility = shows ? Visibility.Visible : Visibility.Collapsed;
+        // Misma fecha y mismo formato que pinta la barra (UpdateDate): la previa tiene que verse
+        // como el lugar real, no como una maqueta parecida.
+        var date = DateTime.Now.ToString("dddd dd 'de' MMMM");
+        PrevDateText.Text = date.Length > 0 ? char.ToUpper(date[0]) + date[1..] : date;
+    }
+
+    /// <summary>
+    /// Mismo criterio que la barra: OnLoad + IgnoreImageCache. Sin eso, WPF deja el archivo abierto y
+    /// cachea por URI — cambiar de logo te seguiría mostrando el anterior y encima no se podría
+    /// borrar el viejo.
+    /// </summary>
+    private System.Windows.Media.Imaging.BitmapImage? LoadBrandThumb()
+    {
+        if (!_brand.HasImage) return null;
+        try
+        {
+            var bmp = new System.Windows.Media.Imaging.BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            bmp.CreateOptions = System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreImageCache;
+            bmp.UriSource = new Uri(_brand.ImagePath);
+            bmp.EndInit();
+            bmp.Freeze();
+            return bmp;
+        }
+        catch
+        {
+            return null; // formato que WPF no banca o archivo corrupto: la config no se cae por eso
+        }
+    }
+
+    private void SaveBrand()
+    {
+        _brand.Enabled = BrandEnabledChk.IsChecked == true;
+        _brand.Label = BrandLabelBox.Text.Trim();
+        _brand.LabelBefore = BrandBeforeRadio.IsChecked == true;
+        _brand.Save();
+        OnBrandChanged?.Invoke();
     }
 
     // ── Pestaña Navegador ───────────────────────────────────────────────────────

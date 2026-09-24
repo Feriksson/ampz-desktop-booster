@@ -76,7 +76,7 @@ public partial class EnvVarsWindow : Window
         if (VarsList.SelectedItem is not Pair p) return;
         if (Directory.Exists(p.Value))
         {
-            try { Process.Start(new ProcessStartInfo("explorer.exe") { Arguments = $"\"{p.Value}\"", UseShellExecute = true }); } catch { }
+            try { Interop.UnelevatedLauncher.Start(new ProcessStartInfo("explorer.exe") { Arguments = $"\"{p.Value}\"", UseShellExecute = true }); } catch { }
             Close();
         }
         else

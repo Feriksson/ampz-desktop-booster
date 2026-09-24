@@ -1,6 +1,8 @@
-﻿using System.IO;
+﻿using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 using AmpzDesktopBooster.Desktops;
@@ -44,11 +46,15 @@ public partial class App : Application
     private Apps.AppsConfig _appsConfig = new();
     private ConfigWindow? _configWindow;
 
+    // La barra. Se guarda porque la config le avisa cambios (la marca) DESPUÉS del arranque, y
+    // ShowConfig no la recibe por parámetro.
+    private BarWindow? _bar;
+
     // Una app que vive en tu escritorio NUNCA crashea en silencio.
     private static readonly string LogPath =
         Path.Combine(AppContext.BaseDirectory, "ampz-crash.log");
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
@@ -157,8 +163,20 @@ public partial class App : Application
         if (BrowserSettings.Load().Enabled)
             BrowserShim.Register();
 
+        // Ahora arranca lo que necesita el SHELL vivo (la AppBar de la barra reserva su franja de
+        // pantalla con SHAppBarMessage, que sólo tiene sentido si ya existe una taskbar contra la que
+        // acomodarse). Con la migración a tarea programada (ver AutoStartService), el LogonTrigger
+        // puede dispararnos ANTES de que explorer arme Shell_TrayWnd — a diferencia del acceso
+        // directo viejo en Startup, que Windows sólo procesa DESPUÉS de que el shell está listo.
+        // Esperamos con un poll ASÍNCRONO (no bloquea el hilo de UI: el message pump sigue vivo, por
+        // eso el hook de teclado puede instalarse después sin drama) con techo de 60s — pasado eso
+        // seguimos igual: mejor una AppBar que se acomoda tarde que una app que nunca arranca si el
+        // shell no aparece (perfil roto, modo seguro, lo que sea).
+        await WaitForShellReadyAsync(TimeSpan.FromSeconds(60));
+
         // La barra: AppBar real + tray + widget de desktop a la derecha.
         var bar = new BarWindow();
+        _bar = bar;   // la config necesita avisarle cuando cambia la marca (ver ShowConfig)
         bar.OpenConfig = () => ShowConfig(desktops, projects, restrictions, pins, () =>
         {
             int c = desktops.Current;
@@ -325,6 +343,33 @@ public partial class App : Application
     }
 
     /// <summary>
+    /// Poll asíncrono (DispatcherTimer, cada 250ms) a que exista <c>Shell_TrayWnd</c>, con techo
+    /// <paramref name="timeout"/>. NO usa <c>Thread.Sleep</c> ni bloquea el Dispatcher — es justo el
+    /// motivo de existir: si bloqueáramos acá, ni el propio timer podría tickear (viven en el mismo
+    /// hilo de UI) y nunca saldríamos del loop. Devuelve apenas aparece el shell, o al agotar el
+    /// techo, lo que pase primero.
+    /// </summary>
+    private static Task WaitForShellReadyAsync(TimeSpan timeout)
+    {
+        if (Interop.WindowMethods.FindShellTray() != IntPtr.Zero)
+            return Task.CompletedTask;
+
+        var tcs = new TaskCompletionSource();
+        var sw = Stopwatch.StartNew();
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        timer.Tick += (_, _) =>
+        {
+            if (Interop.WindowMethods.FindShellTray() != IntPtr.Zero || sw.Elapsed >= timeout)
+            {
+                timer.Stop();
+                tcs.TrySetResult();
+            }
+        };
+        timer.Start();
+        return tcs.Task;
+    }
+
+    /// <summary>
     /// ¿El foreground actual es una ventana UTILITARIA nuestra (y por lo tanto el foco NO está
     /// huérfano)? Se excluyen la barra y el overlay a propósito: ninguna de las dos toma foco de
     /// teclado (la AppBar es no-activable y el overlay es WS_EX_NOACTIVATE), así que si el foreground
@@ -361,6 +406,9 @@ public partial class App : Application
         }
 
         _configWindow = new ConfigWindow(_desktopConfig, _appsConfig, desktops, projects, restrictions, pins, onApplied);
+        // La marca (PNG + rótulo del extremo izquierdo) se guarda sola desde su pestaña, así que no
+        // pasa por onApplied —que es el "Guardar" de Escritorios—: la barra la recarga cuando avisa.
+        _configWindow.OnBrandChanged = () => _bar?.ReloadBrand();
         _configWindow.Closed += (_, _) => _configWindow = null;
         _configWindow.ShowFocused();
     }

@@ -95,8 +95,9 @@ public partial class TaskDetailWindow : Window
             return;
         try
         {
-            // UseShellExecute=true → abre con el browser por defecto del usuario.
-            Process.Start(new ProcessStartInfo(_task.Url) { UseShellExecute = true });
+            // Vía explorer.exe (StartShellTarget): abre con el browser default del usuario y, si
+            // corremos elevados, lo hace de-elevado — ver UnelevatedLauncher.
+            Interop.UnelevatedLauncher.StartShellTarget(_task.Url);
         }
         catch
         {

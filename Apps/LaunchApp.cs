@@ -64,7 +64,9 @@ public static class AppCatalog
                 // aparezcan. VS Code no tiene flag --maximize en CLI; la única vía limpia es
                 // dispararle SW_SHOWMAXIMIZED desde afuera apenas se renderiza la ventana.
                 var beforeHwnds = new HashSet<IntPtr>(WindowMethods.VisibleTopLevelOf("Code.exe"));
-                System.Diagnostics.Process.Start(psi);
+                // De-elevado: si la app corre admin (tarea programada), VS Code nace a integridad
+                // MEDIA como si lo hubieras abierto vos — ver UnelevatedLauncher.
+                UnelevatedLauncher.Start(psi);
                 MaximizeNewCodeWindows(beforeHwnds);
             }));
 
@@ -92,13 +94,13 @@ public static class AppCatalog
                    ?? AppDetector.InPath("warp.exe");
         if (warp is not null)
             list.Add(new("Warp", paths => ForEach(paths, p =>
-                Process.Start(new ProcessStartInfo(warp) { UseShellExecute = true, WorkingDirectory = p }))));
+                UnelevatedLauncher.Start(new ProcessStartInfo(warp) { UseShellExecute = true, WorkingDirectory = p }))));
 
         // ── WSL (wsl.exe directo en el directorio) ──
         var wsl = AppDetector.InPath("wsl.exe");
         if (wsl is not null)
             list.Add(new("WSL", paths => ForEach(paths, p =>
-                Process.Start(new ProcessStartInfo(wsl) { UseShellExecute = true, WorkingDirectory = p }))));
+                UnelevatedLauncher.Start(new ProcessStartInfo(wsl) { UseShellExecute = true, WorkingDirectory = p }))));
 
         // ── Apps del usuario (pestaña Aplicaciones) ──
         foreach (var u in userApps.Apps)
@@ -150,5 +152,5 @@ public static class AppCatalog
     }
 
     private static void Start(string exe, string args) =>
-        Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true, Arguments = args });
+        UnelevatedLauncher.Start(new ProcessStartInfo(exe) { UseShellExecute = true, Arguments = args });
 }
