@@ -65,8 +65,9 @@ public static class AppCatalog
                 // dispararle SW_SHOWMAXIMIZED desde afuera apenas se renderiza la ventana.
                 var beforeHwnds = new HashSet<IntPtr>(WindowMethods.VisibleTopLevelOf("Code.exe"));
                 // De-elevado: si la app corre admin (tarea programada), VS Code nace a integridad
-                // MEDIA como si lo hubieras abierto vos — ver UnelevatedLauncher.
-                UnelevatedLauncher.Start(psi);
+                // MEDIA como si lo hubieras abierto vos — ver UnelevatedLauncher. Con trampolín:
+                // Electron muere si nace directo con el padre "adoptado".
+                UnelevatedLauncher.Start(psi, viaTrampoline: true);
                 MaximizeNewCodeWindows(beforeHwnds);
             }));
 
@@ -151,6 +152,8 @@ public static class AppCatalog
         foreach (var p in paths) action(p);
     }
 
+    // Trampolín: las apps de usuario típicas de "Abrir con" son Electron (Discord, Postman, Slack,
+    // Obsidian...) y morirían igual que VS Code si nacen directo de-elevadas.
     private static void Start(string exe, string args) =>
-        UnelevatedLauncher.Start(new ProcessStartInfo(exe) { UseShellExecute = true, Arguments = args });
+        UnelevatedLauncher.Start(new ProcessStartInfo(exe) { UseShellExecute = true, Arguments = args }, viaTrampoline: true);
 }
