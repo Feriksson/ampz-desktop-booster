@@ -61,15 +61,20 @@ filtrá por `-Name` en vez de `Where-Object { $_... }`).
 3. Servicios core: `DesktopService`, `ProjectStore`, `AppsConfig`, `PinStore`, `RestrictionStore`.
    Se inyecta `desktops.ProjectLookup = projects.GetDeskProject` (desacople: DesktopService no
    conoce la capa de persistencia).
-4. **`DesktopBootstrapper.Ensure`** (si `AutoCreate`) — crea/renombra los escritorios gestionados.
-   Corre ANTES de instalar hooks para no spamear el overlay.
+4. **`DynamicDeskStore.Load`** (poda los GUID que Windows ya cerró) → **`DesktopBootstrapper.Ensure`**
+   (si `AutoCreate`) — asegura los fijos del catálogo, resolviendo por NOMBRE (nunca por índice: ver
+   la sección del catálogo más abajo, "⚠ el bootstrapper NUNCA renombra por posición"). El orden
+   importa: el registro dinámico tiene que estar reconciliado ANTES de que el bootstrapper corra, o
+   podría confundir un espacio vivo con un fijo faltante. Corre ANTES de instalar hooks para no
+   spamear el overlay.
 5. **`BarWindow`** — la AppBar real (barra inferior) con tray + widget de sistema.
 6. **`WindowGovernor`** — enforcement de pins y restricciones.
 7. **`HotkeyService` + `HotkeyRouter`** — hook global de teclado y su ruteo a acciones.
 8. **`OverlayWindow`** — feedback central, persistente y oculto, con **debounce de 40ms** (al saltar
    rápido entre desks la DLL postea un mensaje por salto; coalescemos y mostramos solo el final).
 9. **`DesktopChangeListener`** — única fuente de verdad del feedback: cualquier cambio de desktop
-   (venga de donde venga) actualiza el widget de la barra y dispara overlay + governor.
+   (venga de donde venga) actualiza el widget de la barra y dispara overlay + governor. También
+   dispara `DeskWatchdog.CheckNow()` — ver "⚠ self-heal EN CALIENTE" en la sección del catálogo.
 
 El hook de teclado se instala **en el thread de UI a propósito**: WPF bombea mensajes ahí, que es lo
 que `WH_KEYBOARD_LL` y el `PostMessage` de la DLL necesitan.
@@ -109,9 +114,9 @@ DESCARTA al cargar (persiste enseguida, mismo patrón que la migración del form
 Durante mucho tiempo el catálogo fue un `List<string>` y ese string hacía de identificador, de ROL y
 de etiqueta a la vez. Renombrar un desk desde la config lo rompía TODO en silencio: el atajo del
 numpad (era un `switch` con literales hardcodeados en `HotkeyRouter`), el setter de Espacios, el scope
-de variables/notas/servicios, el color, la protegibilidad y el panel dual de la barra — seis copias
-de `name.Contains("DESK +")` desperdigadas que un renombre desincronizaba de golpe. Nada avisaba: la
-app seguía andando, sorda.
+de variables/notas/servicios, el color, la protegibilidad y el color del widget de la barra — seis
+copias de `name.Contains("DESK +")` desperdigadas que un renombre desincronizaba de golpe. Nada
+avisaba: la app seguía andando, sorda.
 
 Hoy cada entrada es un `ManagedDesktop` con **identidad propia** — `name`, `key` (la tecla del numpad),
 `role` y `color`. El atajo y el rol viven pegados a la ENTRADA y sobreviven a cualquier renombre.
@@ -119,7 +124,7 @@ Hoy cada entrada es un `ManagedDesktop` con **identidad propia** — `name`, `ke
 | Rol (`DeskRole`) | Qué habilita |
 |---|---|
 | `Main` | El **refugio**: adonde el `WindowGovernor` manda lo no permitido en un desk protegido, y el fallback de `RemoveDesktop` al cerrar un dinámico. Hay UNO solo, y por eso NO es protegible (rebotaría contra sí mismo para siempre). |
-| `Space` | Acepta espacio + contexto, con su scope propio de variables, notas y servicios. Panel dual en la barra. **Ya no vive en el catálogo**: es el rol de un escritorio DINÁMICO que crea/borra el launcher (`Win+NumpadEnter`, ver `DeskLauncher` + `DynamicDeskStore`) — antes eran los `DESK +N` fijos. |
+| `Space` | Acepta espacio + contexto, con su scope propio de variables, notas y servicios. Dot dorado en la barra (ver "Panel único" más abajo). **Ya no vive en el catálogo**: es el rol de un escritorio DINÁMICO que crea/borra el launcher (`Win+NumpadEnter`, ver `DeskLauncher` + `DynamicDeskStore`) — antes eran los `DESK +N` fijos. |
 | `Fixed` | Propósito único. El **único** protegible con whitelist. Rol por defecto de un desk nuevo del catálogo. |
 
 **`DeskCatalog` es el punto ÚNICO donde se pregunta el rol** (`RoleOf` / `IsSpace` / `ColorOf` /
@@ -134,6 +139,48 @@ todavía se llama igual conserva EXACTAMENTE la tecla que venías usando; (2) lo
 primera tecla libre. Repartir por posición hubiera sido más simple y habría cambiado de golpe todos los
 atajos de quien reordenó sus escritorios — arreglar uno roto rompiendo ocho sanos no es migrar.
 Justamente el desk renombrado deja su tecla vieja huérfana, así que la 2da pasada se la devuelve.
+
+### ⚠ El bootstrapper de fijos NUNCA renombra por POSICIÓN — caso real que lo probó (`DesktopBootstrapper`)
+La primera versión del bootstrapper hacía, literal, `for (i in 0..wanted.Count) desktops.SetName(i,
+wanted[i].Name)` — "el escritorio N-ésimo QUE SEA pasa a llamarse el N-ésimo del catálogo". Andaba
+mientras el orden de los escritorios VIVOS coincidiera con el orden del catálogo, una asunción que la
+reforma de escritorios DINÁMICOS rompió de raíz: un dinámico se crea/borra en caliente y corre el
+índice de todo lo que esté después.
+
+**El bug reproducido**: catálogo `MAIN(0) / NOTES(1) / MISCS(2)`. El usuario cerró NOTES a mano un día
+cualquiera. Al reiniciar Windows, los escritorios vivos quedaron `[MAIN, <dinámico "Geocontrol /
+Plataforma">, <dinámico "Geocontrol / Plataforma Develop">]` — NOTES ya no estaba, pero el índice 1
+SÍ, ocupado por un espacio real registrado en `DynamicDeskStore`. El bootstrapper viejo, renombrando
+por índice, le puso "NOTES" al desk dinámico del índice 1. Resultado: `Win+Numpad2` (NOTES por nombre)
+y la tecla dinámica de ESE espacio apuntaban al MISMO escritorio — indistinguibles, sin ningún error
+visible.
+
+**La cura, hoy**: por cada entrada del catálogo, `DesktopBootstrapper.Ensure` busca un desktop que YA
+se llame así (`DesktopService.FindExact` — el mismo criterio de nombre de toda la app). Si falta:
+(1) primero resuelve un CONFLICTO — un dinámico vivo que terminó con ese mismo nombre (el bug de
+arriba, ya materializado) — soltando el registro dinámico, porque el fijo configurado a propósito
+gana; (2) si no hay conflicto, intenta ADOPTAR un desktop VIRGEN (`DesktopService.IsUnnamedDefault` —
+sin nombre propio, el default de un Windows recién instalado) antes de crear uno de más, saltando
+siempre los que estén registrados como dinámicos; (3) recién si no hay virgen, CREA uno nuevo. El
+orden en que terminan viviendo los escritorios NO importa nunca: toda la app navega por nombre/tecla.
+
+**`DeskWatchdog` es el mismo criterio, EN CALIENTE.** Mientras la app corre, si Windows cierra un fijo
+(Task View, Win+Ctrl+F4) lo re-crea con esta misma rutina y avisa con un toast ("Escritorio fijo X
+restaurado"); si `AutoCreate` está apagado, avisa una sola vez por sesión que falta. Si lo que Windows
+cerró es un dinámico, sólo poda su registro (sin ruido — lo cerró el usuario a mano). Detecta por dos
+caminos que se complementan: el `DesktopChangeListener` (reacción inmediata a cualquier cambio de
+desk) y un `DispatcherTimer` de ~1.75s (cubre el caso en que Windows cierra un desk SIN que cambies de
+escritorio activo). Las remociones del propio launcher (`DeskLauncher.Close`, re-press de
+`Win+NumpadEnter`) no disparan nada acá: `Close` saca el registro dinámico ANTES de borrar el desktop,
+así que el watchdog no encuentra nada que podar.
+
+**Sesión índice-keyed re-alineada al borrar cualquier desktop.** `ProjectStore._session` y
+`TaskSessionStore._session` son `Dictionary<int, …>` EFÍMEROS (ver la sección de abajo). Windows corre
+hacia abajo el índice de todo lo que estaba después de un desktop borrado; sin re-alinear, la sesión
+quedaría apuntando al desk de al lado. `DesktopService.DesktopRemoved` dispara ese shift para las
+remociones NUESTRAS (`RemoveDesktopAt`, o sea `DeskLauncher.Close`); `DeskWatchdog` aplica el mismo
+shift para lo que Windows cierra por fuera. `PinStore` y `RestrictionStore` NO necesitan esto: están
+keyed por NOMBRE, no por índice — ver el comentario de esas clases.
 
 ### ⚠ VOCABULARIO: en la UI son ESPACIO y CONTEXTO; en el código, `project` y `module`
 Leé esto antes que nada o vas a creer que hay dos modelos, y hay uno solo.
@@ -184,9 +231,15 @@ LIMPIA el contexto (arrastrar "Plataforma" al espacio siguiente sería la confus
 matar); re-confirmar el MISMO espacio lo conserva. El INI suma la sugerencia `desk_N_module`.
 
 **Cada contexto lleva un COLOR propio** (auto-asignado de `ModulePalette`, ciclable con F3 en el
-picker) y se pinta en overlay, barra y DeskPicker. Esto no es cosmética: la feature nació porque el
+picker) y se pinta en overlay y DeskPicker. Esto no es cosmética: la feature nació porque el
 usuario le ERRABA de contexto al cambiar de pantalla — el texto obliga a leer, el color se percibe de
 reflejo. La paleta esquiva a propósito el dorado del rol `Space` y el verde del rol `Main`.
+
+**⚠ El widget de escritorio de la BARRA ya NO pinta el color del contexto por separado** (ver
+`BarWindow.UpdateDesk`). Con escritorios dinámicos, el nombre del desk YA ES "Espacio" o "Espacio /
+Contexto" — el viejo panel DUAL (dot+nombre a la izquierda, espacio/contexto a la derecha) mostraba el
+espacio DOS VECES. Se retiró: queda un panel ÚNICO (dot + nombre), y el dot ya sale dorado para
+cualquier desk de rol Espacio (`DeskPalette.For`) — la misma señal de reflejo, sin duplicar el dato.
 
 **El color vive SÓLO en el contexto; el espacio NO tiene color** (decisión explícita). Costo aceptado:
 los N desks de un mismo espacio no se agrupan visualmente. Se eligió así porque el espacio lo elegís
