@@ -64,4 +64,26 @@ internal static partial class VirtualDesktopAccessor
     /// </summary>
     [LibraryImport(Dll)]
     public static partial void PinWindow(IntPtr hwnd);
+
+    /// <summary>
+    /// Elimina el escritorio <paramref name="removeDesktopNumber"/>; sus ventanas pasan al
+    /// <paramref name="fallbackDesktopNumber"/> (firma Ciantic: remove_desktop_number,
+    /// fallback_desktop_number). Es el complemento de <see cref="CreateDesktop"/> para el ciclo de
+    /// vida de los escritorios DINÁMICOS (espacio+contexto) del launcher — un desk fijo del catálogo
+    /// nunca se borra por acá, sólo los que crea Win+NumpadEnter.
+    /// </summary>
+    [LibraryImport(Dll)]
+    public static partial int RemoveDesktop(int removeDesktopNumber, int fallbackDesktopNumber);
+
+    /// <summary>
+    /// GUID estable del escritorio por índice (Ciantic lo devuelve POR VALOR, 16 bytes blittable).
+    /// Es la identidad que sobrevive a que otros índices se corran al crear/borrar desks — por eso el
+    /// registro de escritorios dinámicos indexa por este GUID y no por el índice de sesión.
+    /// </summary>
+    [LibraryImport(Dll)]
+    public static partial Guid GetDesktopIdByNumber(int number);
+
+    /// <summary>Índice ACTUAL de un escritorio dado su GUID, o -1 si ya no existe (fue borrado).</summary>
+    [LibraryImport(Dll)]
+    public static partial int GetDesktopNumberById(Guid desktopId);
 }

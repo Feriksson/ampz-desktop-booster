@@ -184,4 +184,41 @@ public sealed class DesktopService
         int idx = VirtualDesktopAccessor.GetWindowDesktopNumber(hwnd);
         return idx >= 0 && idx < Count ? idx : -1;
     }
+
+    // ── Ciclo de vida de escritorios DINÁMICOS (espacio+contexto del launcher) ────────────────
+    // A diferencia del bootstrap (que sólo CREA fijos al arrancar), estos los usa el launcher de
+    // Win+NumpadEnter en caliente: crea uno al confirmar espacio/contexto, lo borra al re-press.
+
+    /// <summary>
+    /// Crea un escritorio nuevo al FINAL, espera a que el shell lo registre y devuelve su índice y
+    /// GUID estable. El GUID es la identidad que el registro dinámico persiste — el índice se corre
+    /// apenas se cree o borre OTRO desk, así que no sirve como key durable.
+    /// </summary>
+    public (int Index, Guid Id) CreateDesktopTracked()
+    {
+        VirtualDesktopAccessor.CreateDesktop();
+        System.Threading.Thread.Sleep(60); // mismo margen que el bootstrapper: da tiempo al shell
+        int index = Count - 1;
+        Guid id = VirtualDesktopAccessor.GetDesktopIdByNumber(index);
+        return (index, id);
+    }
+
+    /// <summary>Índice actual del desk por su GUID, o -1 si ya no existe (lo borraron por fuera).</summary>
+    public int IndexOfId(Guid id) => VirtualDesktopAccessor.GetDesktopNumberById(id);
+
+    /// <summary>GUID estable del desk en ese índice.</summary>
+    public Guid IdOf(int index) => VirtualDesktopAccessor.GetDesktopIdByNumber(index);
+
+    /// <summary>
+    /// Borra el escritorio <paramref name="index"/>; sus ventanas pasan a <paramref name="fallbackIndex"/>.
+    /// No mueve el foco por su cuenta — el llamador decide a dónde saltar después (normalmente, ya
+    /// quedaste en el fallback porque Windows te deja ahí al borrar el desk activo).
+    /// </summary>
+    public void RemoveDesktopAt(int index, int fallbackIndex)
+    {
+        if (index < 0 || index >= Count || fallbackIndex < 0 || fallbackIndex >= Count || index == fallbackIndex)
+            return;
+        VirtualDesktopAccessor.RemoveDesktop(index, fallbackIndex);
+        NoteCurrent(Current); // el borrado cambia el desk activo por debajo; resincronizamos el historial
+    }
 }
