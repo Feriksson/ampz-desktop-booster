@@ -63,6 +63,14 @@ public sealed class ProjectStore
     private readonly Dictionary<int, DeskAssignment> _session = new();
     private ProjectData _data;
 
+    /// <summary>
+    /// Lo inyecta App.OnStartup, MISMO patrón que <see cref="DeskCatalog.Config"/>. Las operaciones
+    /// de reorganización (Rename/Move/Promote/Demote) tienen que arrastrar también las asignaciones
+    /// de escritorios DINÁMICOS vivos — si un desk abierto por el launcher apunta a "Synxs/API" y
+    /// renombrás "API" a "Backend", ese desk no puede quedar apuntando a un scope que ya no existe.
+    /// </summary>
+    public DynamicDeskStore? Dynamic { get; set; }
+
     public ProjectData Data => _data;
 
     public ProjectStore()
@@ -147,7 +155,63 @@ public sealed class ProjectStore
     /// <summary>Saca espacio Y contexto del desk SÓLO en la sesión (no toca historial ni catálogo).</summary>
     public void RemoveDeskProject(int idx) => _session.Remove(idx);
 
+    /// <summary>
+    /// Normaliza un nombre de espacio (Sanitize + TitleCase) y lo da de alta en el HISTORIAL si es
+    /// nuevo, SIN tocar la sesión de ningún desk. Lo usa el launcher (Win+NumpadEnter): a diferencia
+    /// de <see cref="SetDeskProject"/>, todavía no hay un desk al que asignarle nada — el escritorio
+    /// dinámico se crea DESPUÉS de elegir espacio+contexto, así que registrar el nombre es el único
+    /// efecto que corresponde en este paso. Devuelve "" si el nombre quedó vacío tras sanitizar.
+    /// </summary>
+    public string RegisterProjectName(string raw)
+    {
+        string name = TitleCase(Sanitize(raw));
+        if (name == "") return "";
+
+        // Mismo re-alineo de casing que SetDeskProject: ver el comentario de ahí.
+        int at = _data.History.FindIndex(h => string.Equals(h, name, StringComparison.OrdinalIgnoreCase));
+        if (at < 0)
+        {
+            _data.History.Add(name);
+            Save();
+        }
+        else if (_data.History[at] != name)
+        {
+            _data.History[at] = name;
+            Save();
+        }
+        return name;
+    }
+
+    /// <summary>
+    /// Asigna espacio+contexto a un desk SIN pasar por el flujo de sesión habitual (sin limpiar
+    /// contexto por "cambio de espacio" ni tocar sugerencias del INI de otro desk): lo usa el
+    /// launcher cuando el escritorio dinámico YA se creó y hay que dejarlo asentado. El nombre y el
+    /// contexto llegan YA normalizados/catalogados (ver <see cref="RegisterProjectName"/> y
+    /// <see cref="EnsureModule"/>) — acá sólo se escribe la sesión.
+    /// </summary>
+    public void AssignDeskSession(int idx, string project, string module) =>
+        _session[idx] = new DeskAssignment(project, module);
+
     public void ClearAllSession() => _session.Clear();
+
+    /// <summary>
+    /// Re-alinea la sesión (índice-keyed y EFÍMERA) tras borrarse el desktop <paramref name="removedIndex"/>
+    /// — sea por el launcher (re-press) o por el watchdog (Windows lo cerró por fuera). Windows corre
+    /// hacia abajo el índice de TODO lo que estaba después; sin este shift, la sesión seguiría
+    /// apuntando al desk de al lado (mostraría el espacio equivocado hasta el próximo cambio real).
+    /// Se procesa en orden ASCENDENTE de índice viejo para que cada movimiento libere su casillero
+    /// antes de que el siguiente lo pise.
+    /// </summary>
+    public void ShiftSessionAfterRemoval(int removedIndex)
+    {
+        _session.Remove(removedIndex);
+        foreach (var oldIdx in _session.Keys.Where(k => k > removedIndex).OrderBy(k => k).ToList())
+        {
+            var assignment = _session[oldIdx];
+            _session.Remove(oldIdx);
+            _session[oldIdx - 1] = assignment;
+        }
+    }
 
     public IEnumerable<(int Idx, string Project, string Module)> SessionEntries() =>
         _session.Select(kv => (kv.Key, kv.Value.Project, kv.Value.Module));
@@ -716,9 +780,11 @@ public sealed class ProjectStore
     /// </summary>
     private bool UseProjectScope(string deskName, int deskIdx, out string project, out string module)
     {
-        // El rol sale del CATÁLOGO, no del nombre: renombrar un desk de espacio ya no le apaga el
-        // scope (antes esto era name.Contains("DESK +") y el renombre lo mandaba callado a global).
-        bool isProjectDesk = DeskCatalog.IsSpace(deskName);
+        // El rol sale del CATÁLOGO o, si es un desk DINÁMICO (creado por el launcher de
+        // Win+NumpadEnter), del registro de escritorios dinámicos — ver DeskCatalog.DynamicIndexProbe.
+        // Ya no hay entradas "DESK +N" fijas: el desk de espacio nace y muere con el launcher, así que
+        // sin el chequeo por índice esto caería siempre a Fijo y el scope se iría a global.
+        bool isProjectDesk = DeskCatalog.IsSpace(deskName, deskIdx);
         project = GetDeskProject(deskIdx);
         module = project == "" ? "" : GetDeskModule(deskIdx);
         return isProjectDesk && project != "";
@@ -867,6 +933,7 @@ public sealed class ProjectStore
 
         MapSession((p, m) => new DeskAssignment(Same(p, oldName) ? newName : p, m));
         MapSuggestions((p, m) => (Same(p, oldName) ? newName : p, m));
+        Dynamic?.RemapScope((p, m) => (Same(p, oldName) ? newName : p, m));
         Save();
         return ScopeOpResult.Ok;
     }
@@ -886,6 +953,7 @@ public sealed class ProjectStore
         MapSession((p, m) => Same(p, project) && Same(m, oldName)
             ? new DeskAssignment(p, newName) : new DeskAssignment(p, m));
         MapSuggestions((p, m) => Same(p, project) && Same(m, oldName) ? (p, newName) : (p, m));
+        Dynamic?.RemapScope((p, m) => Same(p, project) && Same(m, oldName) ? (p, newName) : (p, m));
         Save();
         return ScopeOpResult.Ok;
     }
@@ -922,6 +990,7 @@ public sealed class ProjectStore
         MapSession((p, m) => Same(p, fromProject) && Same(m, module)
             ? new DeskAssignment(toProject, module) : new DeskAssignment(p, m));
         MapSuggestions((p, m) => Same(p, fromProject) && Same(m, module) ? (toProject, module) : (p, m));
+        Dynamic?.RemapScope((p, m) => Same(p, fromProject) && Same(m, module) ? (toProject, module) : (p, m));
         Save();
         return ScopeOpResult.Ok;
     }
@@ -942,6 +1011,7 @@ public sealed class ProjectStore
         MapSession((p, m) => Same(p, project) && Same(m, module)
             ? new DeskAssignment(module, "") : new DeskAssignment(p, m));
         MapSuggestions((p, m) => Same(p, project) && Same(m, module) ? (module, "") : (p, m));
+        Dynamic?.RemapScope((p, m) => Same(p, project) && Same(m, module) ? (module, "") : (p, m));
         Save();
         return ScopeOpResult.Ok;
     }
@@ -966,6 +1036,7 @@ public sealed class ProjectStore
 
         MapSession((p, m) => Same(p, project) ? new DeskAssignment(toProject, project) : new DeskAssignment(p, m));
         MapSuggestions((p, m) => Same(p, project) ? (toProject, project) : (p, m));
+        Dynamic?.RemapScope((p, m) => Same(p, project) ? (toProject, project) : (p, m));
         Save();
         return ScopeOpResult.Ok;
     }

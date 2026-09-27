@@ -1,5 +1,8 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
+using AmpzDesktopBooster.Desktops;
+using AmpzDesktopBooster.Interop;
 using AmpzDesktopBooster.Persistence;
 
 namespace AmpzDesktopBooster.Apps;
@@ -119,4 +122,56 @@ public static class ServiceLauncher
     /// </summary>
     public static bool IsGroupLaunchable(ServiceEntry s) =>
         s.AutoStartEffective && (s.Command.Trim() != "" || s.Url.Trim() != "");
+
+    /// <summary>
+    /// Arranca todo lo AUTO-START y todavía no arriba de un conjunto de pools (scope propio + los
+    /// heredados), en una sola tanda: procesos primero, URLs después. Es el corazón de "levantar lo
+    /// básico" — lo comparten <c>ServicesWindow.LaunchMissing</c> (Win+Numpad+, re-press) y el
+    /// launcher de escritorios DINÁMICOS (Win+NumpadEnter autolanza los servicios del scope recién
+    /// creado, sin abrir ninguna ventana de Servicios). Vive acá y no en la ventana justamente para
+    /// que el launcher no tenga que instanciarla sólo para disparar el arranque.
+    ///
+    /// <paramref name="groupLaunchedPortless"/> es la marca anti-duplicado de tareas SIN puerto (un
+    /// puerto vivo ya se detecta solo vía <see cref="TcpPortInfo.ListeningPorts"/>); null crea una
+    /// bolsa descartable — el launcher de desks dinámicos dispara una sola vez por desk nuevo, así
+    /// que no necesita recordar nada entre llamadas.
+    /// </summary>
+    public static int LaunchGroupMissing(IEnumerable<ServicePool?> scopedPools,
+                                         HashSet<string>? groupLaunchedPortless = null)
+    {
+        var listening = TcpPortInfo.ListeningPorts();
+        var pending = new List<ServiceEntry>();
+        var urls = new List<(string Url, int Port)>();
+        var portless = groupLaunchedPortless ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var pool in scopedPools)
+        {
+            if (pool is null) continue;
+            foreach (var s in pool.Entries)
+            {
+                if (!IsGroupLaunchable(s)) continue;
+
+                if (s.Port > 0)
+                {
+                    if (listening.Contains(s.Port)) continue; // ya está arriba, no lo re-disparamos
+                }
+                else
+                {
+                    // Sin puerto no hay forma de "ver" si ya corre → la marca por comando+directorio+url
+                    // es lo único que evita apilar el mismo worker en re-presiones/relanzadas. La URL
+                    // entra en la huella porque una entrada de SOLO URL no tiene comando ni directorio,
+                    // y sin ella todas compartirían la MISMA key (sólo se abriría la primera).
+                    string key = string.Join("\n", s.Command.Trim(), s.WorkDir.Trim(), s.Url.Trim());
+                    if (!portless.Add(key)) continue;
+                }
+
+                if (s.Command.Trim() != "") pending.Add(s);
+                if (s.Url.Trim() != "") urls.Add((s.Url.Trim(), s.Port));
+            }
+        }
+
+        int launched = LaunchMany(pending);
+        ServiceUrlOpener.OpenAll(urls);
+        return launched + urls.Count;
+    }
 }

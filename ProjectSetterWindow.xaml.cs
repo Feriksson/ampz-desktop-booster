@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 using AmpzDesktopBooster.Desktops;
@@ -8,34 +7,49 @@ using AmpzDesktopBooster.Services.Localization;
 namespace AmpzDesktopBooster;
 
 /// <summary>
-/// Diálogo de Win+NumpadEnter: setea el espacio del desk actual (sólo "DESK +N").
-/// Textbox pre-cargado con la sugerencia/espacio actual + lista del historial filtrable.
-/// Enter prioriza: (1) fila seleccionada, (2) único resultado visible, (3) texto del textbox
-/// como espacio NUEVO. Supr sobre una fila → borrado en cascada del historial.
+/// Paso 1 del LAUNCHER de Win+NumpadEnter: elegís un ESPACIO. A diferencia de la versión vieja
+/// (que seteaba el espacio del desk actual, sólo en desks de rol "DESK +N"), esta ventana ya no
+/// pertenece a ningún desk — se abre desde CUALQUIER escritorio y su único trabajo es devolver un
+/// espacio+contexto elegidos; es <see cref="Hotkeys.HotkeyRouter"/> (vía el orquestador no-UI del
+/// launcher) el que después crea el escritorio DINÁMICO, lo asigna y lo navega. Ver CLAUDE.md.
+///
+/// Textbox filtrable + lista del historial (igual UX que antes). Enter prioriza: (1) fila
+/// seleccionada, (2) único resultado visible, (3) texto del textbox como espacio NUEVO. Supr sobre
+/// una fila → borrado en cascada del historial. Al confirmar, encadena <see cref="ModulePickerWindow"/>
+/// (paso 2, contexto) ANTES de cerrarse — mismo timing que antes, para no abrir un hueco de foco
+/// huérfano entre una ventana real y otra (ver CLAUDE.md, "el FOCO HUÉRFANO cuelga el hook").
 /// </summary>
 public partial class ProjectSetterWindow : Window
 {
-    private readonly int _deskIdx;
-    private readonly string _deskName;
     private readonly ProjectStore _store;
-    private readonly Action _onChanged;
+    private readonly Action<string, string> _onCompleted;
 
-    public ProjectSetterWindow(int deskIdx, string deskName, ProjectStore store, Action onChanged)
+    /// <summary>
+    /// Se dispara cuando el flujo pasa al paso 2 (picker de contexto), con la ventana nueva. El
+    /// router necesita saber CUÁL ventana está activa para poder cerrar "lo que sea que esté abierto
+    /// del launcher" ante un re-press de Win+NumpadEnter, sin importar en qué paso quedó parado.
+    /// </summary>
+    public event Action<Window>? StageChanged;
+
+    /// <param name="onCompleted">(espacio, contexto) YA normalizados/catalogados — contexto puede ser "".</param>
+    public ProjectSetterWindow(ProjectStore store, Action<string, string> onCompleted)
     {
         InitializeComponent();
 
-        _deskIdx = deskIdx;
-        _deskName = deskName;
         _store = store;
-        _onChanged = onChanged;
+        _onCompleted = onCompleted;
 
         HeaderText.Text = Loc.T("Setter.Header");
-        SubHeaderText.Text = deskName;
+        // Ya no hay un "desk dueño" del launcher (Win+NumpadEnter funciona desde cualquier
+        // escritorio y SIEMPRE crea uno nuevo), así que el subtítulo que mostraba el desk actual
+        // pierde sentido — queda vacío en vez de un dato que confundiría ("¿por qué dice MAIN si
+        // el espacio va a abrir en un desk nuevo?").
+        SubHeaderText.Text = "";
 
-        // Pre-cargar con el espacio activo (sesión) o, si no hay, la sugerencia persistida.
-        string seed = store.GetDeskProject(deskIdx);
-        if (seed == "") seed = store.GetSuggestion(deskIdx);
-        FilterBox.Text = seed;
+        // Sin sugerencia de desk: el textbox arranca vacío. Antes se pre-cargaba con la asignación
+        // del desk donde estabas parado, pero el launcher ya no pertenece a un desk — heredar la de
+        // aquél donde diste Win+NumpadEnter sería arbitrario.
+        FilterBox.Text = "";
 
         RefreshList();
 
@@ -43,22 +57,11 @@ public partial class ProjectSetterWindow : Window
         FilterBox.PreviewKeyDown += OnFilterKeyDown;
         HistoryList.PreviewKeyDown += OnListKeyDown;
         HistoryList.MouseDoubleClick += (_, _) => Confirm();
-        RemoveBtn.Click += (_, _) => ResetAndClose();
+        // "Quitar del desk" no aplica más: no hay ningún desk activo del que sacar nada en este paso.
+        RemoveBtn.Visibility = Visibility.Collapsed;
         CloseBtn.Click += (_, _) => Close();
 
         Loaded += (_, _) => { FilterBox.Focus(); FilterBox.SelectAll(); };
-    }
-
-    /// <summary>
-    /// Reset del desk: saca el espacio de la sesión y cierra. Lo dispara tanto el botón "Quitar"
-    /// como el re-press del hotkey Win+NumpadEnter (instancia única en el router) — un solo camino,
-    /// sin duplicar lógica. No toca historial ni catálogo (eso es RemoveDeskProject, no DeleteFromHistory).
-    /// </summary>
-    public void ResetAndClose()
-    {
-        _store.RemoveDeskProject(_deskIdx);
-        _onChanged();
-        Close();
     }
 
     private void RefreshList()
@@ -103,8 +106,6 @@ public partial class ProjectSetterWindow : Window
         if (name == "")
             return;
 
-        // El nombre de espacio no puede pasar de 23 caracteres. El textbox ya lo frena con MaxLength,
-        // pero una fila del historial creada antes de esta regla podría superarlo → la cortamos acá.
         if (name.Length > 23)
         {
             MessageBox.Show(
@@ -113,27 +114,13 @@ public partial class ProjectSetterWindow : Window
             return;
         }
 
-        _store.SetDeskProject(_deskIdx, name);
-        _onChanged();
+        // Normaliza (Sanitize + TitleCase) y da de alta en el historial si es nuevo — SIN tocar
+        // sesión de ningún desk: todavía no existe el escritorio al que asignarle esto.
+        name = _store.RegisterProjectName(name);
 
-        // ⚠ El nombre CANÓNICO sale del store, NO de `name`. SetDeskProject normaliza (Sanitize +
-        // TitleCase) antes de guardar, así que el string que veníamos arrastrando puede diferir en
-        // mayúsculas del que quedó en la sesión — y las keys del catálogo (contextos, paths, notas) son
-        // case-sensitive. Ése era el bug: elegir "Ampz desktop Booster" del historial le pasaba ESA
-        // casing al picker, que buscaba contextos bajo una key que no existía y aparecía vacío, mientras
-        // que Win+NumpadDot (que lee el espacio de la sesión, ya normalizado) sí los encontraba.
-        name = _store.GetDeskProject(_deskIdx);
-
-        // ── SEGUNDO PASO: el contexto ──
-        // Un espacio puede tener sub-scopes ("Geocontrol" → "Plataforma" / "App Mobile"). Encadenar
-        // el picker acá es lo que hace la feature DESCUBRIBLE: si dependiera sólo del atajo dedicado
-        // (Win+NumpadDot), quien no lo conozca nunca sabría que los contextos existen. Es opcional:
-        // Esc en el picker deja el desk en el espacio pelado, exactamente como antes.
-        //
-        // Abrimos ANTES de cerrarnos a propósito: así el foreground pasa directo de una ventana real
-        // a otra y NO abrimos el hueco de foco huérfano que cuelga el hook de teclado (ver CLAUDE.md,
-        // "el FOCO HUÉRFANO cuelga el hook").
-        var picker = new ModulePickerWindow(_deskIdx, _deskName, name, _store, _onChanged);
+        // ── PASO 2: el contexto ── Se abre ANTES de cerrar esta ventana (ver el doc de la clase).
+        var picker = new ModulePickerWindow(name, _store, module => _onCompleted(name, module));
+        StageChanged?.Invoke(picker);
         picker.ShowFocused();
         Close();
     }
@@ -150,7 +137,6 @@ public partial class ProjectSetterWindow : Window
             return;
 
         _store.DeleteFromHistory(name);
-        _onChanged();
         RefreshList();
     }
 }

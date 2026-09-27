@@ -212,8 +212,9 @@
 
                      480: con 288 no entraban espacio Y contexto (descontando separador 29, padding 16,
                      dot 14 y nombre 70 quedaban ~159px para los dos) y 400 seguía apretando; 576 se
-                     comía media barra. 480 deja ~351px para el par → ~166px a cada uno al 50/50. -->
-                <Grid x:Name="DeskWidget" VerticalAlignment="Center" Width="480">
+                     comía media barra. 480 dejaba ~351px para el par. Sin la columna del nombre del desk (70, retirada con
+                     los escritorios dinámicos) 420 deja el MISMO aire al par → ~166px a cada uno. -->
+                <Grid x:Name="DeskWidget" VerticalAlignment="Center" Width="420">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />  <!-- separador -->
                         <ColumnDefinition Width="*" />     <!-- contenido (uno de los dos modos) -->
@@ -224,13 +225,16 @@
                     <!-- Modo DUAL: desk CON espacio -->
                     <Border Grid.Column="1" Background="#0CFFFFFF" CornerRadius="10" Padding="8,2">
                     <Grid x:Name="DeskDualPanel" VerticalAlignment="Center">
+                        <!-- SIN columna de nombre del desk: con escritorios DINÁMICOS el nombre ES
+                             "Espacio / Contexto", así que mostrarlo al lado repetía el espacio. Tampoco
+                             se muestra el nombre crudo en su lugar: esa "/" corrida en una sola línea
+                             pierde justo lo que este panel da — espacio y contexto como dos datos
+                             distintos, el contexto en SU color (la señal de reflejo). -->
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />  <!-- dot -->
-                            <ColumnDefinition Width="70" />    <!-- nombre (fijo) -->
-                            <ColumnDefinition Width="*" />     <!-- espacio (resto, con elipsis) -->
+                            <ColumnDefinition Width="*" />     <!-- espacio | contexto -->
                         </Grid.ColumnDefinitions>
                         <Ellipse Grid.Column="0" x:Name="DeskDotDual" Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" x:Name="DeskNameDual" Style="{StaticResource WidgetValue}" />
                         <!-- Espacio + contexto. El contexto lleva su color propio y una barrita: en la
                              barra, que es lo que mirás de reojo todo el día, el color es la señal. -->
                         <!-- Grid y no StackPanel: en un StackPanel horizontal los hijos reciben ancho
@@ -240,7 +244,7 @@
                              el reparto correcto depende de si hay contexto o no (ver el comentario allá).
                              Topes fijos era el bug anterior: 150 espacio / 110 contexto daba 58/42, no
                              50/50, y el contexto se cortaba mientras al espacio le sobraba. -->
-                        <Grid Grid.Column="2" VerticalAlignment="Center">
+                        <Grid Grid.Column="1" VerticalAlignment="Center">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition x:Name="DeskProjectCol" Width="*" />    <!-- espacio -->
                                 <ColumnDefinition Width="Auto" />                          <!-- barrita de color -->

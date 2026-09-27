@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 namespace AmpzDesktopBooster.Services.Tasks;
 
@@ -25,4 +26,20 @@ public sealed class TaskSessionStore
 
     /// <summary>Desancla la tarea del desk (el widget se oculta).</summary>
     public void RemoveDeskTask(int idx) => _session.Remove(idx);
+
+    /// <summary>
+    /// Mismo re-alineo que <see cref="AmpzDesktopBooster.Desktops.ProjectStore.ShiftSessionAfterRemoval"/>,
+    /// para esta otra sesión índice-keyed: al borrarse un desktop, Windows corre hacia abajo el
+    /// índice de todo lo que estaba después — sin esto la tarea activa quedaría en el desk de al lado.
+    /// </summary>
+    public void ShiftAfterRemoval(int removedIndex)
+    {
+        _session.Remove(removedIndex);
+        foreach (var oldIdx in _session.Keys.Where(k => k > removedIndex).OrderBy(k => k).ToList())
+        {
+            var task = _session[oldIdx];
+            _session.Remove(oldIdx);
+            _session[oldIdx - 1] = task;
+        }
+    }
 }

@@ -32,22 +32,39 @@ public sealed class DesktopService
     public Func<int, DeskModule>? ModuleLookup { get; set; }
 
     /// <summary>
-    /// Nombre del desktop por índice. La DLL escribe UTF-8 (no PWSTR en la mayoría de builds);
-    /// si sale basura o vacío, caemos a "Desktop N" — mismo fallback que el legacy.
+    /// Nombre CRUDO del desktop por índice, tal cual lo devuelve la DLL — SIN el fallback de
+    /// <see cref="GetName"/>. "" si Windows nunca le puso un nombre propio (el desktop por defecto,
+    /// recién creado por el SO o por nuestro CreateDesktop, antes de un SetDesktopName).
     /// </summary>
-    public string GetName(int index)
+    private string GetRawName(int index)
     {
         var buf = new byte[256];
-        VirtualDesktopAccessor.GetDesktopName(index, buf, buf.Length);
+        VirtualDesktopAccessor.GetDesktopName(index, buf, (nuint)buf.Length);
 
         int nul = Array.IndexOf(buf, (byte)0);
         if (nul < 0) nul = buf.Length;
 
         var name = Encoding.UTF8.GetString(buf, 0, nul);
-        if (string.IsNullOrEmpty(name) || name.Length > 60)
-            return $"Desktop {index + 1}";
-        return name;
+        return name.Length > 60 ? "" : name; // basura → tratamos como sin nombre
     }
+
+    /// <summary>
+    /// Nombre del desktop por índice. La DLL escribe UTF-8 (no PWSTR en la mayoría de builds);
+    /// si sale basura o vacío, caemos a "Desktop N" — mismo fallback que el legacy.
+    /// </summary>
+    public string GetName(int index)
+    {
+        var name = GetRawName(index);
+        return string.IsNullOrEmpty(name) ? $"Desktop {index + 1}" : name;
+    }
+
+    /// <summary>
+    /// ¿Este desktop nunca recibió un nombre propio (ni de Windows ni de nosotros)? Lo usa el
+    /// bootstrapper para ADOPTAR desktops "vírgenes" (recién instalado Windows, o creados por el SO
+    /// sin renombrar) en vez de crear uno nuevo de más — pero nunca decide esto por posición: sólo
+    /// dice si ESE índice puntual está libre de etiqueta.
+    /// </summary>
+    public bool IsUnnamedDefault(int index) => GetRawName(index) == "";
 
     /// <summary>Primer desktop cuyo nombre CONTIENE el fragmento (case-insensitive). -1 si no hay.</summary>
     public int FindByNameFragment(string fragment)
@@ -183,5 +200,53 @@ public sealed class DesktopService
         if (hwnd == IntPtr.Zero) return -1;
         int idx = VirtualDesktopAccessor.GetWindowDesktopNumber(hwnd);
         return idx >= 0 && idx < Count ? idx : -1;
+    }
+
+    // ── Ciclo de vida de escritorios DINÁMICOS (espacio+contexto del launcher) ────────────────
+    // A diferencia del bootstrap (que sólo CREA fijos al arrancar), estos los usa el launcher de
+    // Win+NumpadEnter en caliente: crea uno al confirmar espacio/contexto, lo borra al re-press.
+
+    /// <summary>
+    /// Crea un escritorio nuevo al FINAL, espera a que el shell lo registre y devuelve su índice y
+    /// GUID estable. El GUID es la identidad que el registro dinámico persiste — el índice se corre
+    /// apenas se cree o borre OTRO desk, así que no sirve como key durable.
+    /// </summary>
+    public (int Index, Guid Id) CreateDesktopTracked()
+    {
+        VirtualDesktopAccessor.CreateDesktop();
+        System.Threading.Thread.Sleep(60); // mismo margen que el bootstrapper: da tiempo al shell
+        int index = Count - 1;
+        Guid id = VirtualDesktopAccessor.GetDesktopIdByNumber(index);
+        return (index, id);
+    }
+
+    /// <summary>Índice actual del desk por su GUID, o -1 si ya no existe (lo borraron por fuera).</summary>
+    public int IndexOfId(Guid id) => VirtualDesktopAccessor.GetDesktopNumberById(id);
+
+    /// <summary>GUID estable del desk en ese índice.</summary>
+    public Guid IdOf(int index) => VirtualDesktopAccessor.GetDesktopIdByNumber(index);
+
+    /// <summary>
+    /// Se dispara DESPUÉS de borrar un desktop, con su ÍNDICE VIEJO. Windows corre hacia abajo el
+    /// índice de todo lo que estaba después — cualquier estado índice-keyed (ProjectStore._session,
+    /// TaskSessionStore._session) necesita re-alinearse o quedaría apuntando al desk de al lado. Lo
+    /// inyecta App (mismo patrón que ProjectLookup/ModuleLookup), UNA vez, con el shift de ambas
+    /// sesiones — así <see cref="RemoveDesktopAt"/> (DeskLauncher.Close) Y el watchdog en caliente
+    /// comparten el mismo único punto de re-alineo.
+    /// </summary>
+    public event Action<int>? DesktopRemoved;
+
+    /// <summary>
+    /// Borra el escritorio <paramref name="index"/>; sus ventanas pasan a <paramref name="fallbackIndex"/>.
+    /// No mueve el foco por su cuenta — el llamador decide a dónde saltar después (normalmente, ya
+    /// quedaste en el fallback porque Windows te deja ahí al borrar el desk activo).
+    /// </summary>
+    public void RemoveDesktopAt(int index, int fallbackIndex)
+    {
+        if (index < 0 || index >= Count || fallbackIndex < 0 || fallbackIndex >= Count || index == fallbackIndex)
+            return;
+        VirtualDesktopAccessor.RemoveDesktop(index, fallbackIndex);
+        DesktopRemoved?.Invoke(index); // re-alinea la sesión ANTES de tocar el historial de navegación
+        NoteCurrent(Current); // el borrado cambia el desk activo por debajo; resincronizamos el historial
     }
 }

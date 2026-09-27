@@ -1,6 +1,9 @@
 using System;
+using System.IO;
 using System.Windows.Interop;
+using System.Windows.Threading;
 using AmpzDesktopBooster.Interop;
+using AmpzDesktopBooster.Persistence;
 
 namespace AmpzDesktopBooster.Desktops;
 
@@ -12,13 +15,38 @@ namespace AmpzDesktopBooster.Desktops;
 ///
 /// Es el equivalente exacto del RegisterPostMessageHook + OnMessage(0x5100) del legacy:
 /// una sola fuente de verdad que alimenta el overlay central Y el widget de la barra.
+///
+/// ⚠ El aviso de la DLL NO es confiable por sí solo — de ahí la RED de polling (no la saques).
+/// Caso real: tras un cierre abrupto de la app (crash nativo), al relanzarla la navegación
+/// andaba (Win+Numpad2 llevaba a NOTES) pero el mensaje 0x5100 no llegaba NUNCA más: la barra y
+/// el overlay quedaban congelados en el desk del arranque, y sólo un reinicio de Windows lo
+/// arreglaba. Verificado: desde otro proceso la DLL reportaba bien el desk actual — lo roto era
+/// la entrega de notificaciones (vienen del shell, explorer), no la consulta.
+/// Por eso: (1) un poll barato del desk actual cada 250ms dispara el MISMO evento si el aviso no
+/// llegó — la UI nunca se congela, esté como esté el shell; (2) los avisos perdidos se anotan en
+/// vd-listener.log como evidencia (NO se re-suscribe en caliente: ver ReportMissed, crasheaba);
+/// (3) Dispose SE DESUSCRIBE (antes no lo hacía: incluso saliendo bien dejábamos la suscripción
+/// colgada en el shell).
 /// </summary>
 public sealed class DesktopChangeListener : IDisposable
 {
     // Mismo offset que usaba el .ahk. El id del mensaje posteado == este offset.
     private const int WM_VD_CHANGED = 0x5100;
 
+    // 250ms: imperceptible para el ojo al cambiar de desk y despreciable en costo (una consulta al
+    // shell). El debounce del overlay (40ms) coalesce un eventual doble disparo aviso+poll.
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
+
+    // El log de avisos perdidos va espaciado: con el shell roto se perdería uno por cada salto.
+    private static readonly TimeSpan ReportCooldown = TimeSpan.FromSeconds(30);
+
+    private static string LogPath => Path.Combine(AppPaths.DataDir, "vd-listener.log");
+
     private readonly HwndSource _source;
+    private readonly DispatcherTimer _poll;
+    private int _lastIndex;
+    private DateTime _lastReport = DateTime.MinValue;
+    private int _missed; // avisos perdidos desde el último reporte (evidencia para el log)
 
     /// <summary>Se dispara con el índice del desktop al que se acaba de cambiar.</summary>
     public event Action<int>? DesktopChanged;
@@ -36,17 +64,65 @@ public sealed class DesktopChangeListener : IDisposable
         _source.AddHook(WndProc);
 
         VirtualDesktopAccessor.RegisterPostMessageHook(_source.Handle, WM_VD_CHANGED);
+
+        _lastIndex = VirtualDesktopAccessor.GetCurrentDesktopNumber();
+        _poll = new DispatcherTimer(DispatcherPriority.Background) { Interval = PollInterval };
+        _poll.Tick += (_, _) => Poll();
+        _poll.Start();
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (msg == WM_VD_CHANGED)
         {
-            DesktopChanged?.Invoke(lParam.ToInt32()); // lParam = índice del nuevo desktop
+            Raise(lParam.ToInt32()); // lParam = índice del nuevo desktop
             handled = true;
         }
         return IntPtr.Zero;
     }
 
-    public void Dispose() => _source.Dispose();
+    private void Poll()
+    {
+        int current;
+        try { current = VirtualDesktopAccessor.GetCurrentDesktopNumber(); }
+        catch { return; } // la DLL/shell en un estado raro: el próximo tick reintenta
+        if (current < 0 || current == _lastIndex) return;
+
+        // El desk cambió y el aviso NO llegó (si hubiera llegado, _lastIndex ya valdría esto).
+        _missed++;
+        Raise(current);
+        ReportMissed();
+    }
+
+    private void Raise(int index)
+    {
+        _lastIndex = index;
+        DesktopChanged?.Invoke(index);
+    }
+
+    private void ReportMissed()
+    {
+        // Sólo evidencia, espaciada: NO intentamos re-suscribir. Se probó Unregister +
+        // RestartVirtualDesktopAccessor + Register y crasheó la app al instante bajo cdb:
+        // "HEAP: Free Heap block modified after it was freed" — Restart libera los objetos internos
+        // de la DLL mientras su propio thread de notificaciones todavía los usa (use-after-free).
+        // El poll ya mantiene la UI viva; tocar la suscripción en caliente no vale ese riesgo.
+        if (DateTime.Now - _lastReport < ReportCooldown) return;
+        _lastReport = DateTime.Now;
+        Log($"aviso de cambio de escritorio perdido (x{_missed}) — cubierto por el poll");
+        _missed = 0;
+    }
+
+    private static void Log(string line)
+    {
+        try { File.AppendAllText(LogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {line}{Environment.NewLine}"); }
+        catch { /* el log es evidencia, nunca motivo para voltear la app */ }
+    }
+
+    public void Dispose()
+    {
+        _poll.Stop();
+        try { VirtualDesktopAccessor.UnregisterPostMessageHook(_source.Handle); } catch { }
+        _source.Dispose();
+    }
 }

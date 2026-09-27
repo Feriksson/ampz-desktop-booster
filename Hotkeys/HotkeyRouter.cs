@@ -17,10 +17,11 @@ namespace AmpzDesktopBooster.Hotkeys;
 /// (Numpad físico con NumLock OFF), espacios por desk, y el DeskPicker.
 ///
 /// Mapeo (igual que el legacy ampzWinTunner.ahk líneas 1289-1314, 3760, 3905-3906):
-///   Win+Numpad 1..9  → el desk que TENGA esa tecla asignada en el catálogo (pestaña Escritorios)
-///                      Defaults: 1/2/3 → MAIN / CONSOLES / MISCS · 4..9 → DESK +1..+6
+///   Win+Numpad 1..9  → el desk que TENGA esa tecla asignada, sea del catálogo FIJO (Escritorios) o
+///                      uno DINÁMICO abierto por el launcher (ver DeskLauncher). Defaults: 1/2/3 →
+///                      MAIN / CONSOLES / MISCS · 4..9 quedan libres para los desks dinámicos.
 ///   Win+Shift+(nav)  → mandar ventana activa ahí + seguir
-///   Win+NumpadEnter  → setear espacio del desk actual (sólo DESK+)
+///   Win+NumpadEnter  → LAUNCHER: crea/reutiliza el desk de un espacio+contexto (o lo cierra, en re-press)
 ///   NumpadClear solo → DeskPicker (saltar a un espacio de la sesión)
 ///   Win+NumpadMult   → Variables del espacio/global (Paths Manager) — re-press dispara el predeterminado
 ///   Win+NumpadDiv    → Notes
@@ -34,6 +35,8 @@ public sealed class HotkeyRouter
     // El catálogo de escritorios: de acá sale el mapa tecla → desk. Es la MISMA instancia que edita
     // la ventana de config, así que reasignar un atajo tiene efecto al instante, sin reiniciar.
     private readonly DesktopConfig _deskConfig;
+    // Registro de escritorios DINÁMICOS (espacio+contexto del launcher). Ver DeskLauncher/DynamicDeskStore.
+    private readonly DynamicDeskStore _dynamicDesks;
     private readonly ProjectStore _projects;
     private readonly AppsConfig _apps;
     private readonly PinStore _pins;
@@ -61,9 +64,10 @@ public sealed class HotkeyRouter
     private ShortcutsHelperWindow? _shortcutsWindow;
     // Picker de Hz abierto (Win+F12). Instancia única: re-press cicla; soltar Win aplica.
     private HzWindow? _hzWindow;
-    // Setter de espacio abierto (Win+NumpadEnter). Instancia única: re-press RESETEA el desk.
+    // Launcher de Win+NumpadEnter: paso 1 (espacio) y/o paso 2 (contexto), nunca los dos a la vez —
+    // el setter se cierra apenas encadena el picker (ver ProjectSetterWindow.StageChanged). El
+    // re-press con CUALQUIERA de los dos abierto cierra el launcher (y el desk actual, si es dinámico).
     private ProjectSetterWindow? _setterWindow;
-    // Picker de contexto abierto (Win+NumpadDot). Instancia única: re-press deja el desk SIN contexto.
     private ModulePickerWindow? _moduleWindow;
     // Popup de SERVICIOS abierto (Win+Numpad+). Instancia única y DESK-AWARE, igual que Variables: el
     // re-press sólo "levanta lo que falta" si seguís en el MISMO desk con el que se abrió — si
@@ -95,12 +99,13 @@ public sealed class HotkeyRouter
                       VK_OEM_3 = 0xC0, VK_OEM_2 = 0xBF;
 
     public HotkeyRouter(HotkeyService hotkeys, DesktopService desktops, DesktopConfig deskConfig,
-        ProjectStore projects,
+        DynamicDeskStore dynamicDesks, ProjectStore projects,
         AppsConfig apps, PinStore pins, RestrictionStore restrictions, AppShortcutStore shortcuts,
         Action refreshCurrentDesk, TaskSessionStore taskSession, Action refreshTaskWidget)
     {
         _desktops = desktops;
         _deskConfig = deskConfig;
+        _dynamicDesks = dynamicDesks;
         _projects = projects;
         _apps = apps;
         _pins = pins;
@@ -279,8 +284,10 @@ public sealed class HotkeyRouter
         switch (e.Key)
         {
             case NumpadKey.Subtract: ShowSendWindowPicker();  return; // Win+NumpadSub (antes Win+NumpadDel)
-            case NumpadKey.Enter:    ShowProjectSetter();     return;
-            case NumpadKey.Decimal:  ShowModulePicker();      return; // Win+NumpadDel (contexto del desk)
+            case NumpadKey.Enter:    ShowProjectSetter();     return; // launcher: abre/cierra desks dinámicos
+            // Win+NumpadDot (contexto en el desk actual) SE RETIRÓ con los escritorios dinámicos: el
+            // contexto ahora se elige UNA vez, en el paso 2 del launcher, al crear el desk — no hay
+            // "el mismo desk, otro contexto" porque cada par espacio+contexto ES su propio desk.
             case NumpadKey.Multiply: ShowProjectPaths();      return;
             case NumpadKey.Divide:   ShowProjectNotes();      return;
             case NumpadKey.Add:      ShowServices();          return; // Win+Numpad+ (servicios del scope)
@@ -347,6 +354,12 @@ public sealed class HotkeyRouter
     /// </summary>
     private int ResolveTargetDesk(NumpadKey key)
     {
+        // Primero los desks DINÁMICOS: sus teclas se reparten en caliente (ver DeskLauncher.Open) y
+        // nunca pisan a las del catálogo fijo, pero SÍ pueden ser las únicas dueñas de un 4..9 hoy —
+        // sin este chequeo, la tecla de un espacio abierto no navegaría a ningún lado.
+        var dyn = _dynamicDesks.ByKey(key);
+        if (dyn is { } d) return d.Index;
+
         var entry = _deskConfig.ByKey(key);
         if (entry is null) return -1;
 
@@ -379,75 +392,63 @@ public sealed class HotkeyRouter
         return proc == "" || _restrictions.IsExempt(proc) || _restrictions.IsWhitelisted(deskName, proc);
     }
 
+    /// <summary>
+    /// Win+NumpadEnter, ahora un LAUNCHER usable desde CUALQUIER desk (ya no exige rol Espacio: los
+    /// desks de espacio ya no son un set fijo — este atajo es lo único que los crea). Primera
+    /// pulsación abre el picker de espacio (que encadena el de contexto); re-press con cualquiera de
+    /// los dos abierto CIERRA el launcher y, si el desk donde estás parado es uno DINÁMICO, lo borra
+    /// (fallback = el refugio). En un desk fijo el re-press sólo cierra el launcher, con un toast.
+    /// </summary>
     private void ShowProjectSetter()
     {
-        int idx = _desktops.Current;
-        string name = _desktops.GetName(idx);
-
-        // El setter es sólo para los desks de rol ESPACIO (antes: los que se llamaran "DESK +N" —
-        // por eso renombrar uno te dejaba sin setter y parecía que el atajo estaba roto).
-        // No abrir es lo correcto; irse en SILENCIO no: sin feedback el atajo se lee como colgado.
-        if (!DeskCatalog.IsSpace(name))
+        if (_setterWindow is not null || _moduleWindow is not null)
         {
-            Toasts.NotHere(string.Format(Loc.T("Router.DeskHasNoSpaces"), name), Loc.T("Router.DeskHasNoSpacesHint"));
+            _setterWindow?.Close();
+            _moduleWindow?.Close();
+            _setterWindow = null;
+            _moduleWindow = null;
+
+            int idx = _desktops.Current;
+            if (!DeskCatalog.IsSpace(_desktops.GetName(idx), idx) || !DeskLauncher.Close(_desktops, _dynamicDesks, idx))
+            {
+                Toasts.NotHere(Loc.T("Launcher.CloseNotDynamic"), Loc.T("Launcher.CloseNotDynamicHint"));
+                return;
+            }
+            _refreshCurrentDesk();
             return;
         }
 
-        // Re-press con el setter abierto → RESET del desk: saca el espacio y cierra. Mismo patrón de
-        // instancia única que Variables (Win+*) y Notas (Win+/): la 2da pulsación NO abre otra ventana,
-        // dispara la acción. Reusa el camino del botón "Quitar" (ResetAndClose) — un solo punto de verdad.
-        if (_setterWindow is not null)
+        _setterWindow = new ProjectSetterWindow(_projects, CompleteLauncher);
+        // Cuando el setter encadena el picker de contexto, la ventana "activa" del launcher pasa a
+        // ser ESA — hay que seguir sabiendo cuál cerrar ante un re-press.
+        _setterWindow.StageChanged += w =>
         {
-            _setterWindow.ResetAndClose();
-            return;
-        }
-
-        _setterWindow = new ProjectSetterWindow(idx, name, _projects, _refreshCurrentDesk);
+            _setterWindow = null;
+            _moduleWindow = w as ModulePickerWindow;
+            if (_moduleWindow is not null)
+                _moduleWindow.Closed += (_, _) => _moduleWindow = null;
+        };
         _setterWindow.Closed += (_, _) => _setterWindow = null;
         _setterWindow.ShowFocused();
     }
 
     /// <summary>
-    /// Win+NumpadDot (Del): cambia SÓLO el contexto del desk actual, sin re-elegir espacio. Es el
-    /// atajo del uso frecuente — rotás de "Plataforma" a "App Mobile" del mismo cliente sin pasar
-    /// por el setter. El camino completo (espacio → contexto) sigue siendo Win+NumpadEnter.
-    ///
-    /// Sin espacio en el desk el atajo NO HACE NADA (silencio deliberado). Antes desviaba al setter
-    /// de espacio, y eso estaba mal: este atajo es de UNA capa (el sub-scope), y abrir la ventana de
-    /// OTRA capa porque la primera falta es un secuestro — apretás "contexto" y te aparece "espacio".
-    /// El que quiere setear espacio tiene Win+NumpadEnter; el contexto sin espacio no existe.
+    /// Espacio+contexto ya elegidos (paso 1 + paso 2 del launcher) → le pasa la posta a
+    /// <see cref="DeskLauncher"/>: dedupe, reparto de tecla, creación del desk, sesión, salto y
+    /// auto-arranque de servicios. Sin tecla libre no crea nada y avisa por qué.
     /// </summary>
-    private void ShowModulePicker()
+    private void CompleteLauncher(string project, string module)
     {
-        int idx = _desktops.Current;
-        string name = _desktops.GetName(idx);
+        _setterWindow = null;
+        _moduleWindow = null;
 
-        if (!DeskCatalog.IsSpace(name))
+        var result = DeskLauncher.Open(_desktops, _projects, _deskConfig, _dynamicDesks, project, module, out _);
+        if (result == LauncherOpenResult.NoFreeKey)
         {
-            Toasts.NotHere(string.Format(Loc.T("Router.DeskHasNoSpaces"), name), Loc.T("Router.DeskHasNoSpacesHint"));
+            Toasts.NotHere(Loc.T("Launcher.NoFreeKey"), Loc.T("Launcher.NoFreeKeyHint"));
             return;
         }
-
-        string project = _projects.GetDeskProject(idx);
-        if (project == "")
-        {
-            // Sin espacio no hay nada que sub-dividir → no abrimos NADA, pero lo DECIMOS y apuntamos
-            // al atajo que sí corresponde. Seguimos sin secuestrar la capa: informamos, no desviamos.
-            Toasts.NotHere(string.Format(Loc.T("Router.NoSpaceYet"), name), Loc.T("Router.NoSpaceYetHint"));
-            return;
-        }
-
-        // Re-press con el picker abierto → deja el desk en el espacio PELADO y cierra. Mismo patrón
-        // de instancia única que el setter (re-press = resetear el scope de esta capa).
-        if (_moduleWindow is not null)
-        {
-            _moduleWindow.ClearAndClose();
-            return;
-        }
-
-        _moduleWindow = new ModulePickerWindow(idx, name, project, _projects, _refreshCurrentDesk);
-        _moduleWindow.Closed += (_, _) => _moduleWindow = null;
-        _moduleWindow.ShowFocused();
+        _refreshCurrentDesk();
     }
 
     private void ShowProjectPaths()
@@ -561,7 +562,8 @@ public sealed class HotkeyRouter
 
     private void ShowDeskPicker()
     {
-        var w = new DeskPickerWindow(_desktops, _projects, jumpIdx => _desktops.GoTo(jumpIdx));
+        var w = new DeskPickerWindow(_desktops, _projects, jumpIdx => _desktops.GoTo(jumpIdx),
+            closeIdx => DeskLauncher.Close(_desktops, _dynamicDesks, closeIdx));
         w.ShowFocused();
     }
 

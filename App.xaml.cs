@@ -27,6 +27,7 @@ public partial class App : Application
     private HotkeyService? _hotkeys;
     private HotkeyRouter? _router;
     private DesktopChangeListener? _vdListener;
+    private Desktops.DeskWatchdog? _watchdog;
     private WindowGovernor? _governor;
     private UsageService? _usage;
     private Services.Attention.AttentionService? _attention;
@@ -128,11 +129,41 @@ public partial class App : Application
         // este punto en adelante CUALQUIERA puede preguntar. Antes cada capa deducía el rol del nombre
         // por su cuenta y un renombre las desincronizaba a todas en silencio. Ver DeskCatalog.
         DeskCatalog.Config = _desktopConfig;
+
+        // Registro de escritorios DINÁMICOS (espacio+contexto del launcher Win+NumpadEnter). Se
+        // carga ANTES del bootstrap a propósito — orden invertido respecto de como era antes de la
+        // reforma del bootstrapper por nombre. DynamicDeskStore.Load ya PODA los GUID que Windows
+        // cerró; el bootstrapper necesita ese registro ya reconciliado para poder (a) nunca adoptar
+        // un desk que sea de verdad un espacio vivo, y (b) resolver el conflicto de nombre "un
+        // dinámico terminó llamándose igual que un fijo" ANTES de que la barra o el router lean nada.
+        var dynamicDesks = DynamicDeskStore.Load(desktops);
+        DeskCatalog.DynamicIndexProbe = dynamicDesks.IsDynamicIndex;
+        projects.Dynamic = dynamicDesks; // las reorganizaciones de espacios/contextos remapean acá también
+
         if (_desktopConfig.AutoCreate)
         {
-            try { DesktopBootstrapper.Ensure(_desktopConfig, desktops); }
+            try { DesktopBootstrapper.Ensure(_desktopConfig, desktops, dynamicDesks); }
             catch (Exception ex) { WriteCrash("Bootstrap", ex); }
         }
+
+        // Re-hidrata la sesión desde los dinámicos VIVOS. Parece contradecir la "regla de oro" del
+        // legacy (la sesión NUNCA se rellena al arrancar), pero no: esa regla habla de las
+        // SUGERENCIAS del INI — espacios de ayer que nadie confirmó hoy. Un desk dinámico vivo SÍ está
+        // confirmado: existe en Windows justamente porque el launcher lo creó con ese espacio+contexto.
+        // Sin esto, tras reiniciar la app el desk sigue ahí pero la sesión índice-keyed quedaba vacía:
+        // variables/notas/servicios caían al scope GLOBAL y la barra perdía el espacio y el contexto.
+        // Va DESPUÉS del bootstrap: éste puede soltar registros en conflicto con un fijo.
+        foreach (var (idx, entry) in dynamicDesks.LiveEntries())
+            projects.AssignDeskSession(idx, entry.Project, entry.Module);
+
+        // Re-alinea la sesión índice-keyed (espacio/contexto y tarea por desk, ambas EFÍMERAS) cada
+        // vez que se borra un desktop por ESTE camino (DeskLauncher.Close, al re-press del launcher).
+        // El watchdog de más abajo hace lo mismo para lo que Windows cierra POR FUERA de la app.
+        desktops.DesktopRemoved += idx =>
+        {
+            projects.ShiftSessionAfterRemoval(idx);
+            taskSession.ShiftAfterRemoval(idx);
+        };
 
         // Uso de tokens de IA: el servicio es dueño del polling. Arranca ACÁ, en el core, ANTES de
         // la barra → el primer "tiro" está garantizado aunque la BarWindow tarde, falle o no exista.
@@ -180,7 +211,7 @@ public partial class App : Application
         bar.OpenConfig = () => ShowConfig(desktops, projects, restrictions, pins, () =>
         {
             int c = desktops.Current;
-            bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c), desktops.GetModule(c));
+            bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c), desktops.GetModule(c), c);
         });
         bar.AttachUsage(_usage); // la barra se suscribe y pinta el snapshot apenas llega
         bar.Show();
@@ -190,11 +221,11 @@ public partial class App : Application
 
         // Hook global de teclado + ruteo (navegación, espacios, paneles, pins, restricciones).
         _hotkeys = new HotkeyService();
-        _router = new HotkeyRouter(_hotkeys, desktops, _desktopConfig, projects, _appsConfig, pins, restrictions,
+        _router = new HotkeyRouter(_hotkeys, desktops, _desktopConfig, dynamicDesks, projects, _appsConfig, pins, restrictions,
             appShortcuts, () =>
         {
             int c = desktops.Current;
-            bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c), desktops.GetModule(c));
+            bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c), desktops.GetModule(c), c);
         },
             taskSession,
             // Refresca el widget de tarea del desk ACTUAL (tras pickear o desanclar).
@@ -304,6 +335,14 @@ public partial class App : Application
         // vuelta quedaría mudo hasta el segundo salto.
         desktops.NoteCurrent(desktops.Current);
 
+        // Watchdog en caliente: self-heal de fijos cerrados por fuera + poda de dinámicos cerrados
+        // por fuera. Ver Desktops/DeskWatchdog.cs para el porqué de los dos caminos de detección.
+        _watchdog = new DeskWatchdog(desktops, _desktopConfig, dynamicDesks, projects, taskSession, () =>
+        {
+            int c = desktops.Current;
+            bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c), desktops.GetModule(c), c);
+        });
+
         _vdListener = new DesktopChangeListener();
         _vdListener.DesktopChanged += idx =>
         {
@@ -314,7 +353,7 @@ public partial class App : Application
             desktops.NoteCurrent(idx);
 
             bar.EnsurePinned(); // insurance: re-pin por si el del arranque no prendió
-            bar.UpdateDesk(desktops.GetName(idx), desktops.GetProject(idx), desktops.GetModule(idx));
+            bar.UpdateDesk(desktops.GetName(idx), desktops.GetProject(idx), desktops.GetModule(idx), idx);
             bar.UpdateDeskTask(taskSession.GetDeskTask(idx)); // tarea activa de ESTE desk (o se oculta)
             _pendingOverlayIdx = idx;
             _overlayDebounce!.Stop();
@@ -325,6 +364,11 @@ public partial class App : Application
             // reclamaba: apunta "desde donde estás", así que apenas te movés queda desactualizado y
             // te seguiría empujando al costado cuando ya llegaste (se sentía como "falta uno más").
             _attentionArrow?.Cancel();
+
+            // Reacción rápida del watchdog: cualquier cambio de desk es una oportunidad barata de
+            // notar que uno desapareció (ver DeskWatchdog — el timer de abajo cubre lo que NO pasa
+            // por un cambio de desk activo, p.ej. cerrar uno desde Task View sin pararte encima).
+            _watchdog?.CheckNow();
         };
 
         _hotkeys.Start();
@@ -333,7 +377,7 @@ public partial class App : Application
         // Estado inicial del widget (sin overlay — no hubo "cambio"). El widget de tarea arranca
         // oculto: la sesión es efímera, no hay tarea activa hasta que el usuario pickee una.
         int current = desktops.Current;
-        bar.UpdateDesk(desktops.GetName(current), desktops.GetProject(current), desktops.GetModule(current));
+        bar.UpdateDesk(desktops.GetName(current), desktops.GetProject(current), desktops.GetModule(current), current);
         bar.UpdateDeskTask(taskSession.GetDeskTask(current));
 
         // Caso "app cerrada + click en link": Windows nos lanzó CON la URL y somos la primaria.
@@ -456,6 +500,16 @@ public partial class App : Application
         _instanceMutex?.ReleaseMutex();
         _instanceMutex?.Dispose();
         base.OnExit(e);
+
+        // Salida DURA a propósito. Con todo lo nuestro ya liberado (hooks, pipes, mutex), dejar que el
+        // proceso termine "normal" cuelga para siempre: en LdrShutdownProcess, el detach de
+        // VirtualDesktopAccessor.dll libera un objeto COM del shell (cross-apartment hacia explorer) y se
+        // queda en CoWaitForMultipleHandles esperando una respuesta que en pleno shutdown nunca llega.
+        // Cazado con cdb sobre el proceso zombie: 1 solo thread, runtime .NET ya desmontado, clavado en
+        // ntdll!LdrShutdownProcess → VirtualDesktopAccessor → combase. Síntoma: "Salir" del tray deja el
+        // proceso vivo (sin ventanas) y el relanzado choca con el single-instance. Terminar acá saltea el
+        // detach de las DLLs; no perdemos nada porque todas las configs se persisten sincrónicas al cambiar.
+        System.Diagnostics.Process.GetCurrentProcess().Kill(); // TerminateProcess: sin DLL_PROCESS_DETACH
     }
 
     private static void WriteCrash(string source, Exception? ex)

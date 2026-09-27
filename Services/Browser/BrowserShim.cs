@@ -93,7 +93,8 @@ public static class BrowserShim
                     psi.Environment.Remove(k);
                 }
             }
-            UnelevatedLauncher.Start(psi);
+            // Trampolín: Brave es Chromium y muere si nace directo de-elevado (ver UnelevatedLauncher).
+            UnelevatedLauncher.Start(psi, viaTrampoline: true);
         }
         catch { /* si el spawn falla, no hay nada útil que hacer — no volteamos la app por un link */ }
     }

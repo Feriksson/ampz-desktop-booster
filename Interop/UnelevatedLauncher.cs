@@ -97,15 +97,30 @@ internal static partial class UnelevatedLauncher
 
     // ── API pública ───────────────────────────────────────────────────────────
 
-    /// <summary>Lanza <paramref name="psi"/>. De-elevado si esta app corre admin; normal si no.</summary>
-    public static Process? Start(ProcessStartInfo psi)
+    /// <summary>
+    /// Lanza <paramref name="psi"/>. De-elevado si esta app corre admin; normal si no.
+    /// <para>
+    /// <paramref name="viaTrampoline"/> es OBLIGATORIO para apps Chromium/Electron (VS Code, Brave,
+    /// Discord, Slack...). BUG cazado con un banco de pruebas que replica este CreateProcessW
+    /// (2026-09-25): un Code.exe que nace DIRECTO con PROC_THREAD_ATTRIBUTE_PARENT_PROCESS muere en
+    /// el arranque temprano con exit code 0xFFFF7001, antes de escribir una línea de log — sin
+    /// ventana y sin error visible (Win+F2 "no hacía nada"). No era el env (se probó heredado y
+    /// armado a mano), ni CREATE_NO_WINDOW, ni integridad (todo a media). Lo que SÍ anda: que el
+    /// de-elevado sea un <c>cmd.exe</c> intermedio y que ÉL lance la app — Chromium nace como hijo
+    /// normal de un proceso que ya tiene integridad media, sin padre "adoptado".
+    /// </para>
+    /// </summary>
+    public static Process? Start(ProcessStartInfo psi, bool viaTrampoline = false)
     {
         if (!ElevationHelper.IsElevated())
             return Process.Start(psi);
 
         try
         {
-            if (TryStartDeelevated(psi, out var proc))
+            // Con trampolín, el Process devuelto es el cmd efímero, no la app: ningún caller que
+            // lo pida lo usa para nada más que "¿arrancó?".
+            string commandLine = viaTrampoline ? BuildTrampolineCommandLine(psi) : BuildCommandLine(psi);
+            if (TryStartDeelevated(psi, commandLine, out var proc))
                 return proc;
         }
         catch { /* cualquier fallo del camino nativo → fallback de abajo, ver el summary de la clase */ }
@@ -129,7 +144,7 @@ internal static partial class UnelevatedLauncher
 
     // ── Implementación ────────────────────────────────────────────────────────
 
-    private static bool TryStartDeelevated(ProcessStartInfo psi, out Process? process)
+    private static bool TryStartDeelevated(ProcessStartInfo psi, string commandLine, out Process? process)
     {
         process = null;
 
@@ -162,7 +177,6 @@ internal static partial class UnelevatedLauncher
                 lpAttributeList = attrList,
             };
 
-            string commandLine = BuildCommandLine(psi);
             string? workingDir = string.IsNullOrWhiteSpace(psi.WorkingDirectory) ? null : psi.WorkingDirectory;
             IntPtr envBlock = BuildEnvironmentBlock(psi);
 
@@ -213,6 +227,17 @@ internal static partial class UnelevatedLauncher
 
         return sb.ToString();
     }
+
+    /// <summary>
+    /// "<c>cmd.exe /d /c start "" &lt;comando&gt;</c>": el cmd (oculto por CREATE_NO_WINDOW, y /d
+    /// para que no corra AutoRun del registro) le pasa la posta a <c>start</c>, que lanza la app
+    /// desacoplada y el cmd sale al instante. La app hereda el env del cmd — que es el bloque que
+    /// armamos desde <c>psi.Environment</c>, con el scrub de VSCODE_*/ELECTRON_* ya aplicado — y su
+    /// working dir. Límite asumido: cmd expande <c>%VAR%</c> aunque esté entre comillas; un path real
+    /// con un <c>%algo%</c> que coincida con una variable definida es rarísimo.
+    /// </summary>
+    private static string BuildTrampolineCommandLine(ProcessStartInfo psi) =>
+        "cmd.exe /d /c start \"\" " + BuildCommandLine(psi);
 
     private static string Quote(string arg)
     {

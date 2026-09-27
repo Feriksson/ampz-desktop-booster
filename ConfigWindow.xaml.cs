@@ -766,9 +766,13 @@ public partial class ConfigWindow : Window
         .Concat(DesktopConfig.AssignableKeys.Select(k => new KeyChoice(k, Hotkeys.NumpadDecoder.Label(k))))
         .ToArray();
 
+    /// <summary>
+    /// El rol Espacio SALIÓ de acá: ya no es una entrada fija del catálogo que el usuario elige — es
+    /// el escritorio DINÁMICO que crea/borra el launcher (Win+NumpadEnter, ver DeskLauncher). Sólo
+    /// quedan los dos roles que el usuario configura de antemano.
+    /// </summary>
     private static readonly RoleChoice[] AllRoleChoices =
     {
-        new(DeskRole.Space, Loc.T("Config.DeskRoleSpace")),
         new(DeskRole.Fixed, Loc.T("Config.DeskRoleFixed")),
         new(DeskRole.Main,  Loc.T("Config.DeskRoleMain")),
     };
@@ -829,7 +833,7 @@ public partial class ConfigWindow : Window
 
         public RoleChoice SelectedRole
         {
-            get => AllRoleChoices.FirstOrDefault(r => r.Role == Entry.DeskRole) ?? AllRoleChoices[1];
+            get => AllRoleChoices.FirstOrDefault(r => r.Role == Entry.DeskRole) ?? AllRoleChoices[0];
             set
             {
                 if (value is null || value.Role == Entry.DeskRole) return;
@@ -1021,7 +1025,10 @@ public partial class ConfigWindow : Window
     private void CreateMissingNow()
     {
         _config.AutoCreate = AutoCreateChk.IsChecked == true;
-        int created = DesktopBootstrapper.Ensure(_config, _desktops);
+        // _projects.Dynamic siempre viene seteado desde App.OnStartup (mismo patrón de inyección
+        // estática que DeskCatalog.Config): el bootstrapper necesita el registro dinámico para no
+        // adoptar un espacio vivo y para resolver el conflicto de nombre "dinámico == fijo".
+        int created = DesktopBootstrapper.Ensure(_config, _desktops, _projects.Dynamic ?? DynamicDeskStore.Load(_desktops));
         RefreshList();
         _onApplied();
         MessageBox.Show(
@@ -1034,7 +1041,7 @@ public partial class ConfigWindow : Window
         _config.AutoCreate = AutoCreateChk.IsChecked == true;
         _config.Save();
         if (_config.AutoCreate)
-            DesktopBootstrapper.Ensure(_config, _desktops);
+            DesktopBootstrapper.Ensure(_config, _desktops, _projects.Dynamic ?? DynamicDeskStore.Load(_desktops));
         RefreshList();
         _onApplied();
         Toasts.Saved(Loc.T("Config.DesktopsTab"));

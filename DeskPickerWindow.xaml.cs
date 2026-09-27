@@ -11,7 +11,12 @@ namespace AmpzDesktopBooster;
 
 /// <summary>
 /// Diálogo de NumpadClear (pelado): lista los desks que tienen un espacio activo en la sesión,
-/// con filtro en vivo. Enter salta al desk seleccionado; Supr lo quita de la sesión.
+/// con filtro en vivo. Enter salta al desk seleccionado; Supr lo CIERRA.
+///
+/// Supr y "Limpiar todo" CIERRAN el escritorio (mismo camino que el re-press de Win+NumpadEnter:
+/// sus ventanas pasan al Main). Antes sólo lo quitaban de la sesión — lo que tenía sentido con los
+/// "DESK +N" fijos, pero con escritorios DINÁMICOS dejaba un desk vivo, sin espacio y reteniendo su
+/// tecla del numpad: un zombie que sólo se podía cerrar a mano desde la Vista de tareas.
 /// </summary>
 public partial class DeskPickerWindow : Window
 {
@@ -28,15 +33,17 @@ public partial class DeskPickerWindow : Window
     private readonly DesktopService _desktops;
     private readonly ProjectStore _store;
     private readonly Action<int> _onJump;
+    private readonly Func<int, bool> _onCloseDesk; // false = ese índice no es un desk dinámico
     private List<Row> _all = new();
 
-    public DeskPickerWindow(DesktopService desktops, ProjectStore store, Action<int> onJump)
+    public DeskPickerWindow(DesktopService desktops, ProjectStore store, Action<int> onJump, Func<int, bool> onCloseDesk)
     {
         InitializeComponent();
 
         _desktops = desktops;
         _store = store;
         _onJump = onJump;
+        _onCloseDesk = onCloseDesk;
 
         LoadRows();
 
@@ -111,7 +118,10 @@ public partial class DeskPickerWindow : Window
     {
         if (DeskList.SelectedItem is not Row row)
             return;
-        _store.RemoveDeskProject(row.Idx);
+        // Si por algún motivo no es un desk dinámico (sesión colgada de otra forma), al menos se
+        // limpia la sesión: la fila no puede quedar ahí sin que Supr haga nada.
+        if (!_onCloseDesk(row.Idx))
+            _store.RemoveDeskProject(row.Idx);
         LoadRows();
         if (_all.Count == 0)
             Close();
@@ -126,7 +136,11 @@ public partial class DeskPickerWindow : Window
             Loc.T("DeskPicker.BtnClearAll"), MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (resp != MessageBoxResult.Yes)
             return;
-        _store.ClearAllSession();
+        // De MAYOR a menor índice: cerrar un desk corre hacia abajo el índice de los que están
+        // después, así que empezando por el último los índices que quedan por cerrar siguen válidos.
+        foreach (var row in _all.OrderByDescending(r => r.Idx))
+            if (!_onCloseDesk(row.Idx))
+                _store.RemoveDeskProject(row.Idx);
         Close();
     }
 }

@@ -31,14 +31,20 @@ public static class DeskPalette
         "#F06292", "#9CCC65", "#7986CB", "#FFB300",
     };
 
-    public static Pair For(string name)
+    public static Pair For(string name, int deskIdx = -1)
     {
-        // 1) Color propio elegido en la config → manda sobre todo lo demás.
+        // 1) Color propio elegido en la config → manda sobre todo lo demás. Un desk DINÁMICO nunca
+        //    tiene entrada en la config (no vive en el catálogo), así que esto queda vacío para él.
         string custom = DeskCatalog.ColorOf(name);
         if (custom != "" && TryParseHex(custom, out var c))
             return new(c, Dim(c));
 
-        // 2) Por ROL — sobrevive a cualquier renombre.
+        // 2) Dinámico (creado por el launcher) → SIEMPRE dorado, el mismo color que tenían las
+        //    viejas "DESK +N": es la señal de "acá rota un espacio".
+        if (deskIdx >= 0 && DeskCatalog.DynamicIndexProbe?.Invoke(deskIdx) == true)
+            return new(Rgb(0xFF, 0xD7, 0x00), Rgb(0x7A, 0x60, 0x00));
+
+        // 3) Por ROL — sobrevive a cualquier renombre.
         var entry = DeskCatalog.Config?.ByName(name);
         if (entry is not null)
             return entry.DeskRole switch
@@ -48,7 +54,7 @@ public static class DeskPalette
                 _              => new(Rgb(0xAA, 0xAA, 0xAA), Rgb(0x55, 0x55, 0x55)), // gris
             };
 
-        // 3) Legado por nombre — sólo para desks fuera del catálogo.
+        // 4) Legado por nombre — sólo para desks fuera del catálogo.
         if (Contains(name, "MAIN"))     return new(Rgb(0x2E, 0xCC, 0x40), Rgb(0x1A, 0x7A, 0x20));
         if (Contains(name, "CONSOLES")) return new(Rgb(0x46, 0x82, 0xB4), Rgb(0x23, 0x40, 0x60));
         if (Contains(name, "MISCS"))    return new(Rgb(0xAA, 0xAA, 0xAA), Rgb(0x55, 0x55, 0x55));

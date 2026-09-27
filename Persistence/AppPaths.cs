@@ -32,6 +32,15 @@ public static class AppPaths
     public static string PortsFile => Path.Combine(DataDir, "ports.json");
 
     /// <summary>
+    /// Registro de escritorios DINÁMICOS (espacio+contexto creados por el launcher de
+    /// Win+NumpadEnter), indexados por GUID del desktop — ver <see cref="Desktops.DynamicDeskStore"/>.
+    /// Separado de <see cref="ProjectDataFile"/> a propósito: ESO es el catálogo durable de espacios
+    /// (existen aunque ningún desk los tenga abiertos hoy); ESTO es la lista de qué desk vivo ES CADA
+    /// asignación — vive y muere con la sesión de escritorios de Windows, no con el catálogo.
+    /// </summary>
+    public static string DynamicDesksFile => Path.Combine(DataDir, "dynamic_desks.json");
+
+    /// <summary>
     /// Borra TODA la config del usuario: todos los archivos de DataDir (espacios, settings.ini,
     /// apps, atajos, desktops, widgets, uso). Operación DESTRUCTIVA — el caller confirma y luego
     /// reinicia la app para arrancar con defaults limpios. No toca nada fuera de DataDir (ni el

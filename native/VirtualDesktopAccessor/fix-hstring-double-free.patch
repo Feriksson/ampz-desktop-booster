@@ -1,0 +1,56 @@
+diff --git a/src/interfaces.rs b/src/interfaces.rs
+index d4446a0..fa6202a 100644
+--- a/src/interfaces.rs
++++ b/src/interfaces.rs
+@@ -448,7 +448,10 @@ pub unsafe trait IVirtualDesktopNotification: IUnknown {
+     pub unsafe fn virtual_desktop_name_changed(
+         &self,
+         desktop: ComIn<IVirtualDesktop>,
+-        name: HSTRING,
++        // Borrowed [in] HSTRING owned by the COM caller: ManuallyDrop so Rust does not
++        // WindowsDeleteString it on return (the RPC stub frees it again -> double free / heap
++        // corruption on every desktop rename or wallpaper change).
++        name: std::mem::ManuallyDrop<HSTRING>,
+     ) -> HRESULT;
+ 
+     pub unsafe fn view_virtual_desktop_changed(&self, view: ComIn<IApplicationView>) -> HRESULT;
+@@ -462,7 +465,10 @@ pub unsafe trait IVirtualDesktopNotification: IUnknown {
+     pub unsafe fn virtual_desktop_wallpaper_changed(
+         &self,
+         desktop: ComIn<IVirtualDesktop>,
+-        name: HSTRING,
++        // Borrowed [in] HSTRING owned by the COM caller: ManuallyDrop so Rust does not
++        // WindowsDeleteString it on return (the RPC stub frees it again -> double free / heap
++        // corruption on every desktop rename or wallpaper change).
++        name: std::mem::ManuallyDrop<HSTRING>,
+     ) -> HRESULT;
+ 
+     pub unsafe fn virtual_desktop_switched(&self, desktop: ComIn<IVirtualDesktop>) -> HRESULT;
+diff --git a/src/listener.rs b/src/listener.rs
+index a9f830c..f453cf3 100644
+--- a/src/listener.rs
++++ b/src/listener.rs
+@@ -209,7 +209,10 @@ impl IVirtualDesktopNotification_Impl for VirtualDesktopNotification_Impl {
+     unsafe fn virtual_desktop_wallpaper_changed(
+         &self,
+         desktop: ComIn<IVirtualDesktop>,
+-        name: HSTRING,
++        // Borrowed [in] HSTRING owned by the COM caller: ManuallyDrop so Rust does not
++        // WindowsDeleteString it on return (the RPC stub frees it again -> double free / heap
++        // corruption on every desktop rename or wallpaper change).
++        name: std::mem::ManuallyDrop<HSTRING>,
+     ) -> HRESULT {
+         eat_error(|| {
+             Ok((self.sender)(DesktopEvent::DesktopWallpaperChanged(
+@@ -279,7 +282,10 @@ impl IVirtualDesktopNotification_Impl for VirtualDesktopNotification_Impl {
+     unsafe fn virtual_desktop_name_changed(
+         &self,
+         desktop: ComIn<IVirtualDesktop>,
+-        name: HSTRING,
++        // Borrowed [in] HSTRING owned by the COM caller: ManuallyDrop so Rust does not
++        // WindowsDeleteString it on return (the RPC stub frees it again -> double free / heap
++        // corruption on every desktop rename or wallpaper change).
++        name: std::mem::ManuallyDrop<HSTRING>,
+     ) -> HRESULT {
+         eat_error(|| {
+             Ok((self.sender)(DesktopEvent::DesktopNameChanged(
