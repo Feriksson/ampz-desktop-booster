@@ -156,6 +156,28 @@ public sealed class DynamicDeskStore
     public HashSet<NumpadKey> UsedKeys() =>
         LiveEntries().Select(t => t.Entry.ShortcutKey).Where(k => k != NumpadKey.None).ToHashSet();
 
+    /// <summary>
+    /// Cuántos contextos de ESE espacio están abiertos AHORA en un desk dinámico vivo — incluye el
+    /// desk abierto SIN contexto (módulo ""), que también cuenta como uno. Lo usa el paso 1 del
+    /// launcher (<c>ProjectSetterWindow</c>) para la marca "N abiertos" junto al espacio; mismo
+    /// criterio de comparación (OrdinalIgnoreCase) que <see cref="FindOpenAssignment"/>, para no
+    /// inventar un segundo criterio de "es el mismo espacio".
+    /// </summary>
+    public int CountOpenModules(string project) =>
+        LiveEntries().Count(t => string.Equals(t.Entry.Project, project, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Tecla del desk donde YA está abierto ese par espacio+contexto, o null si no lo está. Reusa
+    /// <see cref="FindOpenAssignment"/> (mismo criterio de dedupe) — lo consume el paso 2 del launcher
+    /// (<c>ModulePickerWindow</c>) para marcar filas ya abiertas, incluida la opción "sin contexto"
+    /// (módulo "").
+    /// </summary>
+    public NumpadKey? OpenKeyFor(string project, string module)
+    {
+        var found = FindOpenAssignment(project, module);
+        return found is { } f ? Get(f.Id)?.ShortcutKey : null;
+    }
+
     /// <summary>Da de alta (o reemplaza) la asignación de un desk recién creado, y persiste.</summary>
     public void Register(Guid id, string project, string module, NumpadKey key)
     {

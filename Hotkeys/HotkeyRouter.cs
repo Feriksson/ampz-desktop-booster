@@ -418,7 +418,7 @@ public sealed class HotkeyRouter
             return;
         }
 
-        _setterWindow = new ProjectSetterWindow(_projects, CompleteLauncher);
+        _setterWindow = new ProjectSetterWindow(_projects, _dynamicDesks, CompleteLauncher);
         // Cuando el setter encadena el picker de contexto, la ventana "activa" del launcher pasa a
         // ser ESA — hay que seguir sabiendo cuál cerrar ante un re-press.
         _setterWindow.StageChanged += w =>
