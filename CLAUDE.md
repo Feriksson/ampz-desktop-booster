@@ -20,7 +20,8 @@ diseño, la respuesta casi siempre es "así lo hacía el .ahk". El comportamient
 - `AllowUnsafeBlocks` está ON porque usamos `[LibraryImport]` (genera marshalling unsafe en compile-time).
 - `app.manifest` declara **PerMonitorV2** — la AppBar trabaja en píxeles físicos.
 - `Nullable` e `ImplicitUsings` habilitados. Namespace raíz: `AmpzDesktopBooster`.
-- `VirtualDesktopAccessor.dll` (nativa, x64, **reutilizada tal cual del .ahk original**) se copia al
+- `VirtualDesktopAccessor.dll` (nativa, x64, **build PARCHEADA de Ciantic** — ya NO es la del .ahk original;
+  ver `native/VirtualDesktopAccessor/README.md` y la sección ⚠ de Interop) se copia al
   output con `PreserveNewest`. Los `Providers/*.png` se embeben como `Resource`.
 
 Build / run:
@@ -440,6 +441,28 @@ cambio de desk), `ConfigWindow` (config, instancia única), `ProjectSetterWindow
 - Los **callbacks de hooks NO se pueden bloquear**: todo el trabajo real se difiere con
   `Dispatcher.BeginInvoke` (hotkeys) o `DispatcherTimer` one-shot (`WindowGovernor.Defer`).
 - Servicios con hooks implementan `IDisposable` y se liberan en `App.OnExit`.
+
+### ⚠ La DLL es una build PARCHEADA — renombrar un escritorio corrompía el heap (no vuelvas a la release)
+
+La release pública de Ciantic (2024-12-16, la que venía del .ahk) tiene un **double free**: cada vez que
+se RENOMBRA un escritorio (nuestro `SetDesktopName` o el usuario desde la Vista de tareas), el shell nos
+llama por RPC a `VirtualDesktopNameChanged(desktop, HSTRING name)`, la DLL libera ese `HSTRING` que no es
+suyo y el stub de RPC lo vuelve a liberar. Resultado: corrupción SILENCIOSA del heap → crash nativo
+`0xc0000374` un rato después (sin nada en `ampz-crash.log`), y el shell deja de mandarnos los avisos de
+cambio de escritorio (barra/overlay congelados "hasta reiniciar Windows"). Con el modelo viejo casi nunca
+se renombraba en caliente; el launcher de escritorios dinámicos renombra CADA desk que crea, y lo destapó.
+
+Se cazó con **PageHeap** (IFEO `GlobalFlag=0x02000000`, `PageHeapFlags=3`) + `cdb` logueando las AV de
+primera oportunidad (el runtime de RPC las traga → `RPC_E_SERVERFAULT`), y se confirmó con una prueba
+controlada desde otro proceso: crear 0 AV · **renombrar ×2 → +2 AV** · borrar 0 AV. Con el parche: 0.
+La build, el parche y el script para regenerarla viven en `native/VirtualDesktopAccessor/`.
+
+- **NUNCA declares/llames `RestartVirtualDesktopAccessor`** en caliente: también es use-after-free (crasheó
+  al instante bajo cdb). Ver `DesktopChangeListener`.
+- `DesktopChangeListener` mantiene un **poll de 250ms** del desk actual como red: si el shell deja de avisar
+  por lo que sea, la UI no se congela. Y se desuscribe al salir (antes no lo hacía).
+- El `Kill()` al final de `App.OnExit` (cuelgue del detach de la DLL en `LdrShutdownProcess`) se mantiene
+  aunque la build incluya el fix upstream #110: es inocuo y ya probamos que sin él el proceso queda zombie.
 
 ### ⚠ El z-order de la barra ROMPE el hook de teclado — y cómo se arregla (no lo deshagas)
 
