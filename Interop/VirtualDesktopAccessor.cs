@@ -67,13 +67,10 @@ internal static partial class VirtualDesktopAccessor
     [LibraryImport(Dll)]
     public static partial int UnregisterPostMessageHook(IntPtr listenerHwnd);
 
-    /// <summary>
-    /// Re-inicializa la conexión interna de la DLL con el servicio de escritorios del shell (pensado
-    /// para cuando explorer se reinicia). Se declara void a propósito: el valor de retorno no se
-    /// usa y así no dependemos de su tipo exacto entre builds de la DLL.
-    /// </summary>
-    [LibraryImport(Dll)]
-    public static partial void RestartVirtualDesktopAccessor();
+    // ⛔ RestartVirtualDesktopAccessor (exportada) NO se declara a propósito: llamarla en caliente
+    // (Unregister → Restart → Register, para revivir avisos perdidos) crasheó la app al instante bajo
+    // cdb con "Free Heap block modified after it was freed" — libera objetos internos que el thread
+    // de notificaciones de la DLL sigue usando. Ver DesktopChangeListener.ReportMissed.
 
     /// <summary>
     /// "Pinea" la ventana a TODOS los escritorios virtuales: pasa a estar visible en cualquier

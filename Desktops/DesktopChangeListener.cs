@@ -23,10 +23,10 @@ namespace AmpzDesktopBooster.Desktops;
 /// arreglaba. Verificado: desde otro proceso la DLL reportaba bien el desk actual — lo roto era
 /// la entrega de notificaciones (vienen del shell, explorer), no la consulta.
 /// Por eso: (1) un poll barato del desk actual cada 250ms dispara el MISMO evento si el aviso no
-/// llegó — la UI nunca se congela, esté como esté el shell; (2) al detectar un aviso perdido se
-/// intenta RE-SUSCRIBIR (Unregister + RestartVirtualDesktopAccessor + Register), con log a
-/// archivo para saber si eso cura el problema de raíz; (3) Dispose SE DESUSCRIBE (antes no lo
-/// hacía: incluso saliendo bien dejábamos la suscripción colgada en el shell).
+/// llegó — la UI nunca se congela, esté como esté el shell; (2) los avisos perdidos se anotan en
+/// vd-listener.log como evidencia (NO se re-suscribe en caliente: ver ReportMissed, crasheaba);
+/// (3) Dispose SE DESUSCRIBE (antes no lo hacía: incluso saliendo bien dejábamos la suscripción
+/// colgada en el shell).
 /// </summary>
 public sealed class DesktopChangeListener : IDisposable
 {
@@ -37,17 +37,16 @@ public sealed class DesktopChangeListener : IDisposable
     // shell). El debounce del overlay (40ms) coalesce un eventual doble disparo aviso+poll.
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
 
-    // No reintentar la re-suscripción en ráfaga: si el shell no la acepta, con el poll la UI ya
-    // anda — insistir cada 250ms sólo haría ruido.
-    private static readonly TimeSpan ResubscribeCooldown = TimeSpan.FromSeconds(30);
+    // El log de avisos perdidos va espaciado: con el shell roto se perdería uno por cada salto.
+    private static readonly TimeSpan ReportCooldown = TimeSpan.FromSeconds(30);
 
     private static string LogPath => Path.Combine(AppPaths.DataDir, "vd-listener.log");
 
     private readonly HwndSource _source;
     private readonly DispatcherTimer _poll;
     private int _lastIndex;
-    private DateTime _lastResubscribe = DateTime.MinValue;
-    private int _missed; // avisos perdidos desde la última re-suscripción (evidencia para el log)
+    private DateTime _lastReport = DateTime.MinValue;
+    private int _missed; // avisos perdidos desde el último reporte (evidencia para el log)
 
     /// <summary>Se dispara con el índice del desktop al que se acaba de cambiar.</summary>
     public event Action<int>? DesktopChanged;
@@ -92,7 +91,7 @@ public sealed class DesktopChangeListener : IDisposable
         // El desk cambió y el aviso NO llegó (si hubiera llegado, _lastIndex ya valdría esto).
         _missed++;
         Raise(current);
-        TryResubscribe();
+        ReportMissed();
     }
 
     private void Raise(int index)
@@ -101,21 +100,16 @@ public sealed class DesktopChangeListener : IDisposable
         DesktopChanged?.Invoke(index);
     }
 
-    private void TryResubscribe()
+    private void ReportMissed()
     {
-        if (DateTime.Now - _lastResubscribe < ResubscribeCooldown) return;
-        _lastResubscribe = DateTime.Now;
-
-        int reg = -1;
-        try
-        {
-            VirtualDesktopAccessor.UnregisterPostMessageHook(_source.Handle);
-            VirtualDesktopAccessor.RestartVirtualDesktopAccessor();
-            reg = VirtualDesktopAccessor.RegisterPostMessageHook(_source.Handle, WM_VD_CHANGED);
-        }
-        catch (Exception ex) { Log($"resubscribe FAILED: {ex.GetType().Name}: {ex.Message}"); return; }
-
-        Log($"aviso perdido (x{_missed}) → re-suscripción, Register={reg}");
+        // Sólo evidencia, espaciada: NO intentamos re-suscribir. Se probó Unregister +
+        // RestartVirtualDesktopAccessor + Register y crasheó la app al instante bajo cdb:
+        // "HEAP: Free Heap block modified after it was freed" — Restart libera los objetos internos
+        // de la DLL mientras su propio thread de notificaciones todavía los usa (use-after-free).
+        // El poll ya mantiene la UI viva; tocar la suscripción en caliente no vale ese riesgo.
+        if (DateTime.Now - _lastReport < ReportCooldown) return;
+        _lastReport = DateTime.Now;
+        Log($"aviso de cambio de escritorio perdido (x{_missed}) — cubierto por el poll");
         _missed = 0;
     }
 
