@@ -465,6 +465,16 @@ public partial class App : Application
         _instanceMutex?.ReleaseMutex();
         _instanceMutex?.Dispose();
         base.OnExit(e);
+
+        // Salida DURA a propósito. Con todo lo nuestro ya liberado (hooks, pipes, mutex), dejar que el
+        // proceso termine "normal" cuelga para siempre: en LdrShutdownProcess, el detach de
+        // VirtualDesktopAccessor.dll libera un objeto COM del shell (cross-apartment hacia explorer) y se
+        // queda en CoWaitForMultipleHandles esperando una respuesta que en pleno shutdown nunca llega.
+        // Cazado con cdb sobre el proceso zombie: 1 solo thread, runtime .NET ya desmontado, clavado en
+        // ntdll!LdrShutdownProcess → VirtualDesktopAccessor → combase. Síntoma: "Salir" del tray deja el
+        // proceso vivo (sin ventanas) y el relanzado choca con el single-instance. Terminar acá saltea el
+        // detach de las DLLs; no perdemos nada porque todas las configs se persisten sincrónicas al cambiar.
+        System.Diagnostics.Process.GetCurrentProcess().Kill(); // TerminateProcess: sin DLL_PROCESS_DETACH
     }
 
     private static void WriteCrash(string source, Exception? ex)
