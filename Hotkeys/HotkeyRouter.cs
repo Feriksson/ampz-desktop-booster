@@ -562,7 +562,8 @@ public sealed class HotkeyRouter
 
     private void ShowDeskPicker()
     {
-        var w = new DeskPickerWindow(_desktops, _projects, jumpIdx => _desktops.GoTo(jumpIdx));
+        var w = new DeskPickerWindow(_desktops, _projects, jumpIdx => _desktops.GoTo(jumpIdx),
+            closeIdx => DeskLauncher.Close(_desktops, _dynamicDesks, closeIdx));
         w.ShowFocused();
     }
 

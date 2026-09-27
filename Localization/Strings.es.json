@@ -463,10 +463,10 @@
   "DeskPicker.WindowTitle": "Saltar a espacio",
   "DeskPicker.Header": "Saltar a un espacio de esta sesión",
   "DeskPicker.EmptyHint": "No hay espacios activos en esta sesión. Seteá uno con Win + NumpadEnter en un desk DESK +N.",
-  "DeskPicker.Hints": "Enter: saltar · Supr: quitar del desk · Esc: cerrar",
-  "DeskPicker.BtnClearAll": "Limpiar todo",
+  "DeskPicker.Hints": "Enter: saltar · Supr: cerrar el escritorio · Esc: cerrar",
+  "DeskPicker.BtnClearAll": "Cerrar todos",
   "DeskPicker.BtnClose": "Cerrar",
-  "DeskPicker.ClearAllConfirm": "¿Quitar todos los espacios de la sesión?",
+  "DeskPicker.ClearAllConfirm": "¿Cerrar todos los escritorios de espacio? Sus ventanas pasan al escritorio principal.",
 
   "Whitelist.Title": "Permitir app",
   "Whitelist.Subtitle": "Elegí el escritorio protegido (Enter o doble clic): agrega la app a su whitelist y la mueve ahí.",

@@ -463,10 +463,10 @@
   "DeskPicker.WindowTitle": "Jump to space",
   "DeskPicker.Header": "Jump to a space in this session",
   "DeskPicker.EmptyHint": "No active spaces in this session. Set one with Win + NumpadEnter on a DESK +N desktop.",
-  "DeskPicker.Hints": "Enter: jump · Del: remove from desktop · Esc: close",
-  "DeskPicker.BtnClearAll": "Clear all",
+  "DeskPicker.Hints": "Enter: jump · Del: close desktop · Esc: close",
+  "DeskPicker.BtnClearAll": "Close all",
   "DeskPicker.BtnClose": "Close",
-  "DeskPicker.ClearAllConfirm": "Remove all spaces from this session?",
+  "DeskPicker.ClearAllConfirm": "Close all space desktops? Their windows move to the main desktop.",
 
   "Whitelist.Title": "Allow App",
   "Whitelist.Subtitle": "Pick the protected desktop (Enter or double-click): adds the app to its whitelist and moves it there.",
