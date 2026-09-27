@@ -47,21 +47,24 @@ public static class DesktopBootstrapper
 
         foreach (var entry in wanted)
         {
-            // 1) ¿Ya existe, con ese nombre exacto? No-op — el caso sano de todos los días.
-            if (desktops.FindExact(entry.Name) >= 0)
-                continue;
-
-            // 2) Conflicto: un desk DINÁMICO vivo terminó con el MISMO nombre que este fijo (el bug
+            // 1) Conflicto: un desk DINÁMICO vivo terminó con el MISMO nombre que este fijo (el bug
             //    de arriba, ya materializado en disco). El FIJO gana: es lo que el usuario configuró
             //    a propósito en Config → Escritorios; el dinámico se re-crea solo la próxima vez que
             //    el launcher confirme ese espacio+contexto. Sólo soltamos el registro — el desktop
             //    real YA se llama como el fijo, así que no hace falta tocarlo ni renombrarlo.
+            //    Va ANTES del "ya existe": en el estado corrupto el fijo SÍ existe por nombre (es el
+            //    mismo desktop que el dinámico), así que chequear existencia primero lo salteaba y
+            //    dejaba las dos teclas apuntando al mismo escritorio para siempre.
             var conflict = dynamicDesks.FindLiveByDeskName(entry.Name);
             if (conflict is not null)
             {
                 dynamicDesks.Unregister(conflict.Id); // persiste; libera su tecla del numpad
                 continue;
             }
+
+            // 2) ¿Ya existe, con ese nombre exacto? No-op — el caso sano de todos los días.
+            if (desktops.FindExact(entry.Name) >= 0)
+                continue;
 
             // 3) Adoptar un desktop VIRGEN (sin nombre propio) antes de crear uno de más. Nunca uno
             //    ya registrado como dinámico — eso sería robarle el escritorio a un espacio real.
