@@ -539,24 +539,66 @@ public partial class BarWindow : Window
     }
 
     /// <summary>
-    /// Actualiza el widget de desktop (a la derecha del todo): dot coloreado por tipo de desk +
-    /// nombre. Lo llama el listener al cambiar de desktop.
-    ///
-    /// ⚠ Panel ÚNICO desde la reforma de escritorios DINÁMICOS: antes existía un modo DUAL que le
-    /// sumaba al lado el espacio/contexto activo (<paramref name="project"/>/<paramref name="module"/>),
-    /// porque un desk de rol Espacio era un "DESK +N" fijo cuyo NOMBRE no decía nada del espacio que
-    /// tenía cargado. Hoy el nombre del desk YA ES "Espacio" o "Espacio / Contexto" —lo pone
-    /// <c>DeskLauncher.Open</c> al crearlo— así que el panel dual mostraba el espacio DOS VECES. La
-    /// señal de color se conserva igual: <see cref="DeskPalette.For"/> ya pinta dorado cualquier desk
-    /// de rol Espacio (fijo legado o dinámico), que es la misma señal de reflejo que antes llevaba el
-    /// texto del espacio. <paramref name="project"/>/<paramref name="module"/> quedan en la firma
-    /// porque otros llamadores los siguen resolviendo (no vale la pena tocar esos call sites por un
-    /// parámetro que acá ya no se usa), pero el widget no los pinta más.
+    /// Actualiza el widget de desktop (a la derecha del todo): dot coloreado por tipo de desk,
+    /// nombre, espacio en gold (oculto si no hay) y, si el desk tiene un CONTEXTO activo, su nombre
+    /// pintado con el color propio del contexto. Lo llama el listener al cambiar de desktop.
     /// </summary>
     public void UpdateDesk(string name, string project, DeskModule module = default, int deskIdx = -1)
     {
-        DeskDotSolo.Fill = new SolidColorBrush(DeskPalette.For(name, deskIdx).Active);
-        DeskNameSolo.Text = name;
+        var dot = new SolidColorBrush(DeskPalette.For(name, deskIdx).Active);
+
+        // El modo lo decide el ROL del desk (del catálogo o, si es DINÁMICO, del registro del
+        // launcher — ver DeskCatalog.DynamicIndexProbe), no si hay espacio cargado:
+        //   · rol Espacio (catálogo o dinámico) → SIEMPRE modo DUAL (le reservamos el lugar del
+        //                   nombre del espacio aunque hoy esté vacío).
+        //   · rol Main / Fijo → modo SOLO centrado (nunca aceptan espacio).
+        // Antes era name.Contains("DESK +"): renombrar el desk le sacaba el panel dual de una.
+        bool isProjectDesk = DeskCatalog.IsSpace(name, deskIdx);
+
+        if (isProjectDesk)
+        {
+            DeskDualPanel.Visibility = Visibility.Visible;
+            DeskSoloPanel.Visibility = Visibility.Collapsed;
+            DeskDotDual.Fill = dot;
+            DeskProjectText.Text = project; // puede estar vacío: el espacio queda reservado igual
+
+            // Contexto: sin espacio no puede haber sub-scope → ni lo evaluamos.
+            bool hasModule = project != "" && module.IsSet;
+            if (hasModule)
+            {
+                // Sólo el TEXTO toma el color del contexto. La barrita de al lado queda neutral (se
+                // pinta en el XAML): está entre dos datos, así que lee como separador — teñirla del
+                // color del contexto confundía a cuál de los dos pertenece.
+                DeskModuleText.Text = module.Name;
+                DeskModuleText.Foreground = new SolidColorBrush(module.Accent);
+            }
+            DeskModuleText.Visibility = hasModule ? Visibility.Visible : Visibility.Collapsed;
+            DeskModuleAccent.Visibility = hasModule ? Visibility.Visible : Visibility.Collapsed;
+
+            // ── Reparto del espacio: se decide ACÁ, no en el XAML ──
+            // Con topes fijos en el XAML el reparto quedaba desparejo (150/110 = 58/42, no 50/50) y
+            // el contexto se cortaba mientras al espacio le sobraba aire. Con columnas "*" el reparto
+            // es proporcional de verdad, pero "*" en el contexto reservaría su mitad AUNQUE no haya
+            // contexto — por eso el ancho no puede ser estático: depende del estado.
+            //
+            //   · Con contexto → 50/50 exacto y cada título CENTRADO en su mitad. Como las dos columnas
+            //     "*" reparten el sobrante en partes iguales, el divisor (columna Auto del medio)
+            //     cae exactamente en el centro del bloque: quedan dos celdas simétricas, no un texto
+            //     pegado al otro. Centrar en la celda (y no alinear contra el divisor) hace que el
+            //     largo de un nombre NO corra visualmente al otro.
+            //   · Sin contexto → la columna del contexto va a 0 y el espacio se queda con el 100%,
+            //     CENTRADO en todo el ancho para que no quede un hueco muerto a ningún lado.
+            DeskProjectCol.Width = new GridLength(1, GridUnitType.Star);
+            DeskModuleCol.Width = hasModule ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+            DeskProjectText.TextAlignment = TextAlignment.Center; // centrado en su mitad, o en todo si está solo
+        }
+        else
+        {
+            DeskSoloPanel.Visibility = Visibility.Visible;
+            DeskDualPanel.Visibility = Visibility.Collapsed;
+            DeskDotSolo.Fill = dot;
+            DeskNameSolo.Text = name;
+        }
     }
 
     /// <summary>

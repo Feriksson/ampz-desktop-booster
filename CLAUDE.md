@@ -124,7 +124,7 @@ Hoy cada entrada es un `ManagedDesktop` con **identidad propia** — `name`, `ke
 | Rol (`DeskRole`) | Qué habilita |
 |---|---|
 | `Main` | El **refugio**: adonde el `WindowGovernor` manda lo no permitido en un desk protegido, y el fallback de `RemoveDesktop` al cerrar un dinámico. Hay UNO solo, y por eso NO es protegible (rebotaría contra sí mismo para siempre). |
-| `Space` | Acepta espacio + contexto, con su scope propio de variables, notas y servicios. Dot dorado en la barra (ver "Panel único" más abajo). **Ya no vive en el catálogo**: es el rol de un escritorio DINÁMICO que crea/borra el launcher (`Win+NumpadEnter`, ver `DeskLauncher` + `DynamicDeskStore`) — antes eran los `DESK +N` fijos. |
+| `Space` | Acepta espacio + contexto, con su scope propio de variables, notas y servicios. Espacio + contexto en la barra (ver sección 3). **Ya no vive en el catálogo**: es el rol de un escritorio DINÁMICO que crea/borra el launcher (`Win+NumpadEnter`, ver `DeskLauncher` + `DynamicDeskStore`) — antes eran los `DESK +N` fijos. |
 | `Fixed` | Propósito único. El **único** protegible con whitelist. Rol por defecto de un desk nuevo del catálogo. |
 
 **`DeskCatalog` es el punto ÚNICO donde se pregunta el rol** (`RoleOf` / `IsSpace` / `ColorOf` /
@@ -235,11 +235,15 @@ picker) y se pinta en overlay y DeskPicker. Esto no es cosmética: la feature na
 usuario le ERRABA de contexto al cambiar de pantalla — el texto obliga a leer, el color se percibe de
 reflejo. La paleta esquiva a propósito el dorado del rol `Space` y el verde del rol `Main`.
 
-**⚠ El widget de escritorio de la BARRA ya NO pinta el color del contexto por separado** (ver
-`BarWindow.UpdateDesk`). Con escritorios dinámicos, el nombre del desk YA ES "Espacio" o "Espacio /
-Contexto" — el viejo panel DUAL (dot+nombre a la izquierda, espacio/contexto a la derecha) mostraba el
-espacio DOS VECES. Se retiró: queda un panel ÚNICO (dot + nombre), y el dot ya sale dorado para
-cualquier desk de rol Espacio (`DeskPalette.For`) — la misma señal de reflejo, sin duplicar el dato.
+**⚠ El widget de escritorio de la BARRA en un desk de espacio: espacio | contexto, SIN el nombre del
+desk** (ver `BarWindow.UpdateDesk`). Con escritorios dinámicos el nombre del desk YA ES "Espacio /
+Contexto", así que el viejo panel dual (dot + nombre + espacio/contexto) mostraba el espacio DOS VECES.
+Se probó reemplazarlo por un panel único con el nombre crudo y el usuario lo rechazó de plano: la "/"
+corrida en una línea pierde justo lo que el panel da. Hoy: dot + espacio (dorado) | barrita neutral |
+contexto en SU color, cada uno centrado en su mitad; sólo se retiró la columna del nombre. Los fijos
+siguen con el panel simple (dot + nombre centrado). Y la sesión se RE-HIDRATA al arrancar desde los
+dinámicos vivos (`App.OnStartup`): sin eso, tras reiniciar la app el panel quedaba vacío y
+variables/notas/servicios caían al scope global.
 
 **El color vive SÓLO en el contexto; el espacio NO tiene color** (decisión explícita). Costo aceptado:
 los N desks de un mismo espacio no se agrupan visualmente. Se eligió así porque el espacio lo elegís

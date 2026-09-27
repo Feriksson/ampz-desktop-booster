@@ -146,6 +146,16 @@ public partial class App : Application
             catch (Exception ex) { WriteCrash("Bootstrap", ex); }
         }
 
+        // Re-hidrata la sesión desde los dinámicos VIVOS. Parece contradecir la "regla de oro" del
+        // legacy (la sesión NUNCA se rellena al arrancar), pero no: esa regla habla de las
+        // SUGERENCIAS del INI — espacios de ayer que nadie confirmó hoy. Un desk dinámico vivo SÍ está
+        // confirmado: existe en Windows justamente porque el launcher lo creó con ese espacio+contexto.
+        // Sin esto, tras reiniciar la app el desk sigue ahí pero la sesión índice-keyed quedaba vacía:
+        // variables/notas/servicios caían al scope GLOBAL y la barra perdía el espacio y el contexto.
+        // Va DESPUÉS del bootstrap: éste puede soltar registros en conflicto con un fijo.
+        foreach (var (idx, entry) in dynamicDesks.LiveEntries())
+            projects.AssignDeskSession(idx, entry.Project, entry.Module);
+
         // Re-alinea la sesión índice-keyed (espacio/contexto y tarea por desk, ambas EFÍMERAS) cada
         // vez que se borra un desktop por ESTE camino (DeskLauncher.Close, al re-press del launcher).
         // El watchdog de más abajo hace lo mismo para lo que Windows cierra POR FUERA de la app.
