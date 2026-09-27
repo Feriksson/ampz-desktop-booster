@@ -205,72 +205,34 @@
 
                 <!-- Desktop actual: ancho FIJO para que la barra NO se desplace al cambiar de
                      desktop (invariante: si fuera Auto, los widgets de la izquierda bailarían en
-                     cada salto). Adentro, dos modos sobre el mismo espacio (como el legacy):
-                       · DUAL  → con espacio: dot + nombre a la izquierda + espacio/contexto a la derecha
-                       · SOLO  → sin espacio: dot + nombre CENTRADOS
-                     Sólo uno está visible a la vez; el ancho total no cambia nunca.
+                     cada salto). UN solo panel, centrado: dot + nombre del desk.
 
-                     480: con 288 no entraban espacio Y contexto (descontando separador 29, padding 16,
-                     dot 14 y nombre 70 quedaban ~159px para los dos) y 400 seguía apretando; 576 se
-                     comía media barra. 480 deja ~351px para el par → ~166px a cada uno al 50/50. -->
-                <Grid x:Name="DeskWidget" VerticalAlignment="Center" Width="480">
+                     ⚠ Antes había DOS modos (DUAL con espacio a la derecha / SOLO centrado) porque
+                     un desk de rol Espacio era fijo ("DESK +N") y el espacio/contexto activo era un
+                     dato APARTE que había que mostrar al lado. Con la reforma de escritorios
+                     DINÁMICOS el propio NOMBRE del desk YA ES "Espacio" o "Espacio / Contexto" (lo
+                     pone DeskLauncher.Open al crearlo) — el panel dual mostraba el espacio DOS VECES
+                     (una en el nombre, otra en el panel). Se retira el modo dual entero; el nombre
+                     alcanza. La señal de color se conserva IGUAL que antes: el dot ya sale de
+                     DeskPalette.For, que pinta dorado cualquier desk de rol Espacio (fijo legado o
+                     dinámico) — es la misma señal de reflejo que usaba el texto del espacio.
+
+                     320: sólo el dot + nombre centrados no necesitan el ancho viejo (480, pensado
+                     para el par espacio/contexto lado a lado). Se angosta para no dejar un hueco
+                     muerto en la barra. -->
+                <Grid x:Name="DeskWidget" VerticalAlignment="Center" Width="320">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />  <!-- separador -->
-                        <ColumnDefinition Width="*" />     <!-- contenido (uno de los dos modos) -->
+                        <ColumnDefinition Width="*" />     <!-- contenido -->
                     </Grid.ColumnDefinitions>
 
                     <Rectangle Grid.Column="0" Width="1" Height="16" Fill="{StaticResource Separator}" Margin="14,0" />
 
-                    <!-- Modo DUAL: desk CON espacio -->
-                    <Border Grid.Column="1" Background="#0CFFFFFF" CornerRadius="10" Padding="8,2">
-                    <Grid x:Name="DeskDualPanel" VerticalAlignment="Center">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />  <!-- dot -->
-                            <ColumnDefinition Width="70" />    <!-- nombre (fijo) -->
-                            <ColumnDefinition Width="*" />     <!-- espacio (resto, con elipsis) -->
-                        </Grid.ColumnDefinitions>
-                        <Ellipse Grid.Column="0" x:Name="DeskDotDual" Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" x:Name="DeskNameDual" Style="{StaticResource WidgetValue}" />
-                        <!-- Espacio + contexto. El contexto lleva su color propio y una barrita: en la
-                             barra, que es lo que mirás de reojo todo el día, el color es la señal. -->
-                        <!-- Grid y no StackPanel: en un StackPanel horizontal los hijos reciben ancho
-                             INFINITO y el TextTrimming nunca dispara → un espacio largo se comería
-                             al contexto (justo lo que no puede pasar).
-                             Los anchos NO son fijos acá: los setea UpdateDesk en el code-behind, porque
-                             el reparto correcto depende de si hay contexto o no (ver el comentario allá).
-                             Topes fijos era el bug anterior: 150 espacio / 110 contexto daba 58/42, no
-                             50/50, y el contexto se cortaba mientras al espacio le sobraba. -->
-                        <Grid Grid.Column="2" VerticalAlignment="Center">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition x:Name="DeskProjectCol" Width="*" />    <!-- espacio -->
-                                <ColumnDefinition Width="Auto" />                          <!-- barrita de color -->
-                                <ColumnDefinition x:Name="DeskModuleCol" Width="0" />      <!-- contexto -->
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" x:Name="DeskProjectText" Style="{StaticResource WidgetValue}"
-                                       Foreground="#FFD700" TextTrimming="CharacterEllipsis" />
-                            <!-- NEUTRAL a propósito, aunque el contexto tenga color: esta barrita está
-                                 ENTRE dos datos, o sea que lee como SEPARADOR. Pintarla del color del
-                                 contexto confundía de qué lado pertenece. El color identifica al contexto
-                                 en su TEXTO; el separador sólo separa.
-                                 Margen SIMÉTRICO (8 y 8): las dos columnas "*" ya reparten el sobrante
-                                 en partes iguales, así que la columna del divisor cae centrada — pero
-                                 si sus márgenes fueran desparejos la LÍNEA quedaría corrida adentro de
-                                 su propia celda. Con 8/8 el divisor cae exactamente en el medio. -->
-                            <Rectangle Grid.Column="1" x:Name="DeskModuleAccent" Width="1" Height="12"
-                                       Fill="{StaticResource Separator}" Margin="8,0"
-                                       VerticalAlignment="Center" Visibility="Collapsed" />
-                            <TextBlock Grid.Column="2" x:Name="DeskModuleText" Style="{StaticResource WidgetValue}"
-                                       TextAlignment="Center" TextTrimming="CharacterEllipsis" Visibility="Collapsed" />
-                        </Grid>
-                    </Grid>
-                    </Border>
-
-                    <!-- Modo SOLO: desk SIN espacio (centrado) -->
                     <Border Grid.Column="1" Background="#0CFFFFFF" CornerRadius="10" Padding="8,2">
                     <StackPanel x:Name="DeskSoloPanel" Orientation="Horizontal"
                                 HorizontalAlignment="Center" VerticalAlignment="Center">
                         <Ellipse x:Name="DeskDotSolo" Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center" />
-                        <TextBlock x:Name="DeskNameSolo" Style="{StaticResource WidgetValue}" />
+                        <TextBlock x:Name="DeskNameSolo" Style="{StaticResource WidgetValue}" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                     </Border>
                 </Grid>
