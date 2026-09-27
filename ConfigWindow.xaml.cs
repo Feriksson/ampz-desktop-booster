@@ -766,9 +766,13 @@ public partial class ConfigWindow : Window
         .Concat(DesktopConfig.AssignableKeys.Select(k => new KeyChoice(k, Hotkeys.NumpadDecoder.Label(k))))
         .ToArray();
 
+    /// <summary>
+    /// El rol Espacio SALIÓ de acá: ya no es una entrada fija del catálogo que el usuario elige — es
+    /// el escritorio DINÁMICO que crea/borra el launcher (Win+NumpadEnter, ver DeskLauncher). Sólo
+    /// quedan los dos roles que el usuario configura de antemano.
+    /// </summary>
     private static readonly RoleChoice[] AllRoleChoices =
     {
-        new(DeskRole.Space, Loc.T("Config.DeskRoleSpace")),
         new(DeskRole.Fixed, Loc.T("Config.DeskRoleFixed")),
         new(DeskRole.Main,  Loc.T("Config.DeskRoleMain")),
     };
@@ -829,7 +833,7 @@ public partial class ConfigWindow : Window
 
         public RoleChoice SelectedRole
         {
-            get => AllRoleChoices.FirstOrDefault(r => r.Role == Entry.DeskRole) ?? AllRoleChoices[1];
+            get => AllRoleChoices.FirstOrDefault(r => r.Role == Entry.DeskRole) ?? AllRoleChoices[0];
             set
             {
                 if (value is null || value.Role == Entry.DeskRole) return;
