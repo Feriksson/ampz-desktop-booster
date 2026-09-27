@@ -484,7 +484,7 @@
   "EnvVars.NotADirectory": "El valor no es un directorio válido.",
 
   "Setter.Title": "Espacio del escritorio",
-  "Setter.Header": "Espacio para este escritorio",
+  "Setter.Header": "Abrir un espacio (nuevo escritorio)",
   "Setter.Hint": "Enter: confirmar (fila / único resultado / texto nuevo) · Supr: borrar del historial · Esc: cerrar",
   "Setter.RemoveFromDesk": "Quitar del desk",
   "Setter.Close": "Cerrar",
@@ -591,10 +591,10 @@
   "Toast.PublicIpChanged": "Cambió tu IP pública",
   "Toast.LocalIpChanged": "Cambió tu IP de red local",
 
-  "Router.DeskHasNoSpaces": "{0} no lleva espacios",
-  "Router.DeskHasNoSpacesHint": "Sólo los escritorios de rol Espacio. Cambiá el rol en Configuración → Escritorios.",
-  "Router.NoSpaceYet": "{0} todavía no tiene espacio",
-  "Router.NoSpaceYetHint": "Asignale uno con Win+Intro (numpad) antes de elegir contexto.",
+  "Launcher.CloseNotDynamic": "Este escritorio no se puede cerrar",
+  "Launcher.CloseNotDynamicHint": "Sólo se cierran los escritorios que abrió el launcher (Win+Intro numpad).",
+  "Launcher.NoFreeKey": "No queda tecla libre para un nuevo escritorio",
+  "Launcher.NoFreeKeyHint": "Cerrá alguno con Win+Intro (numpad) antes de abrir otro.",
   "Router.CannotPin": "'{0}' no puede anclarse.",
   "Router.PinTitle": "Anclar",
   "Router.UnpinConfirm": "'{0}' está anclado a '{1}'.\n¿Desanclar?",

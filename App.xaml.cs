@@ -199,7 +199,7 @@ public partial class App : Application
 
         // Hook global de teclado + ruteo (navegación, espacios, paneles, pins, restricciones).
         _hotkeys = new HotkeyService();
-        _router = new HotkeyRouter(_hotkeys, desktops, _desktopConfig, projects, _appsConfig, pins, restrictions,
+        _router = new HotkeyRouter(_hotkeys, desktops, _desktopConfig, dynamicDesks, projects, _appsConfig, pins, restrictions,
             appShortcuts, () =>
         {
             int c = desktops.Current;

@@ -155,6 +155,43 @@ public sealed class ProjectStore
     /// <summary>Saca espacio Y contexto del desk SÓLO en la sesión (no toca historial ni catálogo).</summary>
     public void RemoveDeskProject(int idx) => _session.Remove(idx);
 
+    /// <summary>
+    /// Normaliza un nombre de espacio (Sanitize + TitleCase) y lo da de alta en el HISTORIAL si es
+    /// nuevo, SIN tocar la sesión de ningún desk. Lo usa el launcher (Win+NumpadEnter): a diferencia
+    /// de <see cref="SetDeskProject"/>, todavía no hay un desk al que asignarle nada — el escritorio
+    /// dinámico se crea DESPUÉS de elegir espacio+contexto, así que registrar el nombre es el único
+    /// efecto que corresponde en este paso. Devuelve "" si el nombre quedó vacío tras sanitizar.
+    /// </summary>
+    public string RegisterProjectName(string raw)
+    {
+        string name = TitleCase(Sanitize(raw));
+        if (name == "") return "";
+
+        // Mismo re-alineo de casing que SetDeskProject: ver el comentario de ahí.
+        int at = _data.History.FindIndex(h => string.Equals(h, name, StringComparison.OrdinalIgnoreCase));
+        if (at < 0)
+        {
+            _data.History.Add(name);
+            Save();
+        }
+        else if (_data.History[at] != name)
+        {
+            _data.History[at] = name;
+            Save();
+        }
+        return name;
+    }
+
+    /// <summary>
+    /// Asigna espacio+contexto a un desk SIN pasar por el flujo de sesión habitual (sin limpiar
+    /// contexto por "cambio de espacio" ni tocar sugerencias del INI de otro desk): lo usa el
+    /// launcher cuando el escritorio dinámico YA se creó y hay que dejarlo asentado. El nombre y el
+    /// contexto llegan YA normalizados/catalogados (ver <see cref="RegisterProjectName"/> y
+    /// <see cref="EnsureModule"/>) — acá sólo se escribe la sesión.
+    /// </summary>
+    public void AssignDeskSession(int idx, string project, string module) =>
+        _session[idx] = new DeskAssignment(project, module);
+
     public void ClearAllSession() => _session.Clear();
 
     public IEnumerable<(int Idx, string Project, string Module)> SessionEntries() =>

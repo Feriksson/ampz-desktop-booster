@@ -555,57 +555,16 @@ public partial class ServicesWindow : Window
     /// </summary>
     public int LaunchMissing()
     {
-        var listening = TcpPortInfo.ListeningPorts();
-        var pending = new List<ServiceEntry>();
-        var urls = new List<(string Url, int Port)>();
-
         // En scope de espacio/contexto (_globalPool no-null ⇒ la primaria NO es la global) el arranque
         // grupal se limita a lo propio + lo del espacio padre. Ver el comentario del summary.
+        // La mecánica de fondo (auto-start, dedupe por puerto vivo / marca portless, procesos+URLs de
+        // una sola tanda) vive en ServiceLauncher.LaunchGroupMissing — la comparte el launcher de
+        // escritorios dinámicos (Win+NumpadEnter), que dispara lo mismo sin abrir esta ventana.
         ServicePool?[] scoped = _globalPool is not null
             ? new ServicePool?[] { _pool, _parentPool }
             : new ServicePool?[] { _pool, _parentPool, _globalPool };
 
-        foreach (var pool in scoped)
-        {
-            if (pool is null) continue;
-            foreach (var s in pool.Entries)
-            {
-                if (!ServiceLauncher.IsGroupLaunchable(s)) continue;
-
-                if (s.Port > 0)
-                {
-                    if (listening.Contains(s.Port)) continue;  // ya está arriba → no duplicamos
-                }
-                else
-                {
-                    // SIN PUERTO no hay forma de saber si ya corre (es la misma limitación de siempre:
-                    // el PID no sirve, wt.exe delega en su monarca). Si no hiciéramos nada, machacar
-                    // el atajo te spawnearía un `queue:work` nuevo por cada pulsación.
-                    // Mitigación: recordamos lo que ya disparó ESTA ventana. Cubre el caso real
-                    // (re-press seguido); cerrar y reabrir vuelve a permitirlo, que es lo que querés
-                    // si cerraste a propósito para relevantar.
-                    // La URL entra en la huella: una entrada de SOLO URL no tiene comando ni
-                    // directorio, así que sin ella todas las URLs sueltas compartirían la MISMA key
-                    // y sólo se abriría la primera.
-                    string key = string.Join("\n", s.Command.Trim(), s.WorkDir.Trim(), s.Url.Trim());
-                    if (!_groupLaunchedPortless.Add(key)) continue;
-                }
-
-                if (s.Command.Trim() != "") pending.Add(s);
-                if (s.Url.Trim() != "") urls.Add((s.Url.Trim(), s.Port));
-            }
-        }
-
-        // Primero los procesos y después las URLs, aunque las URLs no esperen a que la lista de
-        // comandos termine de resolverse: el que abre las pestañas ya sabe esperar al puerto por su
-        // cuenta (ver ServiceUrlOpener), así que este orden es sólo para que el trabajo pesado —una
-        // sola llamada a wt.exe con todas las pestañas— arranque cuanto antes.
-        int launched = ServiceLauncher.LaunchMany(pending);
-        ServiceUrlOpener.OpenAll(urls);
-
-        // Las URLs cuentan como "algo que se hizo": si no, un scope de puras URLs dispararía el
-        // browser y acto seguido te avisaría que no había nada que levantar.
-        return launched + urls.Count;
+        return ServiceLauncher.LaunchGroupMissing(scoped, _groupLaunchedPortless);
     }
 
     private void LaunchMissingWithFeedback()

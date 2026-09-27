@@ -10,13 +10,15 @@ using AmpzDesktopBooster.Services.Localization;
 namespace AmpzDesktopBooster;
 
 /// <summary>
-/// Selector de CONTEXTO (sub-scope) del espacio cargado en el desk. Se llega por dos caminos:
-///   · 2do paso del setter (Win+NumpadEnter): confirmás espacio → aparece esta ventana.
-///   · Win+NumpadDot (Del): cambia SÓLO el contexto, sin re-elegir espacio. El flujo rápido.
+/// Paso 2 del LAUNCHER de Win+NumpadEnter: elegís el CONTEXTO (sub-scope) del espacio ya confirmado
+/// en el paso 1 (<see cref="ProjectSetterWindow"/>). Ya NO es alcanzable por Win+NumpadDot —ese
+/// atajo se RETIRÓ con la reforma de escritorios dinámicos (ver CLAUDE.md)—, así que su única
+/// entrada es la que encadena el setter.
 ///
-/// Mismo lenguaje que el setter de espacio (textbox filtro + lista + Enter confirma / Supr borra),
-/// para que no haya nada nuevo que aprender. Lo único propio es el COLOR: cada contexto nace con uno
-/// de la paleta y F3 lo cicla — la señal cromática es el motivo de existir de toda la feature.
+/// Mismo lenguaje que el paso 1 (textbox filtro + lista + Enter confirma / Supr borra). Lo propio es
+/// el COLOR: cada contexto nace con uno de la paleta y F3 lo cicla. A diferencia de la versión vieja,
+/// esta ventana NO asigna nada a ningún desk — sólo devuelve el contexto elegido (o "" = ninguno) por
+/// <c>onCompleted</c>; es el orquestador del launcher el que crea el escritorio dinámico y lo asienta.
 /// </summary>
 public partial class ModulePickerWindow : Window
 {
@@ -26,61 +28,36 @@ public partial class ModulePickerWindow : Window
         public Brush Accent => new SolidColorBrush(ModulePalette.Parse(Color));
     }
 
-    private readonly int _deskIdx;
     private readonly string _project;
     private readonly ProjectStore _store;
-    private readonly Action _onChanged;
+    private readonly Action<string> _onCompleted;
 
-    /// <summary>Contexto activo del desk al abrir. Sirve para nacer parado sobre él en la lista.</summary>
-    private readonly string _current;
-
-    public ModulePickerWindow(int deskIdx, string deskName, string project, ProjectStore store, Action onChanged)
+    public ModulePickerWindow(string project, ProjectStore store, Action<string> onCompleted)
     {
         InitializeComponent();
 
-        _deskIdx = deskIdx;
         _project = project;
         _store = store;
-        _onChanged = onChanged;
-        _current = store.GetDeskModule(deskIdx);
+        _onCompleted = onCompleted;
 
         Icon = AppIcon.TryLoadForWindow();
         HeaderText.Text = string.Format(Loc.T("Modules.Header"), project);
-        SubHeaderText.Text = deskName;
+        // No hay "desk actual" que mostrar en el subtítulo: el desk todavía no existe, lo crea el
+        // launcher recién al completar este paso.
+        SubHeaderText.Text = "";
 
-        // El filtro arranca VACÍO a propósito. Antes se pre-cargaba con el contexto activo (copiando
-        // al setter de espacio), pero acá el textbox FILTRA la lista: sembrarlo con el contexto actual
-        // dejaba a la vista una sola fila — justo la que YA tenías — y para ver las otras había que
-        // borrar el texto primero. Este picker se abre para CAMBIAR de contexto, así que la lista se
-        // muestra ENTERA y el contexto actual viene SELECCIONADO: una flecha y ya estás en el de al lado.
+        // El filtro arranca vacío y la lista se muestra ENTERA (sin contexto "actual" preseleccionado
+        // — no hay ningún desk activo del que partir en este flujo).
         RefreshList();
 
         FilterBox.TextChanged += (_, _) => RefreshList();
         FilterBox.PreviewKeyDown += OnFilterKeyDown;
         ModuleList.PreviewKeyDown += OnListKeyDown;
         ModuleList.MouseDoubleClick += (_, _) => Confirm();
-        NoModuleBtn.Click += (_, _) => ClearAndClose();
+        NoModuleBtn.Click += (_, _) => Complete("");
         CloseBtn.Click += (_, _) => Close();
 
-        // El foco arranca donde la próxima tecla sirve: si el desk YA tiene contexto, en la LISTA
-        // (parado sobre él → flecha = contexto de al lado, Enter = confirmar). Si no tiene ninguno,
-        // en el filtro, que es donde se tipea uno nuevo o se busca entre muchos.
-        Loaded += (_, _) =>
-        {
-            if (ModuleList.SelectedItem is not null) ModuleList.Focus();
-            else                                     FilterBox.Focus();
-        };
-    }
-
-    /// <summary>
-    /// Deja el desk en el espacio PELADO (sin contexto) y cierra. Lo disparan el botón "Sin contexto"
-    /// y el re-press del hotkey — un solo camino, igual que el ResetAndClose del setter.
-    /// </summary>
-    public void ClearAndClose()
-    {
-        _store.SetDeskModule(_deskIdx, "");
-        _onChanged();
-        Close();
+        Loaded += (_, _) => FilterBox.Focus();
     }
 
     private void RefreshList()
@@ -93,18 +70,7 @@ public partial class ModulePickerWindow : Window
             if (filter == "" || m.Name.Contains(filter, StringComparison.OrdinalIgnoreCase))
                 ModuleList.Items.Add(new Row(m.Name, m.Color));
 
-        // El hint de "todavía no hay contextos" mira el CATÁLOGO, no el filtro: si tenés contextos pero
-        // el filtro no matchea, no hace falta explicarte qué es un contexto — ya lo sabés.
         EmptyHint.Visibility = modules.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-
-        // Nacer PARADO sobre el contexto activo: es el punto de partida del movimiento con flechas y,
-        // de paso, el único feedback de "en cuál estás" ahora que el filtro ya no lo muestra escrito.
-        if (_current != "")
-        {
-            ModuleList.SelectedItem = ModuleList.Items.OfType<Row>()
-                .FirstOrDefault(r => string.Equals(r.Name, _current, StringComparison.OrdinalIgnoreCase));
-            if (ModuleList.SelectedItem is not null) ModuleList.ScrollIntoView(ModuleList.SelectedItem);
-        }
     }
 
     private void OnFilterKeyDown(object sender, KeyEventArgs e)
@@ -131,10 +97,9 @@ public partial class ModulePickerWindow : Window
     }
 
     /// <summary>
-    /// Confirma el contexto. Misma prioridad que el setter de espacio: fila seleccionada → único
-    /// resultado visible → texto del textbox (contexto NUEVO, que se da de alta con color automático).
-    /// Con el textbox vacío y nada seleccionado equivale a "sin contexto": no te obliga a apuntarle
-    /// al botón para volver al espacio pelado.
+    /// Confirma el contexto. Misma prioridad que el setter: fila seleccionada → único resultado
+    /// visible → texto del textbox (contexto NUEVO). Textbox vacío y nada seleccionado equivale a
+    /// "sin contexto" — no obliga a apuntarle al botón para seguir sin sub-scope.
     /// </summary>
     private void Confirm()
     {
@@ -144,8 +109,15 @@ public partial class ModulePickerWindow : Window
         if (name == "")
             name = ProjectStore.Sanitize(FilterBox.Text);
 
-        _store.SetDeskModule(_deskIdx, name);
-        _onChanged();
+        Complete(name);
+    }
+
+    private void Complete(string module)
+    {
+        // Da de alta el contexto en el catálogo (color automático) si es nuevo. No toca sesión: el
+        // desk que lo va a usar todavía no existe.
+        if (module != "") _store.EnsureModule(_project, module);
+        _onCompleted(module);
         Close();
     }
 
@@ -157,13 +129,8 @@ public partial class ModulePickerWindow : Window
         _store.SetModuleColor(_project, row.Name, ModulePalette.Next(row.Color));
         RefreshList();
 
-        // Re-seleccionar por NOMBRE: RefreshList reconstruye las filas, así que la referencia vieja
-        // ya no está en la lista y la selección se perdería justo cuando querés seguir ciclando.
         ModuleList.SelectedItem = ModuleList.Items.OfType<Row>()
             .FirstOrDefault(r => string.Equals(r.Name, row.Name, StringComparison.OrdinalIgnoreCase));
-
-        // El feedback ya lo da la barra/overlay del desk actual si este contexto está activo ahí.
-        _onChanged();
     }
 
     /// <summary>Supr: borra el contexto del catálogo EN CASCADA (sus variables y notas se van con él).</summary>
@@ -177,7 +144,6 @@ public partial class ModulePickerWindow : Window
         if (resp != MessageBoxResult.Yes) return;
 
         _store.DeleteModule(_project, row.Name);
-        _onChanged();
         RefreshList();
     }
 }
