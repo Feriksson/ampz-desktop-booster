@@ -23,6 +23,9 @@ public partial class OverlayWindow : Window
     private const double DotCellWidth = 40;
     private static readonly TimeSpan AutoHide = TimeSpan.FromMilliseconds(800);
 
+    // Mismo dorado que la línea del espacio (#FFD700 en el XAML) y que el espacio en la barra.
+    private static readonly Brush SpaceGold = new SolidColorBrush(Color.FromRgb(0xFF, 0xD7, 0x00));
+
     private readonly DispatcherTimer _hideTimer;
 
     public OverlayWindow()
@@ -66,15 +69,21 @@ public partial class OverlayWindow : Window
     {
         int count = desktops.Count;
         string name = desktops.GetName(index);
-        string project = name.Contains("DESK", StringComparison.OrdinalIgnoreCase)
-            ? desktops.GetProject(index)
-            : "";
+        // El ROL se pregunta a DeskCatalog (idx-aware: ve los dinámicos), nunca al nombre. Acá
+        // quedaba el viejo name.Contains("DESK") y con los escritorios DINÁMICOS (que se llaman
+        // "Espacio / Contexto") el overlay los tomaba por fijos: escondía espacio y contexto y
+        // mostraba el nombre crudo con la "/" pegada — el mismo error que ya se había corregido en
+        // la barra y que el usuario rechazó.
+        string project = DeskCatalog.IsSpace(name, index) ? desktops.GetProject(index) : "";
+        bool spaceTitle = !string.IsNullOrEmpty(project);
 
-        TitleText.Text = name;
-
-        // Espacio en la última línea. Se colapsa si está vacío (los dots quedan como cierre).
-        ProjectText.Text = project;
-        ProjectText.Visibility = string.IsNullOrEmpty(project) ? Visibility.Collapsed : Visibility.Visible;
+        // Desk de espacio: el TÍTULO es el espacio (dorado, el acento del rol Space igual que en la
+        // barra) y el contexto va en su chip de color. NO se muestra el nombre del desk: ya ES
+        // "Espacio / Contexto", repetirlo arriba sería el dato dos veces. La línea dorada de abajo
+        // (el espacio cuando el título era "DESK +N") se colapsa por la misma razón.
+        TitleText.Text = spaceTitle ? project : name;
+        TitleText.Foreground = spaceTitle ? SpaceGold : Brushes.White;
+        ProjectText.Visibility = Visibility.Collapsed;
 
         // Contexto: sólo tiene sentido con espacio arriba (sin espacio no hay sub-scope posible).
         // El TEXTO va pintado con el color del contexto — es la señal que se percibe de reflejo.
