@@ -21,7 +21,23 @@ namespace AmpzDesktopBooster;
 /// </summary>
 public partial class ProjectSetterWindow : Window
 {
+    /// <summary>
+    /// Fila del historial. <c>OpenBadge</c> alimenta la marca "● N abiertos" del DataTemplate — vacía
+    /// si ese espacio no tiene NINGÚN contexto abierto ahora mismo (incluido "sin contexto", que
+    /// también cuenta), para no ensuciar la fila con una marca en blanco.
+    /// </summary>
+    private sealed record Row(string Name, int OpenCount)
+    {
+        public string OpenBadge => OpenCount switch
+        {
+            <= 0 => "",
+            1 => Loc.T("Setter.OpenBadgeOne"),
+            _ => string.Format(Loc.T("Setter.OpenBadgeMany"), OpenCount),
+        };
+    }
+
     private readonly ProjectStore _store;
+    private readonly DynamicDeskStore _dynamicDesks;
     private readonly Action<string, string> _onCompleted;
 
     /// <summary>
@@ -32,11 +48,12 @@ public partial class ProjectSetterWindow : Window
     public event Action<Window>? StageChanged;
 
     /// <param name="onCompleted">(espacio, contexto) YA normalizados/catalogados — contexto puede ser "".</param>
-    public ProjectSetterWindow(ProjectStore store, Action<string, string> onCompleted)
+    public ProjectSetterWindow(ProjectStore store, DynamicDeskStore dynamicDesks, Action<string, string> onCompleted)
     {
         InitializeComponent();
 
         _store = store;
+        _dynamicDesks = dynamicDesks;
         _onCompleted = onCompleted;
 
         HeaderText.Text = Loc.T("Setter.Header");
@@ -71,7 +88,7 @@ public partial class ProjectSetterWindow : Window
         foreach (var p in _store.GetHistory())
         {
             if (filter == "" || p.Contains(filter, StringComparison.OrdinalIgnoreCase))
-                HistoryList.Items.Add(p);
+                HistoryList.Items.Add(new Row(p, _dynamicDesks.CountOpenModules(p)));
         }
     }
 
@@ -97,9 +114,9 @@ public partial class ProjectSetterWindow : Window
     private void Confirm()
     {
         // Prioridad: fila seleccionada → único resultado visible → texto del textbox (nuevo).
-        string name = HistoryList.SelectedItem as string ?? "";
+        string name = (HistoryList.SelectedItem as Row)?.Name ?? "";
         if (name == "" && HistoryList.Items.Count == 1)
-            name = (string)HistoryList.Items[0];
+            name = ((Row)HistoryList.Items[0]).Name;
         if (name == "")
             name = FilterBox.Text.Trim();
 
@@ -119,7 +136,7 @@ public partial class ProjectSetterWindow : Window
         name = _store.RegisterProjectName(name);
 
         // ── PASO 2: el contexto ── Se abre ANTES de cerrar esta ventana (ver el doc de la clase).
-        var picker = new ModulePickerWindow(name, _store, module => _onCompleted(name, module));
+        var picker = new ModulePickerWindow(name, _store, _dynamicDesks, module => _onCompleted(name, module));
         StageChanged?.Invoke(picker);
         picker.ShowFocused();
         Close();
@@ -127,7 +144,7 @@ public partial class ProjectSetterWindow : Window
 
     private void DeleteSelectedFromHistory()
     {
-        if (HistoryList.SelectedItem is not string name)
+        if (HistoryList.SelectedItem is not Row { Name: var name })
             return;
 
         var resp = MessageBox.Show(

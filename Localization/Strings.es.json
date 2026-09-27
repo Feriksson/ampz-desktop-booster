@@ -492,6 +492,8 @@
   "Setter.NameTooLongTitle": "Nombre demasiado largo",
   "Setter.DeleteConfirm": "¿Borrar '{0}' del historial?\nSe eliminan también sus paths, notas y contextos.",
   "Setter.DeleteTitle": "Borrar espacio",
+  "Setter.OpenBadgeOne": "● 1 abierto",
+  "Setter.OpenBadgeMany": "● {0} abiertos",
 
   "Modules.Title": "Contexto del espacio",
   "Modules.Header": "Contexto de {0}",
@@ -501,6 +503,7 @@
   "Modules.BtnClose": "Cerrar",
   "Modules.DeleteConfirm": "¿Borrar el contexto '{0}'?\nSe eliminan también sus variables y notas.\nLos desks que lo tengan activo quedan en el espacio sin contexto.",
   "Modules.DeleteTitle": "Borrar contexto",
+  "Modules.OpenBadge": "● abierto — {0}",
 
   "SendPicker.Title": "Enviar ventana a…",
   "SendPicker.Subtitle": "Elegí el escritorio destino (Enter o doble clic). La ventana se mueve y te sigue.",

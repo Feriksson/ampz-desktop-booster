@@ -492,6 +492,8 @@
   "Setter.NameTooLongTitle": "Name Too Long",
   "Setter.DeleteConfirm": "Delete '{0}' from history?\nIts paths, notes and contexts will also be removed.",
   "Setter.DeleteTitle": "Delete Space",
+  "Setter.OpenBadgeOne": "● 1 open",
+  "Setter.OpenBadgeMany": "● {0} open",
 
   "Modules.Title": "Space Context",
   "Modules.Header": "Context of {0}",
@@ -501,6 +503,7 @@
   "Modules.BtnClose": "Close",
   "Modules.DeleteConfirm": "Delete context '{0}'?\nIts variables and notes will also be removed.\nDesks using it will fall back to the space with no context.",
   "Modules.DeleteTitle": "Delete Context",
+  "Modules.OpenBadge": "● open — {0}",
 
   "SendPicker.Title": "Send Window To…",
   "SendPicker.Subtitle": "Pick the target desktop (Enter or double-click). The window moves and follows you.",

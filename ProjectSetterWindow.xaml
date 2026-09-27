@@ -9,6 +9,21 @@
         ShowInTaskbar="False" Topmost="True"
         Background="#1E1E1E" UseLayoutRounding="True">
 
+    <Window.Resources>
+        <!-- La marca "● N abiertos" reusa el DORADO del acento de Espacio (mismo tono que el rol
+             Space en overlay/barra) — nunca más fuerte que el nombre, que se queda con el foreground
+             normal de la lista. OpenBadge viene vacío cuando no hay nada abierto, así la fila no
+             muestra un hueco ni un separador de más. -->
+        <DataTemplate x:Key="SpaceRowTemplate">
+            <DockPanel LastChildFill="True">
+                <TextBlock DockPanel.Dock="Right" Text="{Binding OpenBadge}"
+                           Foreground="#FFD700" FontSize="11" Margin="10,0,0,0"
+                           VerticalAlignment="Center" />
+                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+            </DockPanel>
+        </DataTemplate>
+    </Window.Resources>
+
     <Border BorderBrush="#33FFFFFF" BorderThickness="1" Padding="16">
         <StackPanel>
             <TextBlock x:Name="HeaderText" Foreground="#F2F2F2" FontFamily="Segoe UI"
@@ -25,6 +40,7 @@
             <ListBox x:Name="HistoryList" Height="240"
                      FontFamily="Segoe UI" FontSize="13"
                      Background="#161616" Foreground="#E6E6EA" BorderBrush="#333"
+                     ItemTemplate="{StaticResource SpaceRowTemplate}"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
 
             <TextBlock Foreground="#6E6E78" FontFamily="Segoe UI" FontSize="10" Margin="0,8,0,0"

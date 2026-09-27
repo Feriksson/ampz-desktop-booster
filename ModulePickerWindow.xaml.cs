@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using AmpzDesktopBooster.Desktops;
+using AmpzDesktopBooster.Hotkeys;
 using AmpzDesktopBooster.Services;
 using AmpzDesktopBooster.Services.Localization;
 
@@ -22,22 +23,32 @@ namespace AmpzDesktopBooster;
 /// </summary>
 public partial class ModulePickerWindow : Window
 {
-    /// <summary>Fila del listado. <c>Accent</c> alimenta el chip de color del DataTemplate.</summary>
-    private sealed record Row(string Name, string Color)
+    /// <summary>
+    /// Fila del listado. <c>Accent</c> alimenta el chip de color del DataTemplate; <c>OpenBadge</c> la
+    /// marca "● abierto — Numpad4" cuando ESE contexto ya está abierto en un desk dinámico vivo (vacía
+    /// si no lo está, para no dejar un hueco en la fila).
+    /// </summary>
+    private sealed record Row(string Name, string Color, NumpadKey? OpenKey)
     {
         public Brush Accent => new SolidColorBrush(ModulePalette.Parse(Color));
+
+        public string OpenBadge => OpenKey is { } key
+            ? string.Format(Loc.T("Modules.OpenBadge"), NumpadDecoder.Label(key))
+            : "";
     }
 
     private readonly string _project;
     private readonly ProjectStore _store;
+    private readonly DynamicDeskStore _dynamicDesks;
     private readonly Action<string> _onCompleted;
 
-    public ModulePickerWindow(string project, ProjectStore store, Action<string> onCompleted)
+    public ModulePickerWindow(string project, ProjectStore store, DynamicDeskStore dynamicDesks, Action<string> onCompleted)
     {
         InitializeComponent();
 
         _project = project;
         _store = store;
+        _dynamicDesks = dynamicDesks;
         _onCompleted = onCompleted;
 
         Icon = AppIcon.TryLoadForWindow();
@@ -68,9 +79,23 @@ public partial class ModulePickerWindow : Window
         var modules = _store.GetModules(_project);
         foreach (var m in modules.OrderBy(m => m.Name, StringComparer.CurrentCultureIgnoreCase))
             if (filter == "" || m.Name.Contains(filter, StringComparison.OrdinalIgnoreCase))
-                ModuleList.Items.Add(new Row(m.Name, m.Color));
+                ModuleList.Items.Add(new Row(m.Name, m.Color, _dynamicDesks.OpenKeyFor(_project, m.Name)));
 
         EmptyHint.Visibility = modules.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        // "Sin contexto" (módulo "") es una opción más del par espacio+contexto — si ESE desk ya
+        // está abierto, lleva la misma marca que una fila abierta (badge aparte, no en el botón, para
+        // no tener que ensancharlo ni recortar su texto).
+        var noContextKey = _dynamicDesks.OpenKeyFor(_project, "");
+        if (noContextKey is { } key)
+        {
+            NoModuleBadge.Text = string.Format(Loc.T("Modules.OpenBadge"), NumpadDecoder.Label(key));
+            NoModuleBadge.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            NoModuleBadge.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void OnFilterKeyDown(object sender, KeyEventArgs e)
