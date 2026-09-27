@@ -32,10 +32,11 @@ public sealed class DesktopService
     public Func<int, DeskModule>? ModuleLookup { get; set; }
 
     /// <summary>
-    /// Nombre del desktop por índice. La DLL escribe UTF-8 (no PWSTR en la mayoría de builds);
-    /// si sale basura o vacío, caemos a "Desktop N" — mismo fallback que el legacy.
+    /// Nombre CRUDO del desktop por índice, tal cual lo devuelve la DLL — SIN el fallback de
+    /// <see cref="GetName"/>. "" si Windows nunca le puso un nombre propio (el desktop por defecto,
+    /// recién creado por el SO o por nuestro CreateDesktop, antes de un SetDesktopName).
     /// </summary>
-    public string GetName(int index)
+    private string GetRawName(int index)
     {
         var buf = new byte[256];
         VirtualDesktopAccessor.GetDesktopName(index, buf, buf.Length);
@@ -44,10 +45,26 @@ public sealed class DesktopService
         if (nul < 0) nul = buf.Length;
 
         var name = Encoding.UTF8.GetString(buf, 0, nul);
-        if (string.IsNullOrEmpty(name) || name.Length > 60)
-            return $"Desktop {index + 1}";
-        return name;
+        return name.Length > 60 ? "" : name; // basura → tratamos como sin nombre
     }
+
+    /// <summary>
+    /// Nombre del desktop por índice. La DLL escribe UTF-8 (no PWSTR en la mayoría de builds);
+    /// si sale basura o vacío, caemos a "Desktop N" — mismo fallback que el legacy.
+    /// </summary>
+    public string GetName(int index)
+    {
+        var name = GetRawName(index);
+        return string.IsNullOrEmpty(name) ? $"Desktop {index + 1}" : name;
+    }
+
+    /// <summary>
+    /// ¿Este desktop nunca recibió un nombre propio (ni de Windows ni de nosotros)? Lo usa el
+    /// bootstrapper para ADOPTAR desktops "vírgenes" (recién instalado Windows, o creados por el SO
+    /// sin renombrar) en vez de crear uno nuevo de más — pero nunca decide esto por posición: sólo
+    /// dice si ESE índice puntual está libre de etiqueta.
+    /// </summary>
+    public bool IsUnnamedDefault(int index) => GetRawName(index) == "";
 
     /// <summary>Primer desktop cuyo nombre CONTIENE el fragmento (case-insensitive). -1 si no hay.</summary>
     public int FindByNameFragment(string fragment)

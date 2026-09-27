@@ -122,6 +122,21 @@ public sealed class DynamicDeskStore
     public bool IsDynamicIndex(int index) => GetByIndex(index) is not null;
 
     /// <summary>
+    /// Entrada dinámica VIVA cuyo desk se llama HOY <paramref name="name"/> (case-insensitive), o null.
+    /// Lo usa el bootstrapper para el caso de corrupción: un desk dinámico que terminó con el MISMO
+    /// nombre que un fijo del catálogo (ver DesktopBootstrapper — el bug real que motivó este método:
+    /// tras cerrar un fijo y reabrir Windows, el bootstrapper VIEJO renombraba por ÍNDICE y le pegaba
+    /// el nombre del fijo a un desk dinámico vivo, dejando dos atajos apuntando al mismo escritorio).
+    /// </summary>
+    public DynamicDeskEntry? FindLiveByDeskName(string name)
+    {
+        foreach (var (idx, e) in LiveEntries())
+            if (string.Equals(_desktops.GetName(idx), name, StringComparison.OrdinalIgnoreCase))
+                return e;
+        return null;
+    }
+
+    /// <summary>
     /// Si el par espacio+contexto YA está abierto en un desk dinámico vivo, su GUID + índice actual.
     /// Es el chequeo de DEDUPE del launcher: "un Espacio+Contexto no puede estar activo en dos desks".
     /// </summary>

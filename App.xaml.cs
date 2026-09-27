@@ -128,20 +128,22 @@ public partial class App : Application
         // este punto en adelante CUALQUIERA puede preguntar. Antes cada capa deducía el rol del nombre
         // por su cuenta y un renombre las desincronizaba a todas en silencio. Ver DeskCatalog.
         DeskCatalog.Config = _desktopConfig;
-        if (_desktopConfig.AutoCreate)
-        {
-            try { DesktopBootstrapper.Ensure(_desktopConfig, desktops); }
-            catch (Exception ex) { WriteCrash("Bootstrap", ex); }
-        }
 
         // Registro de escritorios DINÁMICOS (espacio+contexto del launcher Win+NumpadEnter). Se
-        // carga DESPUÉS del bootstrap (que sólo toca los fijos) y ANTES de la barra/hooks: desde acá
-        // cualquiera puede preguntar "¿este índice es un desk dinámico?" — mismo patrón de inyección
-        // estática que DeskCatalog.Config. Re-adopta los desks dinámicos que sigan vivos de una
-        // sesión anterior; descarta en silencio los que Windows ya cerró.
+        // carga ANTES del bootstrap a propósito — orden invertido respecto de como era antes de la
+        // reforma del bootstrapper por nombre. DynamicDeskStore.Load ya PODA los GUID que Windows
+        // cerró; el bootstrapper necesita ese registro ya reconciliado para poder (a) nunca adoptar
+        // un desk que sea de verdad un espacio vivo, y (b) resolver el conflicto de nombre "un
+        // dinámico terminó llamándose igual que un fijo" ANTES de que la barra o el router lean nada.
         var dynamicDesks = DynamicDeskStore.Load(desktops);
         DeskCatalog.DynamicIndexProbe = dynamicDesks.IsDynamicIndex;
         projects.Dynamic = dynamicDesks; // las reorganizaciones de espacios/contextos remapean acá también
+
+        if (_desktopConfig.AutoCreate)
+        {
+            try { DesktopBootstrapper.Ensure(_desktopConfig, desktops, dynamicDesks); }
+            catch (Exception ex) { WriteCrash("Bootstrap", ex); }
+        }
 
         // Uso de tokens de IA: el servicio es dueño del polling. Arranca ACÁ, en el core, ANTES de
         // la barra → el primer "tiro" está garantizado aunque la BarWindow tarde, falle o no exista.

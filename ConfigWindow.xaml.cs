@@ -1025,7 +1025,10 @@ public partial class ConfigWindow : Window
     private void CreateMissingNow()
     {
         _config.AutoCreate = AutoCreateChk.IsChecked == true;
-        int created = DesktopBootstrapper.Ensure(_config, _desktops);
+        // _projects.Dynamic siempre viene seteado desde App.OnStartup (mismo patrón de inyección
+        // estática que DeskCatalog.Config): el bootstrapper necesita el registro dinámico para no
+        // adoptar un espacio vivo y para resolver el conflicto de nombre "dinámico == fijo".
+        int created = DesktopBootstrapper.Ensure(_config, _desktops, _projects.Dynamic ?? DynamicDeskStore.Load(_desktops));
         RefreshList();
         _onApplied();
         MessageBox.Show(
@@ -1038,7 +1041,7 @@ public partial class ConfigWindow : Window
         _config.AutoCreate = AutoCreateChk.IsChecked == true;
         _config.Save();
         if (_config.AutoCreate)
-            DesktopBootstrapper.Ensure(_config, _desktops);
+            DesktopBootstrapper.Ensure(_config, _desktops, _projects.Dynamic ?? DynamicDeskStore.Load(_desktops));
         RefreshList();
         _onApplied();
         Toasts.Saved(Loc.T("Config.DesktopsTab"));
