@@ -134,6 +134,15 @@ public partial class App : Application
             catch (Exception ex) { WriteCrash("Bootstrap", ex); }
         }
 
+        // Registro de escritorios DINÁMICOS (espacio+contexto del launcher Win+NumpadEnter). Se
+        // carga DESPUÉS del bootstrap (que sólo toca los fijos) y ANTES de la barra/hooks: desde acá
+        // cualquiera puede preguntar "¿este índice es un desk dinámico?" — mismo patrón de inyección
+        // estática que DeskCatalog.Config. Re-adopta los desks dinámicos que sigan vivos de una
+        // sesión anterior; descarta en silencio los que Windows ya cerró.
+        var dynamicDesks = DynamicDeskStore.Load(desktops);
+        DeskCatalog.DynamicIndexProbe = dynamicDesks.IsDynamicIndex;
+        projects.Dynamic = dynamicDesks; // las reorganizaciones de espacios/contextos remapean acá también
+
         // Uso de tokens de IA: el servicio es dueño del polling. Arranca ACÁ, en el core, ANTES de
         // la barra → el primer "tiro" está garantizado aunque la BarWindow tarde, falle o no exista.
         _usage = new UsageService();
@@ -180,7 +189,7 @@ public partial class App : Application
         bar.OpenConfig = () => ShowConfig(desktops, projects, restrictions, pins, () =>
         {
             int c = desktops.Current;
-            bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c), desktops.GetModule(c));
+            bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c), desktops.GetModule(c), c);
         });
         bar.AttachUsage(_usage); // la barra se suscribe y pinta el snapshot apenas llega
         bar.Show();
@@ -194,7 +203,7 @@ public partial class App : Application
             appShortcuts, () =>
         {
             int c = desktops.Current;
-            bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c), desktops.GetModule(c));
+            bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c), desktops.GetModule(c), c);
         },
             taskSession,
             // Refresca el widget de tarea del desk ACTUAL (tras pickear o desanclar).
@@ -314,7 +323,7 @@ public partial class App : Application
             desktops.NoteCurrent(idx);
 
             bar.EnsurePinned(); // insurance: re-pin por si el del arranque no prendió
-            bar.UpdateDesk(desktops.GetName(idx), desktops.GetProject(idx), desktops.GetModule(idx));
+            bar.UpdateDesk(desktops.GetName(idx), desktops.GetProject(idx), desktops.GetModule(idx), idx);
             bar.UpdateDeskTask(taskSession.GetDeskTask(idx)); // tarea activa de ESTE desk (o se oculta)
             _pendingOverlayIdx = idx;
             _overlayDebounce!.Stop();
@@ -333,7 +342,7 @@ public partial class App : Application
         // Estado inicial del widget (sin overlay — no hubo "cambio"). El widget de tarea arranca
         // oculto: la sesión es efímera, no hay tarea activa hasta que el usuario pickee una.
         int current = desktops.Current;
-        bar.UpdateDesk(desktops.GetName(current), desktops.GetProject(current), desktops.GetModule(current));
+        bar.UpdateDesk(desktops.GetName(current), desktops.GetProject(current), desktops.GetModule(current), current);
         bar.UpdateDeskTask(taskSession.GetDeskTask(current));
 
         // Caso "app cerrada + click en link": Windows nos lanzó CON la URL y somos la primaria.

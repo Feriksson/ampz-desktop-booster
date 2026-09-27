@@ -31,17 +31,19 @@ public sealed class DesktopConfig
     [JsonPropertyName("autoCreate")]
     public bool AutoCreate { get; set; } = true;
 
+    /// <summary>
+    /// ⚠ CAMBIO DE PARADIGMA: ya NO hay entradas "DESK +N" en el catálogo. Los desks de ESPACIO
+    /// dejaron de ser un set fijo siempre existente (aunque vacío) — ahora el launcher
+    /// (Win+NumpadEnter, ver ProjectStore/DynamicDeskStore) los CREA al confirmar espacio+contexto y
+    /// los BORRA al re-press. El catálogo sólo gestiona los FIJOS (Main + Fixed), que son los únicos
+    /// que el usuario configura de antemano. Las teclas 4..9 quedan libres para que el launcher les
+    /// reparta la más baja disponible a cada desk dinámico que se abra.
+    /// </summary>
     public static List<ManagedDesktop> DefaultManaged() => new()
     {
         new() { Name = "MAIN",     Key = "D1", Role = "main"  },
         new() { Name = "CONSOLES", Key = "D2", Role = "fixed" },
         new() { Name = "MISCS",    Key = "D3", Role = "fixed" },
-        new() { Name = "DESK +1",  Key = "D4", Role = "space" },
-        new() { Name = "DESK +2",  Key = "D5", Role = "space" },
-        new() { Name = "DESK +3",  Key = "D6", Role = "space" },
-        new() { Name = "DESK +4",  Key = "D7", Role = "space" },
-        new() { Name = "DESK +5",  Key = "D8", Role = "space" },
-        new() { Name = "DESK +6",  Key = "D9", Role = "space" },
     };
 
     /// <summary>Teclas ofrecibles como atajo de navegación, en el orden del numpad físico.</summary>
@@ -118,6 +120,15 @@ public sealed class DesktopConfig
                 var loaded = Parse(File.ReadAllText(Path), out bool migrated);
                 if (loaded is not null && loaded.Managed.Count > 0)
                 {
+                    // Paradigma nuevo: las entradas de rol Espacio ("DESK +N" de versiones previas)
+                    // SALEN del catálogo — ahora las crea/borra el launcher dinámicamente, no viven
+                    // acá aunque estén vacías. Un desk vivo de una sesión anterior con ese nombre
+                    // sigue existiendo en Windows; simplemente deja de estar "gestionado" (cae al
+                    // criterio legado por nombre, igual que cualquier desk creado a mano).
+                    int before = loaded.Managed.Count;
+                    loaded.Managed.RemoveAll(d => d.DeskRole == DeskRole.Space);
+                    if (loaded.Managed.Count != before) migrated = true;
+
                     // Persistimos la migración YA, no en el próximo "Guardar": mientras el archivo
                     // siga en formato viejo, cada arranque vuelve a adivinar atajos y roles. Con una
                     // escritura, lo adivinado pasa a ser un dato del usuario que él puede corregir.

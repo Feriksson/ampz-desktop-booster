@@ -543,16 +543,17 @@ public partial class BarWindow : Window
     /// nombre, espacio en gold (oculto si no hay) y, si el desk tiene un CONTEXTO activo, su nombre
     /// pintado con el color propio del contexto. Lo llama el listener al cambiar de desktop.
     /// </summary>
-    public void UpdateDesk(string name, string project, DeskModule module = default)
+    public void UpdateDesk(string name, string project, DeskModule module = default, int deskIdx = -1)
     {
-        var dot = new SolidColorBrush(DeskPalette.For(name).Active);
+        var dot = new SolidColorBrush(DeskPalette.For(name, deskIdx).Active);
 
-        // El modo lo decide el ROL del desk (del catálogo), no si hay espacio cargado:
-        //   · rol Espacio → SIEMPRE modo DUAL (le reservamos el lugar del nombre del espacio aunque
-        //                   hoy esté vacío).
+        // El modo lo decide el ROL del desk (del catálogo o, si es DINÁMICO, del registro del
+        // launcher — ver DeskCatalog.DynamicIndexProbe), no si hay espacio cargado:
+        //   · rol Espacio (catálogo o dinámico) → SIEMPRE modo DUAL (le reservamos el lugar del
+        //                   nombre del espacio aunque hoy esté vacío).
         //   · rol Main / Fijo → modo SOLO centrado (nunca aceptan espacio).
         // Antes era name.Contains("DESK +"): renombrar el desk le sacaba el panel dual de una.
-        bool isProjectDesk = DeskCatalog.IsSpace(name);
+        bool isProjectDesk = DeskCatalog.IsSpace(name, deskIdx);
 
         if (isProjectDesk)
         {
