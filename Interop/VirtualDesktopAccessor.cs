@@ -34,9 +34,12 @@ internal static partial class VirtualDesktopAccessor
     /// <summary>
     /// Escribe el nombre del desktop (UTF-8, no PWSTR en la mayoría de builds) en <paramref name="name"/>.
     /// El caller decodifica el buffer. length = capacidad del buffer en bytes.
+    /// ⚠ length es <c>usize</c> en la DLL (Ciantic: <c>out_utf8_len: usize</c>) → <c>nuint</c> acá, NO
+    /// <c>int</c>: con int, en x64 los 32 bits altos del registro quedan con basura y la DLL lee una
+    /// capacidad arbitraria del buffer.
     /// </summary>
     [LibraryImport(Dll)]
-    public static partial int GetDesktopName(int index, [Out] byte[] name, int length);
+    public static partial int GetDesktopName(int index, [Out] byte[] name, nuint length);
 
     /// <summary>Renombra el desktop por índice. name = UTF-8 null-terminado. Devuelve 1 si OK.</summary>
     [LibraryImport(Dll)]
@@ -56,6 +59,21 @@ internal static partial class VirtualDesktopAccessor
     /// </summary>
     [LibraryImport(Dll)]
     public static partial int RegisterPostMessageHook(IntPtr listenerHwnd, int messageOffset);
+
+    /// <summary>
+    /// Baja la suscripción de <see cref="RegisterPostMessageHook"/>. Sin esto, cada salida (y peor,
+    /// cada crash) dejaba una suscripción colgada del lado del shell.
+    /// </summary>
+    [LibraryImport(Dll)]
+    public static partial int UnregisterPostMessageHook(IntPtr listenerHwnd);
+
+    /// <summary>
+    /// Re-inicializa la conexión interna de la DLL con el servicio de escritorios del shell (pensado
+    /// para cuando explorer se reinicia). Se declara void a propósito: el valor de retorno no se
+    /// usa y así no dependemos de su tipo exacto entre builds de la DLL.
+    /// </summary>
+    [LibraryImport(Dll)]
+    public static partial void RestartVirtualDesktopAccessor();
 
     /// <summary>
     /// "Pinea" la ventana a TODOS los escritorios virtuales: pasa a estar visible en cualquier

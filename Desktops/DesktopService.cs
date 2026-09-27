@@ -39,7 +39,7 @@ public sealed class DesktopService
     private string GetRawName(int index)
     {
         var buf = new byte[256];
-        VirtualDesktopAccessor.GetDesktopName(index, buf, buf.Length);
+        VirtualDesktopAccessor.GetDesktopName(index, buf, (nuint)buf.Length);
 
         int nul = Array.IndexOf(buf, (byte)0);
         if (nul < 0) nul = buf.Length;
