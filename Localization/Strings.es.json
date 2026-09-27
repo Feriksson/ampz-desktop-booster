@@ -589,6 +589,10 @@
   "Toast.ConfigSaved": "Configuración guardada",
   "Toast.PublicIpChanged": "Cambió tu IP pública",
   "Toast.LocalIpChanged": "Cambió tu IP de red local",
+  "Toast.FixedDeskRestored": "Escritorio fijo {0} restaurado",
+  "Toast.FixedDeskMissing": "Falta el escritorio fijo {0}",
+  "Toast.FixedDeskMissingHint": "Config → Escritorios (autocrear está apagado)",
+  "Toast.FixedDeskRestoreFailed": "No se pudo restaurar {0}",
 
   "Launcher.CloseNotDynamic": "Este escritorio no se puede cerrar",
   "Launcher.CloseNotDynamicHint": "Sólo se cierran los escritorios que abrió el launcher (Win+Intro numpad).",

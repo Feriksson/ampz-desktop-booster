@@ -194,6 +194,25 @@ public sealed class ProjectStore
 
     public void ClearAllSession() => _session.Clear();
 
+    /// <summary>
+    /// Re-alinea la sesión (índice-keyed y EFÍMERA) tras borrarse el desktop <paramref name="removedIndex"/>
+    /// — sea por el launcher (re-press) o por el watchdog (Windows lo cerró por fuera). Windows corre
+    /// hacia abajo el índice de TODO lo que estaba después; sin este shift, la sesión seguiría
+    /// apuntando al desk de al lado (mostraría el espacio equivocado hasta el próximo cambio real).
+    /// Se procesa en orden ASCENDENTE de índice viejo para que cada movimiento libere su casillero
+    /// antes de que el siguiente lo pise.
+    /// </summary>
+    public void ShiftSessionAfterRemoval(int removedIndex)
+    {
+        _session.Remove(removedIndex);
+        foreach (var oldIdx in _session.Keys.Where(k => k > removedIndex).OrderBy(k => k).ToList())
+        {
+            var assignment = _session[oldIdx];
+            _session.Remove(oldIdx);
+            _session[oldIdx - 1] = assignment;
+        }
+    }
+
     public IEnumerable<(int Idx, string Project, string Module)> SessionEntries() =>
         _session.Select(kv => (kv.Key, kv.Value.Project, kv.Value.Module));
 

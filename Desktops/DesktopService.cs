@@ -227,6 +227,16 @@ public sealed class DesktopService
     public Guid IdOf(int index) => VirtualDesktopAccessor.GetDesktopIdByNumber(index);
 
     /// <summary>
+    /// Se dispara DESPUÉS de borrar un desktop, con su ÍNDICE VIEJO. Windows corre hacia abajo el
+    /// índice de todo lo que estaba después — cualquier estado índice-keyed (ProjectStore._session,
+    /// TaskSessionStore._session) necesita re-alinearse o quedaría apuntando al desk de al lado. Lo
+    /// inyecta App (mismo patrón que ProjectLookup/ModuleLookup), UNA vez, con el shift de ambas
+    /// sesiones — así <see cref="RemoveDesktopAt"/> (DeskLauncher.Close) Y el watchdog en caliente
+    /// comparten el mismo único punto de re-alineo.
+    /// </summary>
+    public event Action<int>? DesktopRemoved;
+
+    /// <summary>
     /// Borra el escritorio <paramref name="index"/>; sus ventanas pasan a <paramref name="fallbackIndex"/>.
     /// No mueve el foco por su cuenta — el llamador decide a dónde saltar después (normalmente, ya
     /// quedaste en el fallback porque Windows te deja ahí al borrar el desk activo).
@@ -236,6 +246,7 @@ public sealed class DesktopService
         if (index < 0 || index >= Count || fallbackIndex < 0 || fallbackIndex >= Count || index == fallbackIndex)
             return;
         VirtualDesktopAccessor.RemoveDesktop(index, fallbackIndex);
+        DesktopRemoved?.Invoke(index); // re-alinea la sesión ANTES de tocar el historial de navegación
         NoteCurrent(Current); // el borrado cambia el desk activo por debajo; resincronizamos el historial
     }
 }

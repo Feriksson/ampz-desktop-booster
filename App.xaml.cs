@@ -27,6 +27,7 @@ public partial class App : Application
     private HotkeyService? _hotkeys;
     private HotkeyRouter? _router;
     private DesktopChangeListener? _vdListener;
+    private Desktops.DeskWatchdog? _watchdog;
     private WindowGovernor? _governor;
     private UsageService? _usage;
     private Services.Attention.AttentionService? _attention;
@@ -144,6 +145,15 @@ public partial class App : Application
             try { DesktopBootstrapper.Ensure(_desktopConfig, desktops, dynamicDesks); }
             catch (Exception ex) { WriteCrash("Bootstrap", ex); }
         }
+
+        // Re-alinea la sesión índice-keyed (espacio/contexto y tarea por desk, ambas EFÍMERAS) cada
+        // vez que se borra un desktop por ESTE camino (DeskLauncher.Close, al re-press del launcher).
+        // El watchdog de más abajo hace lo mismo para lo que Windows cierra POR FUERA de la app.
+        desktops.DesktopRemoved += idx =>
+        {
+            projects.ShiftSessionAfterRemoval(idx);
+            taskSession.ShiftAfterRemoval(idx);
+        };
 
         // Uso de tokens de IA: el servicio es dueño del polling. Arranca ACÁ, en el core, ANTES de
         // la barra → el primer "tiro" está garantizado aunque la BarWindow tarde, falle o no exista.
@@ -315,6 +325,14 @@ public partial class App : Application
         // vuelta quedaría mudo hasta el segundo salto.
         desktops.NoteCurrent(desktops.Current);
 
+        // Watchdog en caliente: self-heal de fijos cerrados por fuera + poda de dinámicos cerrados
+        // por fuera. Ver Desktops/DeskWatchdog.cs para el porqué de los dos caminos de detección.
+        _watchdog = new DeskWatchdog(desktops, _desktopConfig, dynamicDesks, projects, taskSession, () =>
+        {
+            int c = desktops.Current;
+            bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c), desktops.GetModule(c), c);
+        });
+
         _vdListener = new DesktopChangeListener();
         _vdListener.DesktopChanged += idx =>
         {
@@ -336,6 +354,11 @@ public partial class App : Application
             // reclamaba: apunta "desde donde estás", así que apenas te movés queda desactualizado y
             // te seguiría empujando al costado cuando ya llegaste (se sentía como "falta uno más").
             _attentionArrow?.Cancel();
+
+            // Reacción rápida del watchdog: cualquier cambio de desk es una oportunidad barata de
+            // notar que uno desapareció (ver DeskWatchdog — el timer de abajo cubre lo que NO pasa
+            // por un cambio de desk activo, p.ej. cerrar uno desde Task View sin pararte encima).
+            _watchdog?.CheckNow();
         };
 
         _hotkeys.Start();
