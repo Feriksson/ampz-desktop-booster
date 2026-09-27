@@ -242,7 +242,10 @@ Contexto", así que el viejo panel dual (dot + nombre + espacio/contexto) mostra
 Se probó reemplazarlo por un panel único con el nombre crudo y el usuario lo rechazó de plano: la "/"
 corrida en una línea pierde justo lo que el panel da. Hoy: dot + espacio (dorado) | barrita neutral |
 contexto en SU color, cada uno centrado en su mitad; sólo se retiró la columna del nombre. Los fijos
-siguen con el panel simple (dot + nombre centrado). Y la sesión se RE-HIDRATA al arrancar desde los
+siguen con el panel simple (dot + nombre centrado). **El overlay central sigue la MISMA regla**
+(`OverlayWindow.ShowOverlay`): en un desk de espacio el título es el espacio (dorado) y el contexto va en
+su chip; tenía el mismo error (decidía el rol con `name.Contains("DESK")` y mostraba el nombre crudo con
+la "/"). El rol se pregunta SIEMPRE a `DeskCatalog.IsSpace(name, idx)`. Y la sesión se RE-HIDRATA al arrancar desde los
 dinámicos vivos (`App.OnStartup`): sin eso, tras reiniciar la app el panel quedaba vacío y
 variables/notas/servicios caían al scope global.
 
