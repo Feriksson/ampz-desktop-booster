@@ -242,9 +242,10 @@ Contexto", así que el viejo panel dual (dot + nombre + espacio/contexto) mostra
 Se probó reemplazarlo por un panel único con el nombre crudo y el usuario lo rechazó de plano: la "/"
 corrida en una línea pierde justo lo que el panel da. Hoy: dot + espacio (dorado) | barrita neutral |
 contexto en SU color, cada uno centrado en su mitad; sólo se retiró la columna del nombre. Los fijos
-siguen con el panel simple (dot + nombre centrado). Y la sesión se RE-HIDRATA al arrancar desde los
-dinámicos vivos (`App.OnStartup`): sin eso, tras reiniciar la app el panel quedaba vacío y
-variables/notas/servicios caían al scope global.
+siguen con el panel simple (dot + nombre centrado). **Los dinámicos son TEMPORALES: viven lo que vive la app.** `App.OnExit` los cierra todos
+(`DeskLauncher.CloseAll`, ventanas al Main) y `App.OnStartup` barre los que hayan quedado de una sesión
+que terminó mal (crash, kill, apagado), con un toast. Sólo si alguno NO se pudo cerrar (p.ej. sin desk
+Main) se re-hidrata su sesión, para que no caiga al scope global.
 
 **El color vive SÓLO en el contexto; el espacio NO tiene color** (decisión explícita). Costo aceptado:
 los N desks de un mismo espacio no se agrupan visualmente. Se eligió así porque el espacio lo elegís
@@ -347,7 +348,7 @@ legacy guardaba en `A_ScriptDir`; esto se modernizó para que la app sea compart
 | `desk_project_data.json` | JSON | Catálogo durable: `history` (los ESPACIOS), `notes`, `paths` (key = espacio **o** `"Espacio/Contexto"`), `modules` (los CONTEXTOS + su color, por espacio), `defaults` (predeterminado por scope), `services` (cómo levantar lo básico, key = scope) + `shared_services`, `shared_notes`, `shared_paths`, `shared_default`, `folder_notes`. |
 | `settings.ini` | INI custom | `[Projects]` sugerencias (`desk_N` y `desk_N_module`), `[Pins]` `proc.exe=idx`, `[Restricted]` `idx=1`, `[Whitelist_IDX]` `proc.exe=1`. |
 | `desktops.json` | JSON | `DesktopConfig`: lista `managed` de los desks **FIJOS** (cada ítem = `name` + `key` + `role` + `color`, ver `ManagedDesktop`) + flag `autoCreate`. El formato VIEJO (`managed` como array de strings) se migra solo al cargar; una entrada de rol Espacio de una versión anterior también se descarta al cargar (ya no vive acá). Ambas migraciones persisten enseguida. |
-| `dynamic_desks.json` | JSON | `DynamicDeskStore`: los escritorios DINÁMICOS vivos que abrió el launcher (`Win+NumpadEnter`), indexados por GUID del desktop (`id` + `project` + `module` + `key`). Al cargar se descarta cualquier entrada cuyo GUID ya no resuelva a un desktop real (Windows lo cerró). Separado del catálogo de espacios (`desk_project_data.json`, que es durable aunque nadie lo tenga abierto): esto es la lista de "qué desk vivo ES cada asignación", vive y muere con la sesión de escritorios de Windows. |
+| `dynamic_desks.json` | JSON | `DynamicDeskStore`: los escritorios DINÁMICOS vivos que abrió el launcher (`Win+NumpadEnter`), indexados por GUID del desktop (`id` + `project` + `module` + `key`). Al cargar se descarta cualquier entrada cuyo GUID ya no resuelva a un desktop real (Windows lo cerró). Separado del catálogo de espacios (`desk_project_data.json`, que es durable aunque nadie lo tenga abierto): esto es la lista de "qué desk vivo ES cada asignación", en la práctica vive y muere con la app: `OnExit` cierra los dinámicos y `OnStartup` barre los que dejó una sesión que terminó mal. |
 | `apps.json` | JSON | `AppsConfig`: apps de usuario (`name`, `exePath`, `args` con `{path}`). |
 | `widgets.json` | JSON | `WidgetSettings`: qué widgets de la barra están activos (defaults: Clock + Ram + Ip). |
 | ~~`ports.json`~~ | JSON | **MIGRADO** a `services` del catálogo (ver arriba). `PortStore` queda como legacy de sólo-lectura para `ServiceMigration`; al migrar, el archivo se renombra a `ports.json.migrated`. |

@@ -592,6 +592,8 @@
   "Toast.ConfigSaved": "Settings saved",
   "Toast.PublicIpChanged": "Your public IP changed",
   "Toast.LocalIpChanged": "Your local network IP changed",
+  "Toast.TempDesksClosed": "Temporary desktops from the previous session closed: {0}",
+  "Toast.TempDesksClosedHint": "The app didn't exit cleanly last time. Their windows moved to the main desktop.",
   "Toast.FixedDeskRestored": "Fixed desktop {0} restored",
   "Toast.FixedDeskMissing": "Fixed desktop {0} is missing",
   "Toast.FixedDeskMissingHint": "Config → Desktops (auto-create is off)",

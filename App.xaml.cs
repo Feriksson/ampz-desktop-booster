@@ -27,6 +27,9 @@ public partial class App : Application
     private HotkeyService? _hotkeys;
     private HotkeyRouter? _router;
     private DesktopChangeListener? _vdListener;
+    // Para cerrar los escritorios dinámicos (temporales) en OnExit.
+    private DesktopService? _desktops;
+    private DynamicDeskStore? _dynamicDesks;
     private Desktops.DeskWatchdog? _watchdog;
     private WindowGovernor? _governor;
     private UsageService? _usage;
@@ -146,15 +149,24 @@ public partial class App : Application
             catch (Exception ex) { WriteCrash("Bootstrap", ex); }
         }
 
-        // Re-hidrata la sesión desde los dinámicos VIVOS. Parece contradecir la "regla de oro" del
-        // legacy (la sesión NUNCA se rellena al arrancar), pero no: esa regla habla de las
-        // SUGERENCIAS del INI — espacios de ayer que nadie confirmó hoy. Un desk dinámico vivo SÍ está
-        // confirmado: existe en Windows justamente porque el launcher lo creó con ese espacio+contexto.
-        // Sin esto, tras reiniciar la app el desk sigue ahí pero la sesión índice-keyed quedaba vacía:
-        // variables/notas/servicios caían al scope GLOBAL y la barra perdía el espacio y el contexto.
-        // Va DESPUÉS del bootstrap: éste puede soltar registros en conflicto con un fijo.
+        // Los dinámicos son TEMPORALES: App.OnExit los cierra todos. Si al arrancar queda alguno vivo
+        // es porque la sesión anterior terminó MAL (crash, kill, apagado sin cerrar la app) → se
+        // barren acá, avisando, para que no se acumulen huérfanos reteniendo teclas del numpad.
+        // Va DESPUÉS del bootstrap: el cierre necesita el desk Main (fallback de RemoveDesktop), y el
+        // bootstrap además puede soltar registros en conflicto con un fijo.
+        int leftovers = 0;
+        try { leftovers = DeskLauncher.CloseAll(desktops, dynamicDesks); }
+        catch (Exception ex) { WriteCrash("CloseLeftoverDesks", ex); }
+        if (leftovers > 0)
+            Services.Toasts.Info(string.Format(Services.Localization.Loc.T("Toast.TempDesksClosed"), leftovers),
+                Services.Localization.Loc.T("Toast.TempDesksClosedHint"));
+
+        // Red: si alguno NO se pudo cerrar (p.ej. no hay desk Main), sigue vivo y registrado → se
+        // re-hidrata su sesión para que variables/notas/servicios y la barra sigan viendo su scope.
         foreach (var (idx, entry) in dynamicDesks.LiveEntries())
             projects.AssignDeskSession(idx, entry.Project, entry.Module);
+        _desktops = desktops;
+        _dynamicDesks = dynamicDesks;
 
         // Re-alinea la sesión índice-keyed (espacio/contexto y tarea por desk, ambas EFÍMERAS) cada
         // vez que se borra un desktop por ESTE camino (DeskLauncher.Close, al re-press del launcher).
@@ -493,6 +505,16 @@ public partial class App : Application
     {
         _governor?.Dispose();
         _vdListener?.Dispose();
+
+        // Cerrar los escritorios dinámicos (TEMPORALES: viven lo que vive la app). DESPUÉS de soltar
+        // governor y listener a propósito: cada RemoveDesktop mueve ventanas y cambia de desk, y no
+        // queremos pins reaccionando ni overlays parpadeando mientras la app se apaga.
+        if (_desktops is not null && _dynamicDesks is not null)
+        {
+            try { DeskLauncher.CloseAll(_desktops, _dynamicDesks); }
+            catch (Exception ex) { WriteCrash("CloseTempDesksOnExit", ex); }
+        }
+
         _hotkeys?.Dispose();
         _usage?.Dispose();
         _attentionPipe?.Dispose();

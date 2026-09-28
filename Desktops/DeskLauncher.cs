@@ -102,6 +102,24 @@ public static class DeskLauncher
     }
 
     /// <summary>
+    /// Cierra TODOS los escritorios dinámicos vivos (sus ventanas pasan al Main). Los dinámicos son
+    /// TEMPORALES por diseño: viven lo que vive la app. Se usa al SALIR (App.OnExit) y al ARRANCAR,
+    /// para barrer los que quedaron de una sesión que terminó mal (crash, kill, apagado) — sin eso,
+    /// se acumularían escritorios huérfanos reteniendo teclas del numpad sesión tras sesión.
+    /// De MAYOR a menor índice: cerrar uno corre hacia abajo el índice de los que están después, así
+    /// que empezando por el último los que faltan siguen siendo válidos.
+    /// </summary>
+    /// <returns>Cuántos se cerraron (los que no se pudieron — p.ej. sin desk Main — quedan registrados).</returns>
+    public static int CloseAll(DesktopService desktops, DynamicDeskStore dynamic)
+    {
+        int closed = 0;
+        foreach (var (idx, _) in dynamic.LiveEntries().OrderByDescending(t => t.Index).ToList())
+            if (Close(desktops, dynamic, idx))
+                closed++;
+        return closed;
+    }
+
+    /// <summary>
     /// Dispara "levantar lo básico" del scope recién creado, con la MISMA herencia de tres niveles
     /// (contexto → espacio → global) y la misma regla de "la global no se mete si estás en un
     /// espacio/contexto" que <c>ServicesWindow.LaunchMissing</c> — ver el comentario de esa clase.
