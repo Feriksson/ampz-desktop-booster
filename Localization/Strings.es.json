@@ -592,6 +592,8 @@
   "Toast.ConfigSaved": "Configuración guardada",
   "Toast.PublicIpChanged": "Cambió tu IP pública",
   "Toast.LocalIpChanged": "Cambió tu IP de red local",
+  "Toast.TempDesksClosed": "Escritorios temporales de la sesión anterior cerrados: {0}",
+  "Toast.TempDesksClosedHint": "La app no se cerró bien la última vez. Sus ventanas pasaron al escritorio principal.",
   "Toast.FixedDeskRestored": "Escritorio fijo {0} restaurado",
   "Toast.FixedDeskMissing": "Falta el escritorio fijo {0}",
   "Toast.FixedDeskMissingHint": "Config → Escritorios (autocrear está apagado)",
