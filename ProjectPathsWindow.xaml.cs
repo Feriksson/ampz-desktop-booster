@@ -260,16 +260,22 @@ public partial class ProjectPathsWindow : Window
         //    de SOLO-LECTURA. El separador entra sólo si ese espacio tiene alguna fila que matchee
         //    el filtro — así, filtrando, sólo ves los espacios que realmente tienen algo. Esto es lo
         //    que te deja "encontrar una variable de cualquier espacio" tipeando un fragmento.
-        //    AMPLIACIÓN AUTOMÁTICA: en scope GLOBAL, si lo que tipeaste no matchea NADA, buscamos
-        //    solos en todas las entradas (espacios Y contextos) sin obligarte a apretar F4. En la
-        //    global no hay herencia que mirar, así que "cero resultados" casi siempre significa
-        //    "la variable está cargada en algún espacio". Sólo con filtro: sin texto, abrir la
-        //    ventana tiene que seguir mostrando TU scope, no el catálogo entero.
-        //    El rótulo avisa que la lista ya no es la global — si no, parecerían tuyas.
+        //    AMPLIACIÓN AUTOMÁTICA: en scope GLOBAL, con filtro escrito, SIEMPRE buscamos además en
+        //    todas las entradas (espacios Y contextos), sin obligarte a apretar F4. Van DEBAJO de los
+        //    globales, en su propia sección: primero lo tuyo (la global es tu scope en un desk fijo),
+        //    después lo que encontramos afuera. Antes sólo se ampliaba si la global no matcheaba NADA,
+        //    y eso escondía la variable del espacio justo cuando la global tenía algún match parecido.
+        //    Sólo con filtro: sin texto, abrir la ventana tiene que seguir mostrando TU scope, no el
+        //    catálogo entero. El rótulo de sección avisa que esas filas no son de la global — si no,
+        //    parecerían tuyas.
         bool autoWiden = !_showAllProjects && filter != "" && _scopeKey == ""
-                         && _otherProjectPools.Count > 0 && PathList.Items.Count == 0;
+                         && _otherProjectPools.Count > 0;
+        int widenHeaderAt = -1;
         if (autoWiden)
+        {
+            widenHeaderAt = PathList.Items.Count;
             PathList.Items.Add(SeparatorRow(Loc.T("Paths.SepAutoWiden")));
+        }
 
         if (_showAllProjects || autoWiden)
         {
@@ -281,10 +287,10 @@ public partial class ProjectPathsWindow : Window
                 AddGroupedByType(rows);
             }
 
-            // Ampliamos y tampoco hubo nada → sacamos el rótulo: un aviso colgando sobre una lista
-            // vacía se lee como "hay algo más abajo".
-            if (autoWiden && PathList.Items.Count == 1)
-                PathList.Items.Clear();
+            // Ampliamos y afuera no hubo nada → sacamos el rótulo de sección: un encabezado colgando
+            // sin filas debajo se lee como "hay algo más abajo". Los globales de arriba quedan.
+            if (widenHeaderAt >= 0 && PathList.Items.Count == widenHeaderAt + 1)
+                PathList.Items.RemoveAt(widenHeaderAt);
         }
 
         SelectFirstSelectable();
