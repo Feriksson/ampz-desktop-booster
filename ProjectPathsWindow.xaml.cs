@@ -321,8 +321,9 @@ public partial class ProjectPathsWindow : Window
         string? parent = ParentDefault;
 
         // Espacio/Contexto de ESTA pool: constante para todas sus filas, se resuelve una sola vez
-        // (ver ResolvePoolScope — parte la key CRUDA, no el Label "pretty").
-        ResolvePoolScope(pool, scope, out string project, out string module, out var moduleBrush);
+        // (ver ResolveScopeColumns — parte la key CRUDA, no el Label "pretty").
+        ResolveScopeColumns(pool.Key, scope == RowScope.Global, _store,
+                            out string project, out string module, out var moduleBrush);
 
         var entries = pool.Entries;
         for (int i = 0; i < entries.Count; i++)
@@ -363,11 +364,16 @@ public partial class ProjectPathsWindow : Window
     /// resto se parte la key CRUDA (<see cref="PathPool.Key"/>) en el primer '/' — NUNCA el Label ya
     /// "pretty" (ver el comentario de <see cref="PathPool.Key"/>): es el mismo formato que
     /// <see cref="ProjectStore.ScopeKey"/> arma, "Espacio" o "Espacio/Contexto".
+    ///
+    /// Es <c>internal static</c> (y recibe la key, no la pool) porque la ventana de Servicios pinta
+    /// las MISMAS columnas con este mismo criterio — mismo precedente que <see cref="IsBrokenPath"/>:
+    /// dos copias de "cómo se lee un scope" terminan discrepando sobre la misma key.
     /// </summary>
-    private void ResolvePoolScope(PathPool pool, RowScope scope, out string project, out string module,
-                                   out System.Windows.Media.Brush? moduleBrush)
+    internal static void ResolveScopeColumns(string key, bool isGlobal, ProjectStore? store,
+                                             out string project, out string module,
+                                             out System.Windows.Media.Brush moduleBrush)
     {
-        if (scope == RowScope.Global)
+        if (isGlobal)
         {
             project = Loc.T("Paths.ScopeGlobal");
             module = "";
@@ -377,7 +383,6 @@ public partial class ProjectPathsWindow : Window
             return;
         }
 
-        string key = pool.Key;
         int sep = key.IndexOf(ProjectStore.ScopeSeparator);
         if (sep >= 0)
         {
@@ -395,7 +400,7 @@ public partial class ProjectPathsWindow : Window
             moduleBrush = System.Windows.Media.Brushes.Transparent; // sin contexto: texto "", color irrelevante
             return;
         }
-        string color = _store?.GetModuleColor(project, module) ?? "";
+        string color = store?.GetModuleColor(project, module) ?? "";
         moduleBrush = new System.Windows.Media.SolidColorBrush(ModulePalette.Parse(color));
     }
 

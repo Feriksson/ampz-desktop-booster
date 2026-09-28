@@ -544,9 +544,22 @@ public sealed class HotkeyRouter
         // El registro de puertos abarca TODO el catálogo, no sólo las tres pools de arriba: un puerto
         // tiene un solo dueño en toda la app, así que el alta tiene que poder chocar contra un scope
         // que ni siquiera está en pantalla. Ver PortRegistry.
+        // "Otros espacios" (Ctrl+P / botón, y la ampliación automática desde la global): mismo recorte
+        // que Variables — todas las pools de servicios MENOS la primaria y el padre, que ya se ven
+        // arriba (listarlas otra vez sería el mismo servicio dos veces en pantalla). Se compara por
+        // key CRUDA y no por Label: la key es la identidad del scope, el Label es texto de UI.
+        // Las VACÍAS quedan afuera: GetServicePool materializa una lista vacía por cada scope que
+        // alguna vez se abrió, y con sólo ésas el botón aparecería sin nada que mostrar.
+        var others = _projects.GetAllServicePools()
+            .Where(p => !string.Equals(p.Key, pool.Key, StringComparison.OrdinalIgnoreCase)
+                     && !string.Equals(p.Key, parentPool?.Key, StringComparison.OrdinalIgnoreCase)
+                     && p.Entries.Count > 0)
+            .ToList();
+
         _servicesWindow = new ServicesWindow(pool, name, parentPool: parentPool, globalPool: globalPool,
                                              ports: _projects.Ports,
-                                             groupLaunchedPortless: _servicesGroupLaunched);
+                                             groupLaunchedPortless: _servicesGroupLaunched,
+                                             otherPools: others, store: _projects);
         _servicesWindowDeskIdx = idx; // recordamos el desk: el re-press sólo cuenta si seguís acá
         _servicesWindow.Closed += (_, _) =>
         {

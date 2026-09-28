@@ -30,6 +30,7 @@ namespace AmpzDesktopBooster;
 ///   Ctrl+N       → alta   ·   F2 → editar los cuatro campos   ·   Supr → borrar
 ///   Ctrl+C       → copiar la URL con localhost   ·   Ctrl+Shift+C → con la IP de red
 ///   Ctrl+Q       → QR de la URL-de-red (escaneás con el celu y entrás)
+///   Ctrl+P       → ver/ocultar los servicios de OTROS espacios y contextos (mismo toggle que Variables)
 /// Todos están IMPRESOS en su botón (keycap) y responden desde cualquier foco de la ventana — ver
 /// <see cref="OnWindowKeyDown"/>. Antes vivían sólo en la línea de hints del pie: existían pero no
 /// se veían, que para una app que se maneja sin mouse es casi lo mismo que no existir.
@@ -38,6 +39,13 @@ namespace AmpzDesktopBooster;
 /// PUEDEN LANZAR (heredar un servicio es justamente poder levantarlo desde el contexto), pero no se
 /// editan ni se borran desde acá: se tocan parándote en el scope donde viven, para que no puedas
 /// romperle el servicio a otro contexto sin darte cuenta.
+///
+/// COLUMNAS Y BÚSQUEDA: el mismo rediseño que Variables. Cada fila dice su Espacio ("GLOBAL" o el
+/// nombre) y su Contexto (con su color), así que los viejos rótulos "Heredados de X" se fueron: la
+/// columna ya dice de quién es cada fila. Queda UN solo divisor, el de "otros espacios", que aparece
+/// con el toggle Ctrl+P o SOLO al tipear un filtro parado en la GLOBAL (desde ahí "¿dónde tenía el
+/// comando del worker?" no tiene un scope propio donde buscar). Las filas de otros espacios son de
+/// solo-lectura con la MISMA regla que las heredadas: se lanzan/visitan/copian, no se editan.
 ///
 /// URLs: una entrada puede declarar además una URL (<c>ServiceEntry.Url</c>) que se abre cuando el
 /// servicio se lanza y en "levantar todo". Con comando vacío la entrada es SÓLO eso —un enlace que
@@ -56,7 +64,12 @@ namespace AmpzDesktopBooster;
 public partial class ServicesWindow : Window
 {
     /// <summary>De qué pool viene la fila: define si se puede editar y cómo se pinta.</summary>
-    private enum RowScope { Own, Parent, Global, Separator }
+    /// <remarks>
+    /// Own = operable (editás/borrás). Parent, Global y Other = SOLO-LECTURA (lanzás/visitás/copiás,
+    /// no editás): Parent y Global son la herencia; Other es OTRO espacio/contexto traído por el
+    /// toggle Ctrl+P o por la ampliación automática desde la global. Separator = divisor, no seleccionable.
+    /// </remarks>
+    private enum RowScope { Own, Parent, Global, Other, Separator }
 
     /// <summary>Fila visible. Observable: el timer de estado actualiza el puntito en el lugar.</summary>
     private sealed class Row : INotifyPropertyChanged
@@ -64,6 +77,17 @@ public partial class ServicesWindow : Window
         public required RowScope Scope { get; init; }
         /// <summary>Índice a la entry real en SU pool (-1 en separadores).</summary>
         public required int PoolIndex { get; init; }
+        /// <summary>
+        /// La pool dueña de la fila (null en separadores). Viaja EN la fila y no se deduce del scope:
+        /// con "otros espacios" hay N pools de scope Other, y el scope solo ya no dice cuál es.
+        /// </summary>
+        public required ServicePool? Pool { get; init; }
+        /// <summary>Columna Espacio: "GLOBAL" (localizado) o el espacio dueño — ver <see cref="ProjectPathsWindow.ResolveScopeColumns"/>.</summary>
+        public required string Project { get; init; }
+        /// <summary>Columna Contexto: el contexto dueño, o "" si la fila es del espacio pelado o global.</summary>
+        public required string Module { get; init; }
+        /// <summary>Color del contexto (nunca null: bindear null a Foreground rompe el binding).</summary>
+        public required System.Windows.Media.Brush ModuleBrush { get; init; }
         public required string Title { get; init; }
         public required string Command { get; init; }
         public required string WorkDir { get; init; }
@@ -90,7 +114,8 @@ public partial class ServicesWindow : Window
 
         public bool IsSeparator => Scope == RowScope.Separator;
         public bool IsOwn => Scope == RowScope.Own;
-        public bool IsInherited => Scope is RowScope.Parent or RowScope.Global;
+        /// <summary>Fila de SOLO-LECTURA: heredada (espacio padre, global) o de otro espacio.</summary>
+        public bool IsReadOnlyRef => Scope is RowScope.Parent or RowScope.Global or RowScope.Other;
 
         /// <summary>Declara puerto → es un SERVIDOR y tiene estado que mostrar. Ver ServiceEntry.</summary>
         public bool HasPort => Port > 0;
@@ -112,9 +137,8 @@ public partial class ServicesWindow : Window
           : "";
 
         /// <summary>
-        /// ⚠ delante cuando el directorio ya no existe (la señal más importante de la fila) y ⏩ atrás
-        /// cuando el servicio entra en "levantar todo" — mismo ícono que el botón, para que de un
-        /// vistazo sepas QUÉ va a arrancar sin tener que abrir el editor de cada fila.
+        /// ⚠ delante cuando el directorio ya no existe (la señal más importante de la fila). El ⏩ de
+        /// "levantar todo" vivía acá y se mudó a su propia columna (<see cref="AutoIcon"/>).
         ///
         /// 🌐 atrás cuando la entrada abre una URL al lanzarse — se ve en la fila y no sólo en su
         /// columna porque una URL larga se corta, y lo que importa de un vistazo no es CUÁL es sino
@@ -130,12 +154,16 @@ public partial class ServicesWindow : Window
         {
             get
             {
-                string t = AutoStarts ? Title + " ⏩" : Title;
+                // El ⏩ de auto-start ya NO va acá: tiene su propia columna (ver AutoIcon).
+                string t = Title;
                 if (HasUrl) t += " 🌐";
                 if (IsPortDuplicated) t += " ⛔";
                 return IsBroken ? "⚠ " + t : t;
             }
         }
+
+        /// <summary>Celda de la columna Auto: ⏩ si entra en "Levantar todo", vacía si no.</summary>
+        public string AutoIcon => AutoStarts ? "⏩" : "";
 
         public event PropertyChangedEventHandler? PropertyChanged;
     }
@@ -143,6 +171,10 @@ public partial class ServicesWindow : Window
     private readonly ServicePool _pool;          // scope primario: el único EDITABLE desde acá
     private readonly ServicePool? _parentPool;   // el espacio, si estás parado en un contexto
     private readonly ServicePool? _globalPool;
+    private readonly IReadOnlyList<ServicePool> _otherPools; // los demás espacios/contextos (Ctrl+P), read-only
+    private readonly ProjectStore? _store;                   // sólo para el color del contexto
+    /// <summary>Toggle "otros espacios". OFF por default: arrancás en TU scope y te abrís al resto a pedido.</summary>
+    private bool _showAllProjects;
     private readonly ObservableCollection<Row> _rows = new();
     private readonly DispatcherTimer _statusTimer;
     private string? _networkIp;
@@ -166,12 +198,15 @@ public partial class ServicesWindow : Window
 
     public ServicesWindow(ServicePool pool, string deskName, ServicePool? parentPool = null,
                           ServicePool? globalPool = null, PortRegistry? ports = null,
-                          HashSet<string>? groupLaunchedPortless = null)
+                          HashSet<string>? groupLaunchedPortless = null,
+                          IReadOnlyList<ServicePool>? otherPools = null, ProjectStore? store = null)
     {
         InitializeComponent();
         _pool = pool;
         _parentPool = parentPool;
         _globalPool = globalPool;
+        _otherPools = otherPools ?? Array.Empty<ServicePool>();
+        _store = store;
         _ports = ports;
         _groupLaunchedPortless = groupLaunchedPortless ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -190,6 +225,10 @@ public partial class ServicesWindow : Window
             ? $"{deskName}    ·    {Loc.T("Services.NoNetwork")}"
             : $"{deskName}    ·    {string.Format(Loc.T("Services.NetworkIp"), _networkIp)}";
 
+        // Sin otros espacios con servicios no hay nada que togglear → ocultamos el botón (como Variables).
+        AllProjectsBtn.Visibility = _otherPools.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateAllProjectsBtn();
+
         ServiceList.ItemsSource = _rows;
         RefreshList();
 
@@ -207,6 +246,7 @@ public partial class ServicesWindow : Window
         CopyLocalBtn.Click += (_, _) => CopyLocalhost();
         CopyNetBtn.Click += (_, _) => CopyNetwork();
         QrBtn.Click += (_, _) => ShowQr();
+        AllProjectsBtn.Click += (_, _) => ToggleAllProjects();
         CloseBtn.Click += (_, _) => Close();
 
         // Estado vivo: cada 2.5s recomputamos qué puertos escuchan y actualizamos los puntitos.
@@ -227,7 +267,9 @@ public partial class ServicesWindow : Window
     /// se seguía cortando exactamente igual que antes.
     ///
     /// Estado y Puerto quedan FIJOS a propósito: uno es un puntito y el otro cuatro dígitos: darles
-    /// ancho proporcional sería regalarle a un círculo el espacio que necesita un comando.
+    /// ancho proporcional sería regalarle a un círculo el espacio que necesita un comando. Espacio y
+    /// Contexto también (120 cada una, el mismo ancho que en Variables): son nombres cortos que
+    /// tipeaste vos, y se reconocen por el principio.
     ///
     /// El DIRECTORIO se lleva la tajada más grande, y no por gusto: se midió contra el catálogo real.
     /// Un comando típico ronda los 60 caracteres ("php artisan queue:work --queue=default --tries=3
@@ -241,7 +283,7 @@ public partial class ServicesWindow : Window
     /// </summary>
     private void LayoutColumns()
     {
-        const double fixedCols = 60 + 80;   // Estado + Puerto (ver los Width del XAML)
+        const double fixedCols = 60 + 50 + 80 + 120 + 120;   // Estado + Auto + Puerto + Espacio + Contexto (ver los Width del XAML)
         const double chrome = 34 + 4 + 24;  // borde+padding de la ventana, padding del panel, scrollbar
 
         double free = Width - fixedCols - chrome;
@@ -259,6 +301,18 @@ public partial class ServicesWindow : Window
 
     // ── Lista ───────────────────────────────────────────────────────────────────
 
+    /// <summary>Alterna la vista "otros espacios" y repinta. Lo disparan el botón y Ctrl+P.</summary>
+    private void ToggleAllProjects()
+    {
+        if (_otherPools.Count == 0) return; // nada que mostrar
+        _showAllProjects = !_showAllProjects;
+        UpdateAllProjectsBtn();
+        RefreshList();
+    }
+
+    private void UpdateAllProjectsBtn() =>
+        AllProjectsBtn.Content = Loc.T(_showAllProjects ? "Paths.BtnAllProjectsOn" : "Paths.BtnAllProjectsOff");
+
     private void RefreshList()
     {
         string filter = FilterBox.Text.Trim();
@@ -268,44 +322,60 @@ public partial class ServicesWindow : Window
         var duplicated = _ports?.Duplicates() ?? new HashSet<int>();
 
         _rows.Clear();
-        AddSection(_pool, RowScope.Own, filter, listening, duplicated, header: null);
         // El orden de las secciones ES el orden de cercanía (contexto → espacio → global), igual que
-        // en Variables: lo primero que ves es lo tuyo.
-        AddSection(_parentPool, RowScope.Parent, filter, listening, duplicated, _parentPool?.Label);
-        AddSection(_globalPool, RowScope.Global, filter, listening, duplicated, _globalPool?.Label);
+        // en Variables: lo primero que ves es lo tuyo. Ya NO llevan rótulo "Heredados de X": la
+        // columna Espacio (y Contexto) dice de quién es cada fila, sin gastar una línea en eso.
+        AddSection(_pool, RowScope.Own, filter, listening, duplicated);
+        AddSection(_parentPool, RowScope.Parent, filter, listening, duplicated);
+        AddSection(_globalPool, RowScope.Global, filter, listening, duplicated);
+
+        // Toggle "otros espacios" (Ctrl+P/botón) o AMPLIACIÓN AUTOMÁTICA en scope GLOBAL con filtro
+        // escrito — la misma regla que Variables: parado en la global no hay un scope "tuyo" más
+        // cercano donde buscar, así que tipear ya significa "¿dónde está esto?". En un espacio NO se
+        // amplía solo: ahí el filtro es para acotar lo tuyo, y llenarlo de ajenos sería ruido.
+        // UN solo divisor para ambos modos, y se saca si abajo no matcheó nada.
+        bool autoWiden = !_showAllProjects && filter != "" && _pool.Key == ProjectStore.GlobalScope
+                         && _otherPools.Count > 0;
+        if (_showAllProjects || autoWiden)
+        {
+            int headerAt = _rows.Count;
+            _rows.Add(SeparatorRow(Loc.T("Paths.SepAutoWiden")));
+
+            foreach (var other in _otherPools)
+                AddSection(other, RowScope.Other, filter, listening, duplicated);
+
+            // Nada matcheó afuera → sacamos el divisor: colgando sin filas debajo se lee como "hay
+            // algo más abajo". Lo de arriba (propio + heredado + global) queda intacto.
+            if (_rows.Count == headerAt + 1)
+                _rows.RemoveAt(headerAt);
+        }
 
         SelectFirstSelectable();
     }
 
-    /// <summary>Agrega las filas de una pool, con su rótulo de sección si es heredada.</summary>
+    /// <summary>Agrega las filas de una pool que matchean el filtro, ordenadas por título.</summary>
     private void AddSection(ServicePool? pool, RowScope scope, string filter,
-                            HashSet<int> listening, HashSet<int> duplicated, string? header)
+                            HashSet<int> listening, HashSet<int> duplicated)
     {
         if (pool is null) return;
 
+        // Espacio/Contexto de ESTA pool: constante para todas sus filas, se resuelve una sola vez y
+        // con el MISMO criterio que Variables (parte la key CRUDA, no el Label "pretty").
+        ProjectPathsWindow.ResolveScopeColumns(pool.Key, scope == RowScope.Global, _store,
+                                               out string project, out string module, out var moduleBrush);
+
         var matches = pool.Entries
             .Select((e, i) => (e, i))
-            .Where(t => Matches(t.e, filter))
-            .ToList();
-        if (matches.Count == 0) return;
+            .Where(t => Matches(t.e, filter, project, module))
+            .OrderBy(t => t.e.Title, StringComparer.CurrentCultureIgnoreCase);
 
-        if (header is not null)
-        {
-            _rows.Add(new Row
-            {
-                Scope = RowScope.Separator, PoolIndex = -1,
-                Title = string.Format(Loc.T("Services.SectionInherited"), header),
-                Command = "", WorkDir = "", Port = 0, Url = "", IsBroken = false, AutoStarts = false,
-                IsPortDuplicated = false,
-            });
-        }
-
-        foreach (var (e, i) in matches.OrderBy(t => t.e.Title, StringComparer.CurrentCultureIgnoreCase))
+        foreach (var (e, i) in matches)
         {
             _rows.Add(new Row
             {
                 Scope = scope,
                 PoolIndex = i,
+                Pool = pool,
                 Title = e.Title,
                 Command = e.Command,
                 WorkDir = e.WorkDir,
@@ -315,17 +385,37 @@ public partial class ServicesWindow : Window
                 IsPortDuplicated = e.Port > 0 && duplicated.Contains(e.Port),
                 AutoStarts = ServiceLauncher.IsGroupLaunchable(e),
                 IsListening = e.Port > 0 && listening.Contains(e.Port),
+                Project = project,
+                Module = module,
+                ModuleBrush = moduleBrush,
             });
         }
     }
 
-    private static bool Matches(ServiceEntry e, string filter) =>
+    /// <summary>
+    /// El filtro matchea cualquiera de los campos de la entrada (título, comando, directorio, URL,
+    /// puerto) O el Espacio/Contexto dueño de la fila — igual que Variables: con la búsqueda en otros
+    /// espacios, "geo" tiene que traer TODO lo de Geocontrol aunque ningún comando lo diga. Son los
+    /// mismos textos que muestran las columnas, así que lo que matchea se ve.
+    /// </summary>
+    private static bool Matches(ServiceEntry e, string filter, string project, string module) =>
         filter == ""
         || e.Title.Contains(filter, StringComparison.OrdinalIgnoreCase)
         || e.Command.Contains(filter, StringComparison.OrdinalIgnoreCase)
         || e.WorkDir.Contains(filter, StringComparison.OrdinalIgnoreCase)
         || e.Url.Contains(filter, StringComparison.OrdinalIgnoreCase)
-        || e.Port.ToString().Contains(filter);
+        || e.Port.ToString().Contains(filter)
+        || project.Contains(filter, StringComparison.OrdinalIgnoreCase)
+        || module.Contains(filter, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Fila-rótulo (divisor de "otros espacios"). No es operable (ver estilo en el XAML).</summary>
+    private static Row SeparatorRow(string text) => new()
+    {
+        Scope = RowScope.Separator, PoolIndex = -1, Pool = null, Title = text,
+        Command = "", WorkDir = "", Port = 0, Url = "", IsBroken = false, AutoStarts = false,
+        IsPortDuplicated = false, Project = "", Module = "",
+        ModuleBrush = System.Windows.Media.Brushes.Transparent,
+    };
 
     /// <summary>
     /// El directorio configurado ya no existe. Sólo aplica a entradas CON comando: una de sólo
@@ -370,14 +460,8 @@ public partial class ServicesWindow : Window
             .OrderBy(r => _rows.IndexOf(r))
             .ToList();
 
-    /// <summary>La pool a la que pertenece una fila (para editar/borrar sobre la correcta).</summary>
-    private ServicePool? PoolOf(Row row) => row.Scope switch
-    {
-        RowScope.Own => _pool,
-        RowScope.Parent => _parentPool,
-        RowScope.Global => _globalPool,
-        _ => null,
-    };
+    /// <summary>La pool a la que pertenece una fila (para lanzar sobre la correcta, incluida la de otro espacio).</summary>
+    private static ServicePool? PoolOf(Row row) => row.Pool;
 
     // ── Teclado ─────────────────────────────────────────────────────────────────
 
@@ -426,6 +510,7 @@ public partial class ServicesWindow : Window
             case Key.C when Ctrl && !filterCopies:  CopyLocalhost();             break;
             case Key.Delete when !filterDeletes:    DeleteSelected();            break;
             case Key.K when Ctrl:                   KillSelected();              break;
+            case Key.P when Ctrl:                   ToggleAllProjects();         break;
 
             case Key.Down when inFilter && _rows.Count > 0:
                 SelectFirstSelectable();
@@ -824,7 +909,7 @@ public partial class ServicesWindow : Window
     private void EditSelected()
     {
         if (Selected is not { } row || row.IsSeparator) return;
-        if (!row.IsOwn) { InheritedReadOnly(); return; }
+        if (!row.IsOwn) { ReadOnlyRow(row); return; }
         if (row.PoolIndex < 0 || row.PoolIndex >= _pool.Entries.Count) return;
 
         // Se pasa la entry VIVA de la pool (no una copia): el registro de puertos la excluye por
@@ -840,7 +925,7 @@ public partial class ServicesWindow : Window
     private void DeleteSelected()
     {
         if (Selected is not { } row || row.IsSeparator) return;
-        if (!row.IsOwn) { InheritedReadOnly(); return; }
+        if (!row.IsOwn) { ReadOnlyRow(row); return; }
         _pool.Delete(row.PoolIndex);
         RefreshList();
     }
@@ -850,7 +935,11 @@ public partial class ServicesWindow : Window
     /// — la misma trampa que el predeterminado por entrada que ya se sacó del modelo. Se explica en
     /// vez de dejar el botón mudo: un botón que no hace nada se lee igual que un botón roto.
     /// </summary>
-    private void InheritedReadOnly() =>
-        MessageBox.Show(Loc.T("Services.InheritedReadOnly"), Loc.T("Services.WindowTitle"),
-            MessageBoxButton.OK, MessageBoxImage.Information);
+    /// <remarks>
+    /// Una fila de OTRO espacio lleva su propio mensaje: decirle "heredado" a algo que no hereda de
+    /// nada sería mentirle sobre por qué no se puede, y la salida es otra (ir a ESE espacio).
+    /// </remarks>
+    private void ReadOnlyRow(Row row) =>
+        MessageBox.Show(Loc.T(row.Scope == RowScope.Other ? "Services.OtherSpaceReadOnly" : "Services.InheritedReadOnly"),
+            Loc.T("Services.WindowTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
 }
