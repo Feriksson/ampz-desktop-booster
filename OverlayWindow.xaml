@@ -17,11 +17,11 @@
 
     <!-- Popup central al cambiar de desktop. Orden: título (el ESPACIO en un desk de espacio, el nombre
          en un fijo), chip del contexto justo debajo, y los dots de navegación al final. -->
-    <Border Background="#F21A1A1A" CornerRadius="12" Padding="60,34">
+    <Border Background="#F21A1A1A" CornerRadius="16" Padding="80,46">
         <StackPanel HorizontalAlignment="Center">
 
             <TextBlock x:Name="TitleText"
-                       FontFamily="Segoe UI" FontSize="32" FontWeight="Bold" Foreground="White"
+                       FontFamily="Segoe UI" FontSize="42" FontWeight="Bold" Foreground="White"
                        HorizontalAlignment="Center" />
 
             <!-- Contexto (sub-scope del espacio). Va DEBAJO del espacio (el título), en su propia línea y con su
@@ -31,9 +31,9 @@
                  una barra vertical al costado no lee como acento sino como un "|" pegado al nombre.
                  En la barra y el DeskPicker sí la lleva, porque ahí va INLINE al lado del espacio y
                  hace de separador. Mismo dato, distinta necesidad según el contexto. -->
-            <Border x:Name="ModuleChip" HorizontalAlignment="Center" Margin="0,12,0,0"
-                    CornerRadius="6" Padding="14,5" Background="#14FFFFFF">
-                <TextBlock x:Name="ModuleText" FontFamily="Segoe UI" FontSize="18"
+            <Border x:Name="ModuleChip" HorizontalAlignment="Center" Margin="0,22,0,0"
+                    CornerRadius="8" Padding="20,8" Background="#14FFFFFF">
+                <TextBlock x:Name="ModuleText" FontFamily="Segoe UI" FontSize="24"
                            FontWeight="SemiBold" HorizontalAlignment="Center" />
             </Border>
 
@@ -42,7 +42,7 @@
                  que leerse JUNTO — con los dots en el medio (como cuando el título era "DESK +N") el
                  usuario lo vio partido y lo rechazó. En un fijo no hay chip: título y dots, igual que antes. -->
             <StackPanel x:Name="DotsPanel" Orientation="Horizontal"
-                        HorizontalAlignment="Center" Margin="0,26,0,0" />
+                        HorizontalAlignment="Center" Margin="0,34,0,0" />
 
         </StackPanel>
     </Border>

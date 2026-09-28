@@ -20,7 +20,7 @@ namespace AmpzDesktopBooster;
 /// </summary>
 public partial class OverlayWindow : Window
 {
-    private const double DotCellWidth = 40;
+    private const double DotCellWidth = 50;
     private static readonly TimeSpan AutoHide = TimeSpan.FromMilliseconds(800);
 
     // Dorado del rol Space (#FFD700), el mismo que pinta el espacio en la barra.
@@ -149,7 +149,7 @@ public partial class OverlayWindow : Window
             {
                 Text = isActive ? "⬤" : "○", // ⬤ / ○
                 FontFamily = new FontFamily("Segoe UI"),
-                FontSize = 22,
+                FontSize = 28,
                 Foreground = new SolidColorBrush(isActive ? active : inactive),
                 Width = DotCellWidth,
                 TextAlignment = TextAlignment.Center,
