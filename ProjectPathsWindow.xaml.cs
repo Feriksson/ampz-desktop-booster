@@ -307,7 +307,8 @@ public partial class ProjectPathsWindow : Window
     }
 
     /// <summary>
-    /// Filas de una pool que matchean el filtro (busca SOLO en el título, como el legacy).
+    /// Filas de una pool que matchean el filtro: busca en el título y en el Espacio/Contexto dueño
+    /// (el legacy buscaba sólo en el título; con la búsqueda en todos los espacios eso no alcanzaba).
     ///
     /// La marca de predeterminado NO sale de la entrada (ya no vive ahí): se resuelve comparando el
     /// PATH de la fila contra el predeterminado de TU scope y el del padre. Por eso la ⭐ puede caer
@@ -327,7 +328,13 @@ public partial class ProjectPathsWindow : Window
         for (int i = 0; i < entries.Count; i++)
         {
             var e = entries[i];
-            if (filter != "" && !e.Title.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            // El filtro matchea el título O el Espacio/Contexto dueño de la fila: con la búsqueda en
+            // todos los espacios, "geo" tiene que traer TODO lo de Geocontrol aunque ningún título lo
+            // diga. Son los mismos textos que muestran las columnas, así que lo que matchea se ve.
+            if (filter != ""
+                && !e.Title.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                && !project.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                && !module.Contains(filter, StringComparison.OrdinalIgnoreCase))
                 continue;
 
             bool isOwn = own is not null && e.Path == own;
