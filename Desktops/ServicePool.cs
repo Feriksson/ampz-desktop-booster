@@ -23,10 +23,19 @@ public sealed class ServicePool
     /// <summary>Etiqueta para el header y los rótulos de sección: el scope bonito, o "Global".</summary>
     public string Label { get; }
 
-    public ServicePool(List<ServiceEntry> entries, Action save, string label)
+    /// <summary>
+    /// Key CRUDA del scope ("" = global, "Espacio", o "Espacio/Contexto"). Gemela de
+    /// <see cref="PathPool.Key"/> y por el mismo motivo: la ventana de Servicios parte ESTA key para
+    /// llenar las columnas Espacio/Contexto, nunca el <see cref="Label"/> ya "pretty" (partirlo sería
+    /// una segunda clasificación paralela a <see cref="ProjectStore.ScopeKey"/>).
+    /// </summary>
+    public string Key { get; }
+
+    public ServicePool(List<ServiceEntry> entries, Action save, string key, string label)
     {
         _entries = entries;
         _save = save;
+        Key = key;
         Label = label;
     }
 

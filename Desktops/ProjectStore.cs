@@ -406,11 +406,25 @@ public sealed class ProjectStore
             list = new List<ServiceEntry>();
             _data.Services[scopeKey] = list;
         }
-        return new ServicePool(list, Save, PrettyScope(scopeKey));
+        return new ServicePool(list, Save, scopeKey, PrettyScope(scopeKey));
     }
 
     /// <summary>Pool GLOBAL de servicios — la de los desks sin espacio, y donde aterriza el viejo ports.json.</summary>
-    public ServicePool GetSharedServicePool() => new(_data.SharedServices, Save, "Global");
+    public ServicePool GetSharedServicePool() => new(_data.SharedServices, Save, GlobalScope, "Global");
+
+    /// <summary>
+    /// TODAS las pools de servicios de espacio/contexto del catálogo (una por key de
+    /// <c>_data.Services</c>), para el toggle "otros espacios" y la ampliación automática de la
+    /// ventana de Servicios. Gemela exacta de <see cref="GetAllProjectPools"/>: NO incluye la global
+    /// ni excluye el scope actual — eso lo decide el caller, que conoce el desk.
+    /// </summary>
+    public IReadOnlyList<ServicePool> GetAllServicePools()
+    {
+        var list = new List<ServicePool>();
+        foreach (var kv in _data.Services)
+            list.Add(new ServicePool(kv.Value, Save, kv.Key, PrettyScope(kv.Key)));
+        return list;
+    }
 
     /// <summary>
     /// El registro de puertos de TODO el catálogo — un puerto, un dueño (ver <see cref="PortRegistry"/>).
