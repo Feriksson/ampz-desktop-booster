@@ -5,6 +5,9 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Fuente única de la versión. La línea 1.x cerró en el tag v1.1.0; el tag v2.0.0 se pone
+         recién cuando la 2.0 esté lista (un tag marca lo que YA existe, no lo que viene). -->
+    <Version>2.0.0-dev</Version>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <Platforms>x64</Platforms>
