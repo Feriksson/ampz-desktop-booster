@@ -15,36 +15,34 @@
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
 
-    <!-- Popup central al cambiar de desktop: nombre del desk, dots de navegación, y espacio.
-         Orden: título arriba, círculos al medio, espacio en la última línea. -->
-    <Border Background="#F21A1A1A" CornerRadius="12" Padding="60,34">
+    <!-- Popup central al cambiar de desktop. Orden: título (el ESPACIO en un desk de espacio, el nombre
+         en un fijo), chip del contexto justo debajo, y los dots de navegación al final. -->
+    <Border Background="#F21A1A1A" CornerRadius="16" Padding="80,46">
         <StackPanel HorizontalAlignment="Center">
 
             <TextBlock x:Name="TitleText"
-                       FontFamily="Segoe UI" FontSize="32" FontWeight="Bold" Foreground="White"
+                       FontFamily="Segoe UI" FontSize="42" FontWeight="Bold" Foreground="White"
                        HorizontalAlignment="Center" />
 
-            <!-- Los dots se generan en código según la cantidad real de desktops -->
-            <StackPanel x:Name="DotsPanel" Orientation="Horizontal"
-                        HorizontalAlignment="Center" Margin="0,26,0,0" />
-
-            <!-- Espacio: última línea, después de los círculos -->
-            <TextBlock x:Name="ProjectText"
-                       FontFamily="Segoe UI" FontSize="20" Foreground="#FFD700"
-                       HorizontalAlignment="Center" Margin="0,26,0,0" />
-
-            <!-- Contexto (sub-scope del espacio). Va DEBAJO del espacio, en su propia línea y con su
+            <!-- Contexto (sub-scope del espacio). Va DEBAJO del espacio (el título), en su propia línea y con su
                  color propio: el punto de esta feature es distinguir el contexto de reflejo, sin leer —
                  el color hace ese trabajo, el texto sólo confirma.
                  SIN barrita de acento a la izquierda: acá el contexto está solo en su línea, así que
                  una barra vertical al costado no lee como acento sino como un "|" pegado al nombre.
                  En la barra y el DeskPicker sí la lleva, porque ahí va INLINE al lado del espacio y
                  hace de separador. Mismo dato, distinta necesidad según el contexto. -->
-            <Border x:Name="ModuleChip" HorizontalAlignment="Center" Margin="0,12,0,0"
+            <Border x:Name="ModuleChip" HorizontalAlignment="Center" Margin="0,30,0,0"
                     CornerRadius="6" Padding="14,5" Background="#14FFFFFF">
-                <TextBlock x:Name="ModuleText" FontFamily="Segoe UI" FontSize="18"
-                           FontWeight="SemiBold" HorizontalAlignment="Center" />
+                <TextBlock x:Name="ModuleText" FontFamily="Segoe UI" FontSize="19"
+                           FontWeight="Normal" HorizontalAlignment="Center" />
             </Border>
+
+            <!-- Los dots se generan en código según la cantidad real de desktops. Van AL FINAL: en un
+                 desk de espacio el título es el espacio y el chip de abajo el contexto, y el par tiene
+                 que leerse JUNTO — con los dots en el medio (como cuando el título era "DESK +N") el
+                 usuario lo vio partido y lo rechazó. En un fijo no hay chip: título y dots, igual que antes. -->
+            <StackPanel x:Name="DotsPanel" Orientation="Horizontal"
+                        HorizontalAlignment="Center" Margin="0,34,0,0" />
 
         </StackPanel>
     </Border>
