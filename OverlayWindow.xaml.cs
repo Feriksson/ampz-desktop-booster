@@ -23,7 +23,7 @@ public partial class OverlayWindow : Window
     private const double DotCellWidth = 40;
     private static readonly TimeSpan AutoHide = TimeSpan.FromMilliseconds(800);
 
-    // Mismo dorado que la línea del espacio (#FFD700 en el XAML) y que el espacio en la barra.
+    // Dorado del rol Space (#FFD700), el mismo que pinta el espacio en la barra.
     private static readonly Brush SpaceGold = new SolidColorBrush(Color.FromRgb(0xFF, 0xD7, 0x00));
 
     private readonly DispatcherTimer _hideTimer;
@@ -79,11 +79,10 @@ public partial class OverlayWindow : Window
 
         // Desk de espacio: el TÍTULO es el espacio (dorado, el acento del rol Space igual que en la
         // barra) y el contexto va en su chip de color. NO se muestra el nombre del desk: ya ES
-        // "Espacio / Contexto", repetirlo arriba sería el dato dos veces. La línea dorada de abajo
-        // (el espacio cuando el título era "DESK +N") se colapsa por la misma razón.
+        // "Espacio / Contexto", repetirlo arriba sería el dato dos veces. (La vieja línea dorada del
+        // espacio, que iba debajo de los dots cuando el título era "DESK +N", se retiró del XAML.)
         TitleText.Text = spaceTitle ? project : name;
         TitleText.Foreground = spaceTitle ? SpaceGold : Brushes.White;
-        ProjectText.Visibility = Visibility.Collapsed;
 
         // Contexto: sólo tiene sentido con espacio arriba (sin espacio no hay sub-scope posible).
         // El TEXTO va pintado con el color del contexto — es la señal que se percibe de reflejo.
