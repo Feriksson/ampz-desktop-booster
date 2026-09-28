@@ -46,6 +46,25 @@ public partial class ProjectPathsWindow : Window
         public required bool IsDefault { get; init; }
 
         /// <summary>
+        /// Columna Espacio: "GLOBAL" (localizado) para filas globales/compartidas, o el nombre del
+        /// espacio dueño de la fila. Sale de la key CRUDA del scope (<see cref="PathPool.Key"/>), no
+        /// de parsear el Label ya "pretty" — ver el comentario de <see cref="PathPool.Key"/>.
+        /// </summary>
+        public required string Project { get; init; }
+
+        /// <summary>
+        /// Columna Contexto: nombre del contexto si la fila pertenece a un scope "Espacio/Contexto",
+        /// "" si es del espacio pelado o global (esas no tienen contexto — ver "Column espacio").
+        /// </summary>
+        public required string Module { get; init; }
+
+        /// <summary>Color del contexto (mismo criterio que la barra/DeskPicker: <see cref="ProjectStore.GetModuleColor"/> + <see cref="ModulePalette.Parse"/>). Null si <see cref="Module"/> está vacío.</summary>
+        public System.Windows.Media.Brush? ModuleBrush { get; init; }
+
+        /// <summary>Ícono de tipo: 📁 carpeta/path local, 🌐 URL. Mismo criterio que <see cref="AddGroupedByType"/> (<see cref="UrlHelper.IsUrl"/>) — no hay una segunda clasificación.</summary>
+        public string TypeIcon => UrlHelper.IsUrl(Path) ? "🌐" : "📁";
+
+        /// <summary>
         /// El path apunta a algo que ya NO existe en disco (carpeta/archivo borrado o movido). Solo
         /// aplica a paths de filesystem — una URL nunca se considera "rota" acá (chequear existencia
         /// de una URL exigiría un request HTTP por fila al listar, absurdo). Se usa para pintar la
@@ -225,103 +244,66 @@ public partial class ProjectPathsWindow : Window
         string filter = FilterBox.Text.Trim();
         PathList.Items.Clear();
 
-        // 1) Las del espacio (operables), agrupadas por tipo (carpetas / URLs).
+        // 1) Las del espacio (operables), agrupadas por tipo (carpetas / URLs). Ya no hay rótulo de
+        //    tipo (SepFolders/SepUrls): la columna Ícono lo reemplaza fila por fila.
         AddGroupedByType(PoolRows(_pool, RowScope.Project, filter).ToList());
 
         // 2) En scope de CONTEXTO anexamos las del ESPACIO PADRE, de solo-lectura. Es la herencia:
         //    lo que es del cliente (repo raíz, Jira, VPN) se carga UNA vez en el espacio y se ve
         //    desde todos sus contextos, sin duplicarlo en cada uno. Va antes que las globales porque
         //    está más cerca de tu scope: el orden de la lista ES el orden de cercanía.
+        //    Ya NO lleva separador propio: la columna Espacio ya dice de quién es cada fila.
         if (_parentPool is not null)
-        {
-            var parents = PoolRows(_parentPool, RowScope.Parent, filter).ToList();
-            if (parents.Count > 0)
-            {
-                PathList.Items.Add(SeparatorRow(_parentPool.Label));
-                AddGroupedByType(parents);
-            }
-        }
+            AddGroupedByType(PoolRows(_parentPool, RowScope.Parent, filter).ToList());
 
-        // 3) En scope de espacio anexamos las GLOBALES de solo-lectura bajo un separador, para no
-        //    quedar ciegos a las compartidas. El separador entra SÓLO si hay alguna que matchee el
-        //    filtro (si no, no ensuciamos la lista con un rótulo de sección vacío). También se agrupan
-        //    por tipo dentro de su sección.
+        // 3) En scope de espacio anexamos las GLOBALES de solo-lectura, para no quedar ciegos a las
+        //    compartidas. Tampoco lleva separador propio: la columna Espacio muestra "GLOBAL".
         if (_globalPool is not null)
-        {
-            var globals = PoolRows(_globalPool, RowScope.Global, filter).ToList();
-            if (globals.Count > 0)
-            {
-                PathList.Items.Add(SeparatorRow(Loc.T("Paths.SepGlobals")));
-                AddGroupedByType(globals);
-            }
-        }
+            AddGroupedByType(PoolRows(_globalPool, RowScope.Global, filter).ToList());
 
-        // 4) Toggle "todos los espacios": cada OTRO espacio bajo su propio separador (su nombre),
-        //    de SOLO-LECTURA. El separador entra sólo si ese espacio tiene alguna fila que matchee
-        //    el filtro — así, filtrando, sólo ves los espacios que realmente tienen algo. Esto es lo
-        //    que te deja "encontrar una variable de cualquier espacio" tipeando un fragmento.
-        //    AMPLIACIÓN AUTOMÁTICA: en scope GLOBAL, con filtro escrito, SIEMPRE buscamos además en
-        //    todas las entradas (espacios Y contextos), sin obligarte a apretar F4. Van DEBAJO de los
-        //    globales, en su propia sección: primero lo tuyo (la global es tu scope en un desk fijo),
-        //    después lo que encontramos afuera. Antes sólo se ampliaba si la global no matcheaba NADA,
-        //    y eso escondía la variable del espacio justo cuando la global tenía algún match parecido.
-        //    Sólo con filtro: sin texto, abrir la ventana tiene que seguir mostrando TU scope, no el
-        //    catálogo entero. El rótulo de sección avisa que esas filas no son de la global — si no,
-        //    parecerían tuyas.
+        // 4) Toggle "todos los espacios" (F4/botón) o AMPLIACIÓN AUTOMÁTICA en scope GLOBAL con
+        //    filtro escrito: buscamos además en TODOS los demás espacios y contextos, sin obligarte
+        //    a apretar F4. Antes cada espacio ajeno llevaba su propio separador (su nombre) — ya no
+        //    hace falta: la columna Espacio (y Contexto) identifica cada fila. Se mantiene UN SOLO
+        //    divisor ("Paths.SepAutoWiden") que separa "lo tuyo" de "lo de otros espacios", usado
+        //    para AMBOS modos (toggle y ampliación automática) — y se saca si abajo no quedó nada.
         bool autoWiden = !_showAllProjects && filter != "" && _scopeKey == ""
                          && _otherProjectPools.Count > 0;
-        int widenHeaderAt = -1;
-        if (autoWiden)
-        {
-            widenHeaderAt = PathList.Items.Count;
-            PathList.Items.Add(SeparatorRow(Loc.T("Paths.SepAutoWiden")));
-        }
-
         if (_showAllProjects || autoWiden)
         {
-            foreach (var other in _otherProjectPools)
-            {
-                var rows = PoolRows(other, RowScope.Other, filter).ToList();
-                if (rows.Count == 0) continue;
-                PathList.Items.Add(SeparatorRow(other.Label));
-                AddGroupedByType(rows);
-            }
+            int headerAt = PathList.Items.Count;
+            PathList.Items.Add(SeparatorRow(Loc.T("Paths.SepAutoWiden")));
 
-            // Ampliamos y afuera no hubo nada → sacamos el rótulo de sección: un encabezado colgando
-            // sin filas debajo se lee como "hay algo más abajo". Los globales de arriba quedan.
-            if (widenHeaderAt >= 0 && PathList.Items.Count == widenHeaderAt + 1)
-                PathList.Items.RemoveAt(widenHeaderAt);
+            foreach (var other in _otherProjectPools)
+                AddGroupedByType(PoolRows(other, RowScope.Other, filter).ToList());
+
+            // Nada matcheó afuera → sacamos el divisor: colgando sin filas debajo se lee como "hay
+            // algo más abajo". Lo de arriba (propio + heredado + global) queda intacto.
+            if (PathList.Items.Count == headerAt + 1)
+                PathList.Items.RemoveAt(headerAt);
         }
 
         SelectFirstSelectable();
     }
 
     /// <summary>
-    /// Agrega las filas de UN scope a la lista, partidas por TIPO: carpetas/paths primero, URLs
+    /// Agrega las filas de UN scope a la lista, ordenadas por TIPO: carpetas/paths primero, URLs
     /// después (lo que más usa un dev arriba). El criterio de "qué es URL" es el MISMO que usa
-    /// <see cref="PathOpener.Open"/> (<see cref="UrlHelper.IsUrl"/>): así lo que se muestra agrupado
-    /// coincide exacto con cómo se abre — no hay una clasificación paralela que se pueda desincronizar.
-    /// El rótulo de tipo entra SÓLO si conviven ambos tipos: con uno solo no hay nada que separar y el
-    /// rótulo sería ruido. Dentro de cada grupo las filas van ORDENADAS ALFABÉTICAMENTE por título
-    /// (pedido del usuario) — se ordena por el título YA normalizado (<see cref="Row.Title"/>), así el
-    /// orden que ves coincide con el texto que ves; ordenar por el crudo se vería "desordenado".
+    /// <see cref="PathOpener.Open"/> (<see cref="UrlHelper.IsUrl"/>): así el orden coincide exacto con
+    /// cómo se abre — no hay una clasificación paralela que se pueda desincronizar. Ya NO hay rótulo
+    /// de sección por tipo (SepFolders/SepUrls): la columna Ícono (<see cref="Row.TypeIcon"/>) lo
+    /// reemplaza fila por fila, sin gastar una línea entera en un divisor. Dentro de cada grupo las
+    /// filas van ORDENADAS ALFABÉTICAMENTE por título (pedido del usuario) — se ordena por el título
+    /// YA normalizado (<see cref="Row.Title"/>), así el orden que ves coincide con el texto que ves;
+    /// ordenar por el crudo se vería "desordenado".
     /// </summary>
     private void AddGroupedByType(List<Row> rows)
     {
-        var folders = rows.Where(r => !UrlHelper.IsUrl(r.Path)).OrderBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase).ToList();
-        var urls    = rows.Where(r =>  UrlHelper.IsUrl(r.Path)).OrderBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase).ToList();
-        bool label  = folders.Count > 0 && urls.Count > 0;
+        var folders = rows.Where(r => !UrlHelper.IsUrl(r.Path)).OrderBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase);
+        var urls    = rows.Where(r =>  UrlHelper.IsUrl(r.Path)).OrderBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase);
 
-        if (folders.Count > 0)
-        {
-            if (label) PathList.Items.Add(SeparatorRow(Loc.T("Paths.SepFolders")));
-            foreach (var r in folders) PathList.Items.Add(r);
-        }
-        if (urls.Count > 0)
-        {
-            if (label) PathList.Items.Add(SeparatorRow(Loc.T("Paths.SepUrls")));
-            foreach (var r in urls) PathList.Items.Add(r);
-        }
+        foreach (var r in folders) PathList.Items.Add(r);
+        foreach (var r in urls) PathList.Items.Add(r);
     }
 
     /// <summary>
@@ -336,6 +318,10 @@ public partial class ProjectPathsWindow : Window
     {
         string? own = OwnDefault;
         string? parent = ParentDefault;
+
+        // Espacio/Contexto de ESTA pool: constante para todas sus filas, se resuelve una sola vez
+        // (ver ResolvePoolScope — parte la key CRUDA, no el Label "pretty").
+        ResolvePoolScope(pool, scope, out string project, out string module, out var moduleBrush);
 
         var entries = pool.Entries;
         for (int i = 0; i < entries.Count; i++)
@@ -357,15 +343,60 @@ public partial class ProjectPathsWindow : Window
                 // Hueco sólo si es el del PADRE y el tuyo (otro) lo está tapando.
                 IsShadowed = !isOwn && isParent && own is not null,
                 IsBroken = IsBrokenPath(e.Path),
+                Project = project,
+                Module = module,
+                ModuleBrush = moduleBrush,
             };
         }
     }
 
-    /// <summary>Fila-rótulo (sección de globales o tipo). No es operable (ver estilo en el XAML).</summary>
+    /// <summary>
+    /// Espacio/Contexto dueños de una pool, para las columnas nuevas. Global es un caso aparte (su
+    /// key cruda es <see cref="ProjectStore.GlobalScope"/> = "" y no tiene nada que partir). Para el
+    /// resto se parte la key CRUDA (<see cref="PathPool.Key"/>) en el primer '/' — NUNCA el Label ya
+    /// "pretty" (ver el comentario de <see cref="PathPool.Key"/>): es el mismo formato que
+    /// <see cref="ProjectStore.ScopeKey"/> arma, "Espacio" o "Espacio/Contexto".
+    /// </summary>
+    private void ResolvePoolScope(PathPool pool, RowScope scope, out string project, out string module,
+                                   out System.Windows.Media.Brush? moduleBrush)
+    {
+        if (scope == RowScope.Global)
+        {
+            project = Loc.T("Paths.ScopeGlobal");
+            module = "";
+            // Nunca null: bindear null a Foreground rompe el binding. Sin contexto el texto de la
+            // columna es "", así que el color es irrelevante — Transparent alcanza.
+            moduleBrush = System.Windows.Media.Brushes.Transparent;
+            return;
+        }
+
+        string key = pool.Key;
+        int sep = key.IndexOf(ProjectStore.ScopeSeparator);
+        if (sep >= 0)
+        {
+            project = key[..sep];
+            module = key[(sep + 1)..];
+        }
+        else
+        {
+            project = key;
+            module = "";
+        }
+
+        if (module == "")
+        {
+            moduleBrush = System.Windows.Media.Brushes.Transparent; // sin contexto: texto "", color irrelevante
+            return;
+        }
+        string color = _store?.GetModuleColor(project, module) ?? "";
+        moduleBrush = new System.Windows.Media.SolidColorBrush(ModulePalette.Parse(color));
+    }
+
+    /// <summary>Fila-rótulo (divisor de "otros espacios"). No es operable (ver estilo en el XAML).</summary>
     private static Row SeparatorRow(string text) => new()
     {
         Scope = RowScope.Separator, PoolIndex = -1, IsDefault = false, IsBroken = false, Path = "",
-        Title = text,
+        Title = text, Project = "", Module = "", ModuleBrush = System.Windows.Media.Brushes.Transparent,
     };
 
     /// <summary>
