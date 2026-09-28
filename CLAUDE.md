@@ -432,7 +432,8 @@ cambio de desk), `ConfigWindow` (config, instancia única), `ProjectSetterWindow
 (variables), `ProjectNotesWindow`, `EnvVarsWindow`, `DockerWindow`, `HzWindow` (refresh rate),
 `PinManagerWindow`, `DeskRestrictionsWindow`, `WhitelistPickerWindow`, `SendWindowPickerWindow`,
 `AbrirConWindow` ("Abrir con"), `DeskPickerWindow`, `ServicesWindow` (servicios del scope) +
-`ServiceEditWindow` (sus 4 campos), `PromptDialog`, `ToastWindow`.
+`ServiceEditWindow` (título, comando, directorio, puerto, URL + los flags "levantar todo" y "cerrar
+la terminal al terminar"), `PromptDialog`, `ToastWindow`.
 
 ---
 

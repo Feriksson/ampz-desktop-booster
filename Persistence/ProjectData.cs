@@ -125,6 +125,19 @@ public sealed class ServiceEntry
     /// <summary>Entrada de SOLO URL: no sabe levantar nada, sólo abrir el browser.</summary>
     [JsonIgnore]
     public bool IsUrlOnly => Command.Trim() == "" && Url.Trim() != "";
+
+    /// <summary>
+    /// ¿Cerrar la pestaña de terminal al terminar el comando? Pensado para comandos LANZADORES
+    /// (ej. "code .") cuyo único trabajo es abrir OTRA app: una vez hecho eso, la pestaña queda
+    /// abierta y vacía sin ningún propósito. Default OFF (bool no-nullable: falta en el JSON viejo
+    /// = false, que es justo el comportamiento de siempre — no tocamos servicios ya cargados).
+    ///
+    /// Cuando está ON, <see cref="Apps.Shell"/> arma la pestaña SIN <c>-NoExit</c>, así pwsh sale
+    /// solo al terminar el comando. Windows Terminal cierra la pestaña sólo si el exit code fue 0
+    /// (su default <c>closeOnExit: graceful</c>) — un lanzador que FALLA deja la pestaña abierta
+    /// mostrando el error, y eso es intencional: no queremos tragarnos un fallo en silencio.
+    /// </summary>
+    [JsonPropertyName("closeOnExit")] public bool CloseOnExit { get; set; }
 }
 
 /// <summary>

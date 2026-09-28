@@ -426,6 +426,8 @@
   "Services.AutoStartAutoOn": "⏩ Automático: como declara puerto, se toma como servidor y VA a arrancar. Tildá o destildá para decidirlo vos.",
   "Services.AutoStartAutoOff": "⏸ Automático: sin puerto se toma como tarea suelta y NO arranca sola. Tildalo si es un worker (queue:work, watcher) que sí tiene que levantar.",
   "Services.AutoStartAutoUrl": "⏩ Automático: es una entrada de sólo URL, así que se abre con «levantar todo». Destildala si querés abrirla sólo a mano.",
+  "Services.FldCloseOnExit": "Cerrar la terminal al terminar",
+  "Services.CloseOnExitHint": "Para comandos que sólo lanzan otra app.",
   "Services.NeedsPort": "Esta entrada no tiene ni URL ni puerto, así que no hay nada que visitar. Editala y cargale la URL a abrir, o el puerto en el que escucha.",
   "Services.InvalidPort": "Puerto inválido. Dejalo vacío, o poné un número entre 1 y 65535.",
   "Services.PortTakenInline": "⛔ El puerto {0} ya lo usa «{1}» ({2}).",

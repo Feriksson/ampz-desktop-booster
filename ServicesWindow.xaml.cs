@@ -816,7 +816,8 @@ public partial class ServicesWindow : Window
         var entry = ServiceEditWindow.Show(this, Loc.T("Services.DlgNewTitle"), _pool.Label,
                                            ports: _ports);
         if (entry is null) return;
-        _pool.Add(entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.Url, entry.AutoStart);
+        _pool.Add(entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.Url, entry.AutoStart,
+                  entry.CloseOnExit);
         RefreshList();
     }
 
@@ -832,7 +833,7 @@ public partial class ServicesWindow : Window
                                            _pool.Entries[row.PoolIndex], _ports);
         if (entry is null) return;
         _pool.Update(row.PoolIndex, entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.Url,
-                     entry.AutoStart);
+                     entry.AutoStart, entry.CloseOnExit);
         RefreshList();
     }
 

@@ -13,7 +13,14 @@ namespace AmpzDesktopBooster.Apps;
 /// <see cref="Shell.RunMany"/> reciba el lote ya resuelto y no tenga que saber nada de servicios —
 /// Shell no conoce la capa de dominio, igual que SystemMonitor no conoce WPF.
 /// </summary>
-public readonly record struct ShellJob(string WorkingDir, string Command);
+/// <summary>
+/// <paramref name="CloseOnExit"/>: si true, la pestaña se arma SIN <c>-NoExit</c> (ver
+/// <see cref="Shell.AddTabArgs"/>) para que pwsh salga solo y Windows Terminal cierre la pestaña —
+/// pensado para comandos LANZADORES (ej. "code .") que no dejan nada corriendo. Default false:
+/// mantiene el comportamiento de siempre para todo lo que no venga de un <c>ServiceEntry</c> con el
+/// flag tildado.
+/// </summary>
+public readonly record struct ShellJob(string WorkingDir, string Command, bool CloseOnExit = false);
 
 /// <summary>
 /// Resuelve y lanza el shell preferido. "PowerShell" (el moderno, v7+) es pwsh.exe; "Windows
@@ -67,10 +74,14 @@ public static class Shell
         ?? "powershell.exe";                                   // Windows PowerShell 5.1 — siempre está
 
     /// <summary>Abre una ventana del shell en <paramref name="workingDir"/> (sin comando extra).</summary>
-    public static void OpenInDir(string workingDir) => Launch(workingDir, command: null);
+    public static void OpenInDir(string workingDir) => Launch(workingDir, command: null, closeOnExit: false);
 
-    /// <summary>Abre el shell en <paramref name="workingDir"/> y corre <paramref name="command"/>.</summary>
-    public static void RunInDir(string workingDir, string command) => Launch(workingDir, command);
+    /// <summary>
+    /// Abre el shell en <paramref name="workingDir"/> y corre <paramref name="command"/>.
+    /// <paramref name="closeOnExit"/> — ver <see cref="ShellJob.CloseOnExit"/>.
+    /// </summary>
+    public static void RunInDir(string workingDir, string command, bool closeOnExit = false) =>
+        Launch(workingDir, command, closeOnExit);
 
     /// <summary>
     /// Corre VARIOS comandos en UNA sola ventana de terminal, uno por pestaña.
@@ -101,7 +112,7 @@ public static class Shell
         // foco y el fallback sin WT sin duplicar una línea.
         if (jobs.Count == 1)
         {
-            Launch(jobs[0].WorkingDir, jobs[0].Command);
+            Launch(jobs[0].WorkingDir, jobs[0].Command, jobs[0].CloseOnExit);
             return;
         }
 
@@ -109,7 +120,7 @@ public static class Shell
         // hay forma de agruparlas. Se degrada al comportamiento viejo en vez de no lanzar nada.
         if (AppDetector.InPath("wt.exe") is null)
         {
-            foreach (var job in jobs) LaunchDirect(job.WorkingDir, job.Command);
+            foreach (var job in jobs) LaunchDirect(job.WorkingDir, job.Command, job.CloseOnExit);
             return;
         }
 
@@ -129,7 +140,7 @@ public static class Shell
                 psi.ArgumentList.Add(";");
                 psi.ArgumentList.Add("new-tab");
             }
-            AddTabArgs(psi, jobs[i].WorkingDir, jobs[i].Command);
+            AddTabArgs(psi, jobs[i].WorkingDir, jobs[i].Command, jobs[i].CloseOnExit);
         }
 
         UnelevatedLauncher.Start(psi);
@@ -142,11 +153,11 @@ public static class Shell
     /// Núcleo del lanzamiento: decide reusar/forzar ventana por escritorio y dispara wt.exe.
     /// Si no hay WT, cae al lanzamiento directo del .exe.
     /// </summary>
-    private static void Launch(string workingDir, string? command)
+    private static void Launch(string workingDir, string? command, bool closeOnExit = false)
     {
         if (AppDetector.InPath("wt.exe") is null)
         {
-            LaunchDirect(workingDir, command);
+            LaunchDirect(workingDir, command, closeOnExit);
             return;
         }
 
@@ -160,7 +171,7 @@ public static class Shell
         ScrubInheritedEditorEnv(psi);
         psi.ArgumentList.Add("-w");
         psi.ArgumentList.Add(target);
-        AddTabArgs(psi, workingDir, command);
+        AddTabArgs(psi, workingDir, command, closeOnExit);
         UnelevatedLauncher.Start(psi);
 
         // FOCO GARANTIZADO a la ventana NUEVA. El reuse ("last") ya hizo ForceForeground arriba;
@@ -211,7 +222,8 @@ public static class Shell
     /// solo y el mismo servicio lanzado en lote podrían arrancar distinto, que es el peor tipo de bug
     /// (el que sólo aparece por la puerta que no probaste).
     /// </summary>
-    private static void AddTabArgs(ProcessStartInfo psi, string workingDir, string? command)
+    private static void AddTabArgs(ProcessStartInfo psi, string workingDir, string? command,
+                                   bool closeOnExit = false)
     {
         psi.ArgumentList.Add("-d");
         psi.ArgumentList.Add(workingDir);
@@ -225,7 +237,15 @@ public static class Shell
         // LANZABLE (alias, no el path del paquete) + -EncodedCommand (base64 UTF-16LE): el base64 es
         // opaco al parser de comillas/`;` de wt.exe que rompía los comandos anidados.
         psi.ArgumentList.Add(PreferredExe);
-        psi.ArgumentList.Add("-NoExit");
+
+        // -NoExit se OMITE cuando el servicio pidió "cerrar la terminal al terminar" (comandos
+        // LANZADORES tipo "code ." cuyo único trabajo es abrir otra app — sin -NoExit, pwsh sale solo
+        // al terminar y la pestaña queda libre de arrastrar una consola vacía para siempre). Windows
+        // Terminal sólo cierra la pestaña sola si el exit code fue 0 (su default `closeOnExit:
+        // graceful`): un lanzador que FALLA deja la pestaña abierta mostrando el error, a propósito —
+        // no queremos tragarnos un fallo en silencio.
+        if (!closeOnExit) psi.ArgumentList.Add("-NoExit");
+
         psi.ArgumentList.Add("-EncodedCommand");
         psi.ArgumentList.Add(Convert.ToBase64String(Encoding.Unicode.GetBytes(command)));
     }
@@ -279,13 +299,16 @@ public static class Shell
     /// no-admin. Es un mal menor consciente: este camino sólo corre en máquinas SIN Windows Terminal.
     /// En esa máquina el host es conhost, que abre ventana nueva en el escritorio actual.
     /// </summary>
-    private static void LaunchDirect(string workingDir, string? command)
+    private static void LaunchDirect(string workingDir, string? command, bool closeOnExit = false)
     {
+        // Mismo criterio que AddTabArgs: sin -NoExit, pwsh sale solo al terminar el comando (ver el
+        // comentario de ahí para el porqué). Sin comando no hay nada que "terminar" → siempre -NoExit.
+        string noExit = command is null || !closeOnExit ? "-NoExit " : "";
         UnelevatedLauncher.Start(new ProcessStartInfo(PreferredExe)
         {
             UseShellExecute = true,
             WorkingDirectory = workingDir,
-            Arguments = command is null ? "-NoExit" : $"-NoExit -Command \"{command}\"",
+            Arguments = command is null ? "-NoExit" : $"{noExit}-Command \"{command}\"",
         });
     }
 }

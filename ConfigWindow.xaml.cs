@@ -2404,7 +2404,7 @@ public partial class ConfigWindow : Window
 
         _projects.GetServicePoolFor(_cmdScope)
                  .Add(entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.Url,
-                      entry.AutoStart);
+                      entry.AutoStart, entry.CloseOnExit);
         RefreshCmdScopes(_cmdScope);
     }
 
@@ -2513,7 +2513,8 @@ public partial class ConfigWindow : Window
     /// directorio de lo que tenés copiado es exactamente el caso que la revalidación debe cazar.
     /// </summary>
     private static string CmdFingerprint(ServiceEntry e) => ScopeClipboard.Fingerprint(
-        e.Title, e.Command, e.WorkDir, e.Port.ToString(), e.Url, e.AutoStart?.ToString() ?? "");
+        e.Title, e.Command, e.WorkDir, e.Port.ToString(), e.Url, e.AutoStart?.ToString() ?? "",
+        e.CloseOnExit.ToString());
 
     private static List<string> CmdFingerprints(IReadOnlyList<ServiceEntry> entries) =>
         entries.Select(CmdFingerprint).ToList();

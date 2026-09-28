@@ -426,6 +426,8 @@
   "Services.AutoStartAutoOn": "⏩ Automatic: since it declares a port it counts as a server and WILL start. Check or uncheck to decide yourself.",
   "Services.AutoStartAutoOff": "⏸ Automatic: with no port it counts as a one-off task and won't start. Check it if it's a worker (queue:work, watcher) that does need to come up.",
   "Services.AutoStartAutoUrl": "⏩ Automatic: this is a URL-only entry, so it opens with \"launch all\". Uncheck it if you'd rather open it by hand.",
+  "Services.FldCloseOnExit": "Close terminal when done",
+  "Services.CloseOnExitHint": "For commands that only launch another app.",
   "Services.NeedsPort": "This entry has neither a URL nor a port, so there's nothing to visit. Edit it and set the URL to open, or the port it listens on.",
   "Services.InvalidPort": "Invalid port. Leave it empty, or use a number between 1 and 65535.",
   "Services.PortTakenInline": "⛔ Port {0} is already used by \"{1}\" ({2}).",
