@@ -336,11 +336,11 @@ public sealed class ProjectStore
             list = new List<PathEntry>();
             _data.Paths[project] = list;
         }
-        return new PathPool(list, Save, PrettyScope(project));
+        return new PathPool(list, Save, project, PrettyScope(project));
     }
 
     /// <summary>Pool GLOBAL compartida — la usan los desks sin espacio (MAIN/CONSOLES/MISCS/DESK+ vacío).</summary>
-    public PathPool GetSharedPool() => new(_data.SharedPaths, Save, "Global");
+    public PathPool GetSharedPool() => new(_data.SharedPaths, Save, GlobalScope, "Global");
 
     /// <summary>
     /// TODAS las pools de espacio del catálogo (una por key de <c>_data.Paths</c>), para el toggle
@@ -352,7 +352,7 @@ public sealed class ProjectStore
     {
         var list = new List<PathPool>();
         foreach (var kv in _data.Paths)
-            list.Add(new PathPool(kv.Value, Save, PrettyScope(kv.Key)));
+            list.Add(new PathPool(kv.Value, Save, kv.Key, PrettyScope(kv.Key)));
         return list;
     }
 

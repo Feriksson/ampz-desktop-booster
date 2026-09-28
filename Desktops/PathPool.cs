@@ -21,10 +21,19 @@ public sealed class PathPool
     /// <summary>Etiqueta para el header del diálogo: el nombre del espacio o "Global".</summary>
     public string Label { get; }
 
-    public PathPool(List<PathEntry> entries, System.Action save, string label)
+    /// <summary>
+    /// Key CRUDA del scope ("" = global, "Espacio", o "Espacio/Contexto" — ver
+    /// <see cref="ProjectStore.ScopeKey"/>). A diferencia de <see cref="Label"/> (ya "pretty", con
+    /// " / " y potencialmente re-casing), esta es la que hay que partir para saber espacio/contexto:
+    /// partir el Label sería una segunda clasificación paralela a la de <see cref="ProjectStore.ScopeKey"/>.
+    /// </summary>
+    public string Key { get; }
+
+    public PathPool(List<PathEntry> entries, System.Action save, string key, string label)
     {
         _entries = entries;
         _save = save;
+        Key = key;
         Label = label;
     }
 

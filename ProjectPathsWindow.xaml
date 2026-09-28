@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
         Title="{loc:Translate Paths.WindowTitle}"
-        Width="1080" Height="860"
+        Width="1300" Height="860"
         WindowStyle="None" ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="False" Topmost="True"
@@ -22,8 +22,16 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ListViewItem">
                         <Border x:Name="Bd" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
-                            <GridViewRowPresenter Content="{TemplateBinding Content}"
-                                                  Columns="{TemplateBinding GridView.ColumnCollection}" />
+                            <Grid>
+                                <GridViewRowPresenter x:Name="Presenter" Content="{TemplateBinding Content}"
+                                                      Columns="{TemplateBinding GridView.ColumnCollection}" />
+                                <!-- Fila-divisor ("Paths.SepAutoWiden", la ÚNICA que queda): con columnas
+                                     ahora el texto quedaría metido bajo la columna Título, a mitad de fila.
+                                     Se pinta ella sola, a ancho completo, en vez del GridViewRowPresenter
+                                     (que un GridView no puede "colspanear" fila por fila). -->
+                                <TextBlock x:Name="SepText" Text="{Binding Title}" VerticalAlignment="Center"
+                                          Visibility="Collapsed" />
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsSelected" Value="True">
@@ -37,11 +45,14 @@
                                 </MultiTrigger.Conditions>
                                 <Setter TargetName="Bd" Property="Background" Value="#262626" />
                             </MultiTrigger>
-                            <!-- Separador "Globales": línea sutil arriba + aire, para que lea como divisor. -->
+                            <!-- Separador (divisor "otros espacios"): línea sutil arriba + aire, y el
+                                 texto a ancho completo (ver SepText arriba) en vez de las columnas. -->
                             <DataTrigger Binding="{Binding IsSeparator}" Value="True">
                                 <Setter TargetName="Bd" Property="BorderBrush" Value="#383838" />
                                 <Setter TargetName="Bd" Property="BorderThickness" Value="0,1,0,0" />
                                 <Setter TargetName="Bd" Property="Margin" Value="0,7,0,2" />
+                                <Setter TargetName="Presenter" Property="Visibility" Value="Collapsed" />
+                                <Setter TargetName="SepText" Property="Visibility" Value="Visible" />
                             </DataTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -193,10 +204,39 @@
                           Foreground="#E6E6EA" FontSize="13">
                     <ListView.View>
                         <GridView>
-                            <GridViewColumn Header="{loc:Translate Paths.ColTitle}" Width="250"
+                            <!-- Ícono de tipo (📁/🌐): reemplaza los viejos rótulos "Carpetas/Paths" y
+                                 "URLs" — la fila YA dice de qué tipo es, sin gastar una línea de sección. -->
+                            <GridViewColumn Header="" Width="34">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding TypeIcon}" HorizontalAlignment="Center" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <!-- Espacio dueño de la fila: "GLOBAL" o el nombre del espacio. Reemplaza
+                                 los separadores por sección que había antes (Globales, cada espacio). -->
+                            <GridViewColumn Header="{loc:Translate Paths.ColSpace}" Width="120">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Project}" TextTrimming="CharacterEllipsis"
+                                                  ToolTip="{Binding Project}" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="{loc:Translate Paths.ColTitle}" Width="220"
                                             DisplayMemberBinding="{Binding Display}" />
-                            <GridViewColumn Header="{loc:Translate Paths.ColPath}" Width="660"
+                            <GridViewColumn Header="{loc:Translate Paths.ColPath}" Width="636"
                                             DisplayMemberBinding="{Binding Path}" />
+                            <!-- Contexto: nombre + color del contexto (mismo criterio que la barra y el
+                                 DeskPicker). Vacío cuando la fila es del espacio pelado o global. -->
+                            <GridViewColumn Header="{loc:Translate Paths.ColContext}" Width="120">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Module}" Foreground="{Binding ModuleBrush}"
+                                                  TextTrimming="CharacterEllipsis" ToolTip="{Binding Module}" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
                         </GridView>
                     </ListView.View>
                 </ListView>
