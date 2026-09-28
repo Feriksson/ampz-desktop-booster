@@ -103,6 +103,13 @@
             <TextBlock x:Name="AutoStartHint" Foreground="#6E6E78" FontSize="10"
                        TextWrapping="Wrap" Margin="0,0,0,6" />
 
+            <!-- Sólo tiene sentido si hay un COMANDO que corre en una terminal (una entrada sin
+                 comando no abre pestaña ninguna) — se oculta/muestra en código atado a CommandBox. -->
+            <CheckBox x:Name="CloseOnExitBox" Foreground="#E6E6EA" FontSize="12"
+                      Content="{loc:Translate Services.FldCloseOnExit}" Margin="0,2,0,4" />
+            <TextBlock x:Name="CloseOnExitHint" Text="{loc:Translate Services.CloseOnExitHint}"
+                       Foreground="#6E6E78" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,6" />
+
             <TextBlock Text="{loc:Translate Services.DlgHint}" TextWrapping="Wrap"
                        Foreground="#6E6E78" FontSize="10" Margin="0,2,0,0" />
 

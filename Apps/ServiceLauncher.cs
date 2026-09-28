@@ -42,7 +42,7 @@ public static class ServiceLauncher
         var result = Resolve(service, out var job);
         if (result != LaunchResult.Ok) return result;
 
-        Shell.RunInDir(job.WorkingDir, job.Command);
+        Shell.RunInDir(job.WorkingDir, job.Command, job.CloseOnExit);
         return LaunchResult.Ok;
     }
 
@@ -106,7 +106,7 @@ public static class ServiceLauncher
         if (token == TokenResult.NoNetwork) return LaunchResult.NoNetwork;
         if (token == TokenResult.NoPort) return LaunchResult.NoPortToken;
 
-        job = new ShellJob(dir, expanded);
+        job = new ShellJob(dir, expanded, service.CloseOnExit);
         return LaunchResult.Ok;
     }
 

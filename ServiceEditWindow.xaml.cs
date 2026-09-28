@@ -56,6 +56,7 @@ public partial class ServiceEditWindow : Window
         PortBox.Text = initial.Port > 0 ? initial.Port.ToString() : "";
         UrlBox.Text = initial.Url;
         AutoStartBox.IsChecked = initial.AutoStart; // null = indeterminado = "seguí el default"
+        CloseOnExitBox.IsChecked = initial.CloseOnExit;
 
         // El hint tiene que decir qué haría el default HOY, y el default depende del puerto → se
         // recalcula mientras tipeás. Si no, el usuario lee "arranca solo" con el checkbox en gris
@@ -69,6 +70,11 @@ public partial class ServiceEditWindow : Window
         AutoStartBox.Unchecked += (_, _) => UpdateAutoStartHint();
         AutoStartBox.Indeterminate += (_, _) => UpdateAutoStartHint();
         UpdateAutoStartHint();
+
+        // Sólo aparece si hay COMANDO: es lo único que abre una pestaña de terminal para cerrar. Sin
+        // esto, una entrada de sólo puerto o sólo URL mostraría un checkbox que no controla nada.
+        CommandBox.TextChanged += (_, _) => UpdateCloseOnExitVisibility();
+        UpdateCloseOnExitVisibility();
 
         // Preview en vivo del comando ya expandido. Es el que convierte a los tokens de "confiá en mí"
         // a algo VERIFICABLE antes de guardar: ves con qué IP y con qué puerto va a salir de verdad,
@@ -107,6 +113,15 @@ public partial class ServiceEditWindow : Window
             _ when urlOnly => Loc.T("Services.AutoStartAutoUrl"),
             _     => Loc.T(hasPort ? "Services.AutoStartAutoOn" : "Services.AutoStartAutoOff"),
         };
+    }
+
+    /// <summary>Oculta el checkbox de "cerrar la terminal" cuando no hay comando que lanzar.</summary>
+    private void UpdateCloseOnExitVisibility()
+    {
+        bool hasCommand = CommandBox.Text.Trim() != "";
+        var visibility = hasCommand ? Visibility.Visible : Visibility.Collapsed;
+        CloseOnExitBox.Visibility = visibility;
+        CloseOnExitHint.Visibility = visibility;
     }
 
     /// <summary>
@@ -282,6 +297,10 @@ public partial class ServiceEditWindow : Window
             Port = port,
             Url = url,
             AutoStart = AutoStartBox.IsChecked, // null si quedó indeterminado → default por puerto
+            // Sin comando el checkbox está oculto (y por ende intrascendente) — se guarda igual tal
+            // cual quedó, sin forzarlo a false, para no perder la preferencia si el usuario vuelve a
+            // cargar un comando más tarde.
+            CloseOnExit = CloseOnExitBox.IsChecked == true,
         };
         DialogResult = true;
     }

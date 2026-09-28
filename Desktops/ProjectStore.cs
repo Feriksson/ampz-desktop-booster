@@ -501,6 +501,7 @@ public sealed class ProjectStore
         e.Port = values.Port;
         e.Url = values.Url.Trim();
         e.AutoStart = values.AutoStart;
+        e.CloseOnExit = values.CloseOnExit;
         Save();
     }
 
@@ -580,6 +581,7 @@ public sealed class ProjectStore
                 Port = port,
                 Url = e.Url,
                 AutoStart = e.AutoStart,
+                CloseOnExit = e.CloseOnExit,
             });
         }
 
@@ -1193,6 +1195,7 @@ public sealed class ProjectStore
                 Port = port,
                 Url = e.Url,
                 AutoStart = e.AutoStart,
+                CloseOnExit = e.CloseOnExit,
             });
         }
     }
