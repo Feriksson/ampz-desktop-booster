@@ -81,7 +81,8 @@ public partial class OverlayWindow : Window
         // barra) y el contexto va en su chip de color. NO se muestra el nombre del desk: ya ES
         // "Espacio / Contexto", repetirlo arriba sería el dato dos veces. (La vieja línea dorada del
         // espacio, que iba debajo de los dots cuando el título era "DESK +N", se retiró del XAML.)
-        TitleText.Text = spaceTitle ? project : name;
+        // El espacio en MAYÚSCULAS (pedido explícito): manda la jerarquía sobre el contexto de abajo.
+        TitleText.Text = spaceTitle ? project.ToUpperInvariant() : name;
         TitleText.Foreground = spaceTitle ? SpaceGold : Brushes.White;
 
         // Contexto: sólo tiene sentido con espacio arriba (sin espacio no hay sub-scope posible).

@@ -31,10 +31,10 @@
                  una barra vertical al costado no lee como acento sino como un "|" pegado al nombre.
                  En la barra y el DeskPicker sí la lleva, porque ahí va INLINE al lado del espacio y
                  hace de separador. Mismo dato, distinta necesidad según el contexto. -->
-            <Border x:Name="ModuleChip" HorizontalAlignment="Center" Margin="0,22,0,0"
-                    CornerRadius="8" Padding="20,8" Background="#14FFFFFF">
-                <TextBlock x:Name="ModuleText" FontFamily="Segoe UI" FontSize="24"
-                           FontWeight="SemiBold" HorizontalAlignment="Center" />
+            <Border x:Name="ModuleChip" HorizontalAlignment="Center" Margin="0,30,0,0"
+                    CornerRadius="6" Padding="14,5" Background="#14FFFFFF">
+                <TextBlock x:Name="ModuleText" FontFamily="Segoe UI" FontSize="19"
+                           FontWeight="Normal" HorizontalAlignment="Center" />
             </Border>
 
             <!-- Los dots se generan en código según la cantidad real de desktops. Van AL FINAL: en un
