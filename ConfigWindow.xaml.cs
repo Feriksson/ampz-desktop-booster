@@ -89,12 +89,13 @@ public partial class ConfigWindow : Window
         PinRunningRefreshBtn.Click += (_, _) => RefreshPinRunning();
         PinAddManualBtn.Click += (_, _) => PinManual();
 
-        // ── Pestaña Espacios y Contextos ──
+        // ── Pestaña Espacios (árbol de scopes + sub-pestañas Variables | Comandos) ──
+        // Se cablean las tres partes y RECIÉN AHÍ se pinta el árbol una sola vez: el refresco del
+        // árbol dispara el de los dos paneles de contenido, así que todo tiene que estar enganchado.
         InitScopesTab();
-
-        // ── Pestaña Variables ── (después de Espacios: se apoya en su misma lectura del catálogo)
         InitVarsTab();
         InitCmdsTab();
+        RefreshScopes();
 
         // ── Pestaña General ──
         DataPathText.Text = AppPaths.DataDir;
@@ -1207,25 +1208,65 @@ public partial class ConfigWindow : Window
         UpdateEditorVisibility();
     }
 
-    // ── Pestaña Espacios y Contextos ───────────────────────────────────────────────────────────
+    // ── Pestaña Espacios (árbol de scopes + contenido) ─────────────────────────────────────────
     //
     // La única superficie donde se puede REORGANIZAR el catálogo. El setter y el picker sólo saben
     // crear; borrar existía sin dónde verlo. Mover un contexto de espacio, promoverlo o degradar un
     // espacio no se podía hacer de ninguna forma que no fuera editar el JSON a mano.
+    //
+    // Antes esto eran TRES pestañas (Espacios, Variables, Comandos) con el MISMO árbol dibujado tres
+    // veces: trabajar sobre un scope obligaba a re-elegirlo en cada cambio de pestaña. Ahora hay UN
+    // árbol (ScopeList) que es la única fuente de la selección: maneja la jerarquía a la izquierda y
+    // alimenta a la vez las dos sub-pestañas de contenido de la derecha (_scope es de las dos).
 
-    /// <summary>Una fila de la lista: un ESPACIO (<c>Context</c> null) o un CONTEXTO suyo.</summary>
+    /// <summary>Un scope jerárquico (espacio o contexto) sobre el que operan los botones de jerarquía.</summary>
     private sealed record ScopeRow(string Space, string? Context)
     {
         public bool IsContext => Context is not null;
         public string Name => Context ?? Space;
     }
 
-    /// <summary>La fila seleccionada, o null (los separadores "(sin contextos)" no son seleccionables).</summary>
-    private ScopeRow? SelectedScope => (ScopeList.SelectedItem as ListBoxItem)?.Tag as ScopeRow;
+    /// <summary>La fila del árbol seleccionada (incluida la GLOBAL), o null.</summary>
+    private VarScope? SelectedTreeScope => (ScopeList.SelectedItem as ListBoxItem)?.Tag as VarScope;
+
+    /// <summary>
+    /// La fila seleccionada vista como ESPACIO/CONTEXTO, o null. La GLOBAL da null a propósito: no se
+    /// renombra, no se mueve ni se borra — es la raíz de la herencia, no una entrada del catálogo.
+    /// Los separadores "(sin contextos)" no son seleccionables.
+    /// </summary>
+    private ScopeRow? SelectedScope =>
+        SelectedTreeScope is { IsGlobal: false } s ? new ScopeRow(s.Space, s.Context) : null;
+
+    /// <summary>
+    /// Scope cuyo contenido muestran AMBAS sub-pestañas. "" = la GLOBAL compartida. Uno solo y no
+    /// uno por sub-pestaña: son dos vistas del MISMO scope, y cambiar de Variables a Comandos no
+    /// puede obligarte a re-elegirlo (el dolor que motivó juntar las pestañas).
+    /// </summary>
+    private string _scope = ProjectStore.GlobalScope;
+
+    /// <summary>
+    /// true mientras se repinta el árbol. Vaciar y re-llenar la lista dispara SelectionChanged en el
+    /// medio (con la selección en null → "global"); sin este guard cada repintado recargaría las dos
+    /// sub-pestañas dos o tres veces, y con un scope intermedio que no es el que se quiere mostrar.
+    /// </summary>
+    private bool _scopeTreeRebuilding;
 
     private void InitScopesTab()
     {
-        ScopeList.SelectionChanged += (_, _) => UpdateScopeButtons();
+        ScopeList.SelectionChanged += (_, _) => { if (!_scopeTreeRebuilding) OnScopeChanged(); };
+
+        // Ctrl+V también con el foco en el ÁRBOL: seleccionar el destino ahí y tener que volver a la
+        // lista de la derecha para poder pegar sería pedirle al usuario que deshaga el gesto que acaba
+        // de hacer. Copiar/cortar no se enganchan acá — en el árbol no hay filas de contenido
+        // seleccionadas, hay scopes.
+        ScopeList.PreviewKeyDown += OnScopeListKeyDown;
+
+        // Drag & drop: se arrastra DESDE la lista de variables o de comandos y se suelta SOBRE una
+        // fila del árbol. Un solo par de handlers para los dos: el formato del drag dice qué es.
+        ScopeList.DragOver += OnScopeDragOver;
+        ScopeList.Drop += OnScopeDrop;
+        ScopeList.DragLeave += (_, _) => HighlightDropTarget(null);
+
         ScopeRenameBtn.Click  += (_, _) => RenameScope();
         ScopeColorBtn.Click   += (_, _) => CycleScopeColor();
         ScopePromoteBtn.Click += (_, _) => PromoteScope();
@@ -1234,105 +1275,99 @@ public partial class ConfigWindow : Window
         ScopeDuplicateBtn.Click   += (_, _) => DuplicateSpace();
         ScopeDuplicateToBtn.Click += (_, _) => DuplicateContextToTarget();
         ScopeDeleteBtn.Click  += (_, _) => DeleteScope();
-        RefreshScopes();
     }
 
     /// <summary>
-    /// Repinta la lista entera y REPONE la selección en el scope indicado. Reponerla no es cosmético:
-    /// después de mover o renombrar, perder la selección te obliga a buscar de nuevo la fila que
-    /// acabás de tocar — justo cuando querés encadenar otra operación sobre ella.
+    /// Repinta el árbol y REPONE la selección en el espacio/contexto indicado. Reponerla no es
+    /// cosmético: después de mover o renombrar, perder la selección te obliga a buscar de nuevo la
+    /// fila que acabás de tocar — justo cuando querés encadenar otra operación sobre ella. Sin
+    /// espacio indicado, se queda en el scope que estabas mirando (o cae a la global si ya no existe).
     /// </summary>
-    private void RefreshScopes(string? selectSpace = null, string? selectContext = null)
+    private void RefreshScopes(string? selectSpace = null, string? selectContext = null) =>
+        RefreshScopeTree(selectSpace is null ? null
+            : selectContext is null ? selectSpace
+            : ProjectStore.ScopeKey(selectSpace, selectContext));
+
+    /// <summary>
+    /// Repinta el árbol entero (con los conteos de variables y comandos PROPIOS de cada scope) y
+    /// después los DOS paneles de contenido. Un único refresco para todo a propósito: cuando eran tres
+    /// árboles, cada operación tenía que acordarse de repintar los otros dos — y el día que una se
+    /// olvidara, quedaba un scope fantasma seleccionado listo para recibir un drop. Los conteos no son
+    /// decorativos: son la confirmación de que el drop aterrizó (ves el número del destino subir).
+    /// </summary>
+    private void RefreshScopeTree(string? select = null)
     {
-        ScopeList.Items.Clear();
-
+        string wanted = select ?? _scope;
         var session = _projects.SessionEntries().ToList();
-        var spaces = _projects.GetHistory()
-            .OrderBy(s => s, StringComparer.CurrentCultureIgnoreCase).ToList();
+        var scopes = AllVarScopes();
 
-        foreach (var space in spaces)
+        _scopeTreeRebuilding = true;
+        try
         {
-            bool spaceInUse = session.Any(e => string.Equals(e.Project, space, StringComparison.OrdinalIgnoreCase));
-            ScopeList.Items.Add(BuildScopeRow(new ScopeRow(space, null), "", spaceInUse));
+            ScopeList.Items.Clear();
 
-            var mods = _projects.GetModules(space);
-            if (mods.Count == 0)
+            foreach (var s in scopes)
             {
-                ScopeList.Items.Add(BuildNoContextsRow());
-                continue;
+                // "en uso" = hay un desk con este scope cargado AHORA. Un espacio está en uso si
+                // cualquier desk lo tiene (con o sin contexto); un contexto, sólo si es ESE par.
+                bool inUse = !s.IsGlobal && session.Any(e =>
+                    string.Equals(e.Project, s.Space, StringComparison.OrdinalIgnoreCase) &&
+                    (!s.IsContext || string.Equals(e.Module, s.Context, StringComparison.OrdinalIgnoreCase)));
+
+                ScopeList.Items.Add(BuildVarScopeItem(s,
+                    _projects.PeekVariables(s.Key).Count, _projects.PeekServices(s.Key).Count, inUse));
+
+                if (!s.IsGlobal && !s.IsContext && _projects.GetModules(s.Space).Count == 0)
+                    ScopeList.Items.Add(BuildNoContextsRow());
             }
 
-            foreach (var m in mods.OrderBy(m => m.Name, StringComparer.CurrentCultureIgnoreCase))
-            {
-                bool inUse = session.Any(e =>
-                    string.Equals(e.Project, space, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(e.Module, m.Name, StringComparison.OrdinalIgnoreCase));
-                ScopeList.Items.Add(BuildScopeRow(new ScopeRow(space, m.Name), m.Color, inUse));
-            }
+            // Si el scope que estaba elegido ya no existe (se borró o renombró), caemos a la global
+            // — que siempre existe — en vez de quedar apuntando a un scope fantasma.
+            if (!scopes.Any(s => string.Equals(s.Key, wanted, StringComparison.OrdinalIgnoreCase)))
+                wanted = ProjectStore.GlobalScope;
+
+            ScopeList.SelectedItem = ScopeList.Items.OfType<ListBoxItem>().FirstOrDefault(i =>
+                i.Tag is VarScope s && string.Equals(s.Key, wanted, StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            _scopeTreeRebuilding = false;
         }
 
-        ScopeEmptyHint.Visibility = spaces.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ScopeEmptyHint.Visibility = _projects.GetHistory().Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         RefreshScopeTargets();
-
-        if (selectSpace is not null)
-        {
-            foreach (var item in ScopeList.Items.OfType<ListBoxItem>())
-            {
-                if (item.Tag is ScopeRow r
-                    && string.Equals(r.Space, selectSpace, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(r.Context ?? "", selectContext ?? "", StringComparison.OrdinalIgnoreCase))
-                {
-                    ScopeList.SelectedItem = item;
-                    break;
-                }
-            }
-        }
-
-        UpdateScopeButtons();
-
-        // Las pestañas Variables y Comandos leen el MISMO catálogo: renombrar, mover o borrar un
-        // scope acá cambia su panel izquierdo. Sin esto, quedarían mostrando espacios que ya no
-        // existen hasta reabrir la ventana — y peor, con un scope fantasma seleccionado listo para
-        // recibir un drop.
-        RefreshVarScopes();
-        RefreshCmdScopes();
+        OnScopeChanged();
     }
 
-    /// <summary>Fila de espacio o de contexto. El contexto va indentado y con su chip de color.</summary>
-    private ListBoxItem BuildScopeRow(ScopeRow row, string color, bool inUse)
+    /// <summary>
+    /// Cambió el scope elegido en el árbol: se recalculan los botones de jerarquía y se recargan las
+    /// DOS sub-pestañas (contenido + combo de destino), esté visible la que esté. Recargar la oculta
+    /// también es a propósito: cambiar de sub-pestaña tiene que mostrar el scope correcto al instante.
+    /// </summary>
+    private void OnScopeChanged()
     {
-        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        _scope = SelectedTreeScope?.Key ?? ProjectStore.GlobalScope;
+        UpdateScopeButtons();
+        RefreshVarTargets();
+        RefreshVars();
+        RefreshCmdTargets();
+        RefreshCmds();
+    }
 
-        if (row.IsContext)
-            panel.Children.Add(new Border
-            {
-                Width = 10,
-                Height = 10,
-                CornerRadius = new CornerRadius(3),
-                Margin = new Thickness(22, 0, 10, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Background = new System.Windows.Media.SolidColorBrush(ModulePalette.Parse(color)),
-            });
+    /// <summary>¿La sub-pestaña visible es la de Comandos? Decide a qué portapapeles va el Ctrl+V del árbol.</summary>
+    private bool CmdsSubTabActive => ReferenceEquals(ScopeContentTabs.SelectedItem, CmdsSubTab);
 
-        panel.Children.Add(new TextBlock
-        {
-            Text = row.Name,
-            VerticalAlignment = VerticalAlignment.Center,
-            FontWeight = row.IsContext ? FontWeights.Normal : FontWeights.SemiBold,
-        });
-
-        // "en uso" = hay un desk con este scope cargado AHORA. Avisa antes de borrar algo que estás usando.
-        if (inUse)
-            panel.Children.Add(new TextBlock
-            {
-                Text = "· " + Loc.T("Config.ScopesInUse"),
-                Margin = new Thickness(8, 0, 0, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                FontSize = 10,
-                Foreground = (System.Windows.Media.Brush)FindResource("Accent"),
-            });
-
-        return new ListBoxItem { Content = panel, Tag = row };
+    /// <summary>
+    /// En el árbol sólo se PEGA: es un destino, no una fuente de selección. Pega lo de la sub-pestaña
+    /// VISIBLE — cada una tiene su portapapeles (ver <see cref="PasteCmds"/>) y la que estás mirando
+    /// es la única cuyo resultado vas a ver aparecer.
+    /// </summary>
+    private void OnScopeListKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.V || !Ctrl) return;
+        if (CmdsSubTabActive) PasteCmds();
+        else PasteVars();
+        e.Handled = true;
     }
 
     /// <summary>
@@ -1344,7 +1379,7 @@ public partial class ConfigWindow : Window
         Content = new TextBlock
         {
             Text = Loc.T("Config.ScopesNoContexts"),
-            Margin = new Thickness(42, 0, 0, 0),
+            Margin = new Thickness(36, 0, 0, 0), // alineado con el texto de los contextos (chip 18+10+8)
             FontSize = 11,
             FontStyle = FontStyles.Italic,
             Foreground = (System.Windows.Media.Brush)FindResource("FgMuted"),
@@ -1585,20 +1620,26 @@ public partial class ConfigWindow : Window
         _onApplied();
     }
 
-    // ── Pestaña Variables ──────────────────────────────────────────────────────────────────────
+    // ── Sub-pestaña Variables ──────────────────────────────────────────────────────────────────
     //
-    // Hermana de la de Espacios y con el mismo motivo de existir: aquella arregla la JERARQUÍA, ésta
-    // arregla el CONTENIDO. Hasta acá una variable cargada en el scope equivocado —el repo del cliente
-    // metido en un contexto en vez de en su espacio, o al revés— sólo se podía "mover" borrándola y
-    // re-tipeándola del otro lado, con el predeterminado perdido en el camino.
+    // El árbol arregla la JERARQUÍA, esto arregla el CONTENIDO. Hasta acá una variable cargada en el
+    // scope equivocado —el repo del cliente metido en un contexto en vez de en su espacio, o al
+    // revés— sólo se podía "mover" borrándola y re-tipeándola del otro lado, con el predeterminado
+    // perdido en el camino.
     //
-    // Por qué DOS paneles y no una lista sola: mover es una operación con ORIGEN y DESTINO, y los dos
-    // tienen que estar a la vista o el gesto es a ciegas. El panel izquierdo es además el blanco de
-    // los drops — el mapa de scopes ES la superficie de destino, no un combo escondido.
+    // Por qué árbol + contenido lado a lado y no una lista sola: mover es una operación con ORIGEN y
+    // DESTINO, y los dos tienen que estar a la vista o el gesto es a ciegas. El árbol es además el
+    // blanco de los drops — el mapa de scopes ES la superficie de destino, no un combo escondido.
 
-    /// <summary>Un scope en el panel izquierdo: la GLOBAL, un espacio o un contexto suyo.</summary>
-    /// <remarks><see cref="Key"/> es la key REAL del catálogo ("" global, "Espacio", "Espacio/Contexto").</remarks>
-    private sealed record VarScope(string Key, string Label, string Color, bool IsContext, bool IsGlobal)
+    /// <summary>Una fila del árbol de scopes: la GLOBAL, un espacio o un contexto suyo.</summary>
+    /// <remarks>
+    /// <see cref="Key"/> es la key REAL del catálogo ("" global, "Espacio", "Espacio/Contexto").
+    /// <see cref="Space"/>/<see cref="Context"/> van aparte (y no se re-parten de la key) porque los
+    /// botones de jerarquía operan sobre el par, y partir un string para reconstruir lo que ya se
+    /// tenía a mano sería una segunda fuente de verdad.
+    /// </remarks>
+    private sealed record VarScope(string Key, string Label, string Color, bool IsContext, bool IsGlobal,
+                                   string Space = "", string? Context = null)
     {
         /// <summary>Lo que muestra el ComboBox de destino (que renderiza por ToString).</summary>
         public override string ToString() => Label;
@@ -1610,9 +1651,6 @@ public partial class ConfigWindow : Window
     /// <summary>Formato privado del portapapeles de drag. No se comparte con nadie: es intra-ventana.</summary>
     private const string VarDragFormat = "AmpzDesktopBooster.VariableDrag";
 
-    /// <summary>Scope cuyo contenido muestra el panel derecho. "" = la pool GLOBAL compartida.</summary>
-    private string _varScope = ProjectStore.GlobalScope;
-
     private System.Windows.Point _varDragOrigin;
 
     /// <summary>
@@ -1622,23 +1660,17 @@ public partial class ConfigWindow : Window
     /// </summary>
     private List<int>? _varDragSnapshot;
 
-    /// <summary>Fila del panel izquierdo resaltada como destino del drop en curso (o null).</summary>
+    /// <summary>Fila del árbol resaltada como destino del drop en curso (o null).</summary>
     private ListBoxItem? _varDropTarget;
 
-    /// <summary>Lo que dejó cargado el último Ctrl+C / Ctrl+X de esta pestaña (null = vacío).</summary>
+    /// <summary>Lo que dejó cargado el último Ctrl+C / Ctrl+X de esta sub-pestaña (null = vacío).</summary>
     private ScopeClipboard? _varClip;
 
     private void InitVarsTab()
     {
-        VarScopeList.SelectionChanged += (_, _) => OnVarScopeChanged();
         VarList.SelectionChanged += (_, _) => UpdateVarButtons();
         VarList.MouseDoubleClick += (_, _) => EditVariable();
         VarList.PreviewKeyDown += OnVarListKeyDown;
-        // Ctrl+V también con el foco en el MAPA de scopes: seleccionar el destino ahí y tener que
-        // volver a la lista de la derecha para poder pegar sería pedirle al usuario que deshaga el
-        // gesto que acaba de hacer. Copiar/cortar no se enganchan acá — en este panel no hay
-        // variables seleccionadas, hay scopes.
-        VarScopeList.PreviewKeyDown += OnVarScopeListKeyDown;
         VarFilterBox.TextChanged += (_, _) => RefreshVars();
 
         VarNewBtn.Click     += (_, _) => NewVariable();
@@ -1648,19 +1680,15 @@ public partial class ConfigWindow : Window
         VarMoveBtn.Click    += (_, _) => MoveVarsToComboTarget(copy: false);
         VarCopyBtn.Click    += (_, _) => MoveVarsToComboTarget(copy: true);
 
-        // Drag & drop: se arrastra DESDE la lista de variables y se suelta SOBRE una fila de scope.
+        // Drag & drop: se arrastra DESDE la lista de variables y se suelta SOBRE una fila del árbol
+        // (los handlers del lado del árbol viven en InitScopesTab, compartidos con Comandos).
         VarList.PreviewMouseLeftButtonDown += OnVarDragPress;
         VarList.MouseMove += OnVarDragMove;
-        VarScopeList.DragOver += OnVarScopeDragOver;
-        VarScopeList.Drop += OnVarScopeDrop;
-        VarScopeList.DragLeave += (_, _) => HighlightDropTarget(null);
-
-        RefreshVarScopes();
     }
 
     /// <summary>
     /// Todos los scopes en orden de lectura: la global primero (es la raíz de la herencia), después
-    /// cada espacio con sus contextos debajo. Mismo criterio de orden que la pestaña de Espacios.
+    /// cada espacio con sus contextos debajo. Es el orden del árbol y de los combos de destino.
     /// </summary>
     private List<VarScope> AllVarScopes()
     {
@@ -1671,44 +1699,21 @@ public partial class ConfigWindow : Window
 
         foreach (var space in _projects.GetHistory().OrderBy(s => s, StringComparer.CurrentCultureIgnoreCase))
         {
-            list.Add(new VarScope(space, space, "", false, false));
+            list.Add(new VarScope(space, space, "", false, false, space));
             foreach (var m in _projects.GetModules(space).OrderBy(m => m.Name, StringComparer.CurrentCultureIgnoreCase))
-                list.Add(new VarScope(ProjectStore.ScopeKey(space, m.Name), m.Name, m.Color, true, false));
+                list.Add(new VarScope(ProjectStore.ScopeKey(space, m.Name), m.Name, m.Color, true, false,
+                                      space, m.Name));
         }
         return list;
     }
 
     /// <summary>
-    /// Repinta el panel de scopes (con el conteo de variables PROPIAS de cada uno) y repone la
-    /// selección. El conteo no es decorativo: es la confirmación de que el drop aterrizó — ves el
-    /// número del destino subir sin tener que ir a mirar.
+    /// Fila del árbol. El contexto va indentado y con su chip de color; la global en itálica.
+    /// Lleva los DOS conteos (🔗 variables · ⏩ comandos, los mismos íconos que tenían las viejas
+    /// pestañas) porque el árbol es destino de drops de las dos sub-pestañas: el número que sube
+    /// tiene que ser el de lo que acabás de soltar, sea lo que sea.
     /// </summary>
-    private void RefreshVarScopes(string? select = null)
-    {
-        // Se llama también desde la pestaña de Espacios, que corre ANTES de que esta pestaña se
-        // inicialice (InitScopesTab → RefreshScopes). En esa primera pasada todavía no hay handlers
-        // enganchados, por eso el refresco del panel derecho se dispara explícito al final y no
-        // confiando en el SelectionChanged.
-        string wanted = select ?? _varScope;
-        VarScopeList.Items.Clear();
-
-        var scopes = AllVarScopes();
-        foreach (var s in scopes)
-            VarScopeList.Items.Add(BuildVarScopeItem(s, _projects.PeekVariables(s.Key).Count));
-
-        // Si el scope que estaba elegido ya no existe (lo borraron desde la otra pestaña), caemos a
-        // la global — que siempre existe — en vez de quedar apuntando a un scope fantasma.
-        if (!scopes.Any(s => string.Equals(s.Key, wanted, StringComparison.OrdinalIgnoreCase)))
-            wanted = ProjectStore.GlobalScope;
-
-        VarScopeList.SelectedItem = VarScopeList.Items.OfType<ListBoxItem>().FirstOrDefault(i =>
-            i.Tag is VarScope s && string.Equals(s.Key, wanted, StringComparison.OrdinalIgnoreCase));
-
-        OnVarScopeChanged();
-    }
-
-    /// <summary>Fila de scope. El contexto va indentado y con su chip de color, igual que en Espacios.</summary>
-    private ListBoxItem BuildVarScopeItem(VarScope scope, int count)
+    private ListBoxItem BuildVarScopeItem(VarScope scope, int varCount, int cmdCount, bool inUse)
     {
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
 
@@ -1733,12 +1738,24 @@ public partial class ConfigWindow : Window
 
         panel.Children.Add(new TextBlock
         {
-            Text = count.ToString(),
+            Text = $"🔗 {varCount}  ⏩ {cmdCount}",
             Margin = new Thickness(8, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
             FontSize = 10,
             Foreground = (System.Windows.Media.Brush)FindResource("FgMuted"),
+            ToolTip = string.Format(Loc.T("Config.ScopesCountsTip"), varCount, cmdCount),
         });
+
+        // "en uso" = hay un desk con este scope cargado AHORA. Avisa antes de borrar algo que estás usando.
+        if (inUse)
+            panel.Children.Add(new TextBlock
+            {
+                Text = "· " + Loc.T("Config.ScopesInUse"),
+                Margin = new Thickness(8, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                FontSize = 10,
+                Foreground = (System.Windows.Media.Brush)FindResource("Accent"),
+            });
 
         // El contenido va envuelto en un Border PROPIO porque el template del ListBoxItem pinta su
         // fondo en duro (Transparent) e ignora el Background del item: sin esta capa no hay dónde
@@ -1756,16 +1773,6 @@ public partial class ConfigWindow : Window
         };
     }
 
-    private VarScope? SelectedVarScope => (VarScopeList.SelectedItem as ListBoxItem)?.Tag as VarScope;
-
-    /// <summary>Cambió el scope elegido: se recarga el contenido y se recalcula el combo de destino.</summary>
-    private void OnVarScopeChanged()
-    {
-        _varScope = SelectedVarScope?.Key ?? ProjectStore.GlobalScope;
-        RefreshVarTargets();
-        RefreshVars();
-    }
-
     /// <summary>
     /// Contenido del scope elegido. Muestra SÓLO lo propio, no lo heredado: ésta es la superficie
     /// donde se MUTA, y una fila heredada que no se puede tocar (o que al tocarla cambiaría el scope
@@ -1774,8 +1781,8 @@ public partial class ConfigWindow : Window
     private void RefreshVars()
     {
         string filter = VarFilterBox.Text.Trim();
-        var entries = _projects.PeekVariables(_varScope);
-        string? def = _projects.GetScopeDefault(_varScope);
+        var entries = _projects.PeekVariables(_scope);
+        string? def = _projects.GetScopeDefault(_scope);
 
         VarList.Items.Clear();
 
@@ -1797,7 +1804,7 @@ public partial class ConfigWindow : Window
             VarList.Items.Add(BuildVarItem(r));
 
         VarScopeHeader.Text = string.Format(Loc.T("Config.VarsScopeHeader"),
-            ProjectStore.PrettyScope(_varScope) is { Length: > 0 } label ? label : Loc.T("Config.VarsGlobal"),
+            ProjectStore.PrettyScope(_scope) is { Length: > 0 } label ? label : Loc.T("Config.VarsGlobal"),
             entries.Count);
 
         // El estado vacío distingue "no hay nada cargado" de "el filtro no matcheó": son dos
@@ -1843,7 +1850,7 @@ public partial class ConfigWindow : Window
 
         foreach (var s in AllVarScopes())
         {
-            if (string.Equals(s.Key, _varScope, StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.Equals(s.Key, _scope, StringComparison.OrdinalIgnoreCase)) continue;
             // El contexto se muestra con su espacio adelante: "Plataforma" solo es ambiguo en cuanto
             // dos espacios tienen un contexto con el mismo nombre — y ése es el caso NORMAL.
             VarTargetCombo.Items.Add(s.IsContext ? s with { Label = ProjectStore.PrettyScope(s.Key) } : s);
@@ -1892,14 +1899,6 @@ public partial class ConfigWindow : Window
         }
     }
 
-    /// <summary>En el panel de scopes sólo se PEGA: es un destino, no una fuente de selección.</summary>
-    private void OnVarScopeListKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key != Key.V || !Ctrl) return;
-        PasteVars();
-        e.Handled = true;
-    }
-
     private static bool Ctrl => (Keyboard.Modifiers & ModifierKeys.Control) != 0;
 
     // ── Acciones sobre variables ───────────────────────────────────────────────
@@ -1910,22 +1909,22 @@ public partial class ConfigWindow : Window
 
     private void NewVariable()
     {
-        var entry = VariableEditWindow.Show(this, Loc.T("Config.VarsDlgNew"), VarScopeLabel(_varScope));
+        var entry = VariableEditWindow.Show(this, Loc.T("Config.VarsDlgNew"), VarScopeLabel(_scope));
         if (entry is null) return;
 
-        _projects.GetPoolFor(_varScope).Add(entry.Title, entry.Path);
-        RefreshVarScopes(_varScope);
+        _projects.GetPoolFor(_scope).Add(entry.Title, entry.Path);
+        RefreshScopeTree(_scope);
     }
 
     private void EditVariable()
     {
         if (SingleSelectedVar is not { } row) return;
 
-        var entry = VariableEditWindow.Show(this, Loc.T("Config.VarsDlgEdit"), VarScopeLabel(_varScope),
+        var entry = VariableEditWindow.Show(this, Loc.T("Config.VarsDlgEdit"), VarScopeLabel(_scope),
             new PathEntry { Title = row.Title, Path = row.Path });
         if (entry is null) return;
 
-        _projects.UpdateVariable(_varScope, row.PoolIndex, entry.Title, entry.Path);
+        _projects.UpdateVariable(_scope, row.PoolIndex, entry.Title, entry.Path);
         RefreshVars();
     }
 
@@ -1941,8 +1940,8 @@ public partial class ConfigWindow : Window
         if (MessageBox.Show(this, msg, Loc.T("Config.VarsDeleteTitle"),
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
 
-        _projects.DeleteVariables(_varScope, indices);
-        RefreshVarScopes(_varScope);
+        _projects.DeleteVariables(_scope, indices);
+        RefreshScopeTree(_scope);
     }
 
     /// <summary>
@@ -1953,7 +1952,7 @@ public partial class ConfigWindow : Window
     private void ToggleVarDefault()
     {
         if (SingleSelectedVar is not { } row) return;
-        _projects.SetScopeDefault(_varScope, row.IsDefault ? null : row.Path);
+        _projects.SetScopeDefault(_scope, row.IsDefault ? null : row.Path);
         RefreshVars();
     }
 
@@ -1965,12 +1964,12 @@ public partial class ConfigWindow : Window
 
     /// <summary>Botón y drag&amp;drop: el origen es SIEMPRE el scope que estás viendo.</summary>
     private void MoveVars(string targetKey, IEnumerable<int> indices, bool copy) =>
-        MoveVarsFrom(_varScope, targetKey, indices, copy);
+        MoveVarsFrom(_scope, targetKey, indices, copy);
 
     /// <summary>
     /// Ejecuta el movimiento/copia y repinta. Un fallo SIEMPRE dice por qué (nunca silencio).
     ///
-    /// El origen va EXPLÍCITO y no se asume <see cref="_varScope"/> porque al PEGAR ya no coinciden:
+    /// El origen va EXPLÍCITO y no se asume <see cref="_scope"/> porque al PEGAR ya no coinciden:
     /// el usuario copió en un scope, navegó a otro, y el destino es el que está viendo ahora.
     /// </summary>
     private bool MoveVarsFrom(string fromScope, string targetKey, IEnumerable<int> indices, bool copy)
@@ -1986,7 +1985,7 @@ public partial class ConfigWindow : Window
         // arrastrando o con el botón está parado en el ORIGEN (el caso real es vaciar un scope mal
         // cargado moviendo varias seguidas, y saltar al destino en cada drop obligaría a volver a mano
         // cada vez); pegando está parado en el DESTINO y ve aparecer las filas donde las mandó.
-        RefreshVarScopes(_varScope);
+        RefreshScopeTree(_scope);
         return true;
     }
 
@@ -2005,7 +2004,7 @@ public partial class ConfigWindow : Window
     /// </summary>
     private void CopyVars(bool cut)
     {
-        var entries = _projects.PeekVariables(_varScope);
+        var entries = _projects.PeekVariables(_scope);
         // El filtro de rango es defensivo: las filas se construyen de esta misma pool, así que el
         // índice SIEMPRE debería existir. Pero una lista repintada a destiempo dejaría acá un
         // IndexOutOfRange que voltea la ventana, y en esta app la persistencia y la UI nunca voltean.
@@ -2014,7 +2013,7 @@ public partial class ConfigWindow : Window
 
         var fps = indices.Select(i => VarFingerprint(entries[i])).ToList();
 
-        _varClip = new ScopeClipboard(_varScope, indices, fps, cut);
+        _varClip = new ScopeClipboard(_scope, indices, fps, cut);
         UpdateVarClipHint();
     }
 
@@ -2033,7 +2032,7 @@ public partial class ConfigWindow : Window
             return;
         }
 
-        if (!MoveVarsFrom(clip.SourceScope, _varScope, clip.Indices, copy: !clip.IsCut)) return;
+        if (!MoveVarsFrom(clip.SourceScope, _scope, clip.Indices, copy: !clip.IsCut)) return;
 
         // Un CORTE consumido vacía el portapapeles: las entradas ya no están en el origen, así que sus
         // índices quedaron corridos y un segundo pegado traería OTRAS filas. Una COPIA sobrevive — el
@@ -2092,12 +2091,18 @@ public partial class ConfigWindow : Window
         HighlightDropTarget(null); // el drop pudo caer fuera: el resaltado no puede quedar colgado
     }
 
-    private void OnVarScopeDragOver(object sender, DragEventArgs e)
+    // ── Drop sobre el árbol (compartido por variables y comandos) ──────────────
+    //
+    // Un solo par de handlers y no uno por sub-pestaña: el árbol es UNO, y el formato del drag
+    // (VarDragFormat / CmdDragFormat) ya dice qué se está soltando. El origen de un drag es SIEMPRE
+    // el scope que estás viendo (_scope), porque las dos listas muestran ese scope.
+
+    private void OnScopeDragOver(object sender, DragEventArgs e)
     {
-        var item = ItemUnder(VarScopeList, ItemHitTest(VarScopeList, e));
-        bool ok = e.Data.GetDataPresent(VarDragFormat)
+        var item = ItemUnder(ScopeList, ItemHitTest(ScopeList, e));
+        bool ok = (e.Data.GetDataPresent(VarDragFormat) || e.Data.GetDataPresent(CmdDragFormat))
                   && item?.Tag is VarScope s
-                  && !string.Equals(s.Key, _varScope, StringComparison.OrdinalIgnoreCase);
+                  && !string.Equals(s.Key, _scope, StringComparison.OrdinalIgnoreCase);
 
         // Ctrl = COPIAR, como en todo Windows. Sin modificador, MOVER.
         e.Effects = !ok ? DragDropEffects.None
@@ -2108,20 +2113,25 @@ public partial class ConfigWindow : Window
         e.Handled = true;
     }
 
-    private void OnVarScopeDrop(object sender, DragEventArgs e)
+    private void OnScopeDrop(object sender, DragEventArgs e)
     {
         HighlightDropTarget(null);
         e.Handled = true;
 
-        if (ItemUnder(VarScopeList, ItemHitTest(VarScopeList, e))?.Tag is not VarScope target) return;
-        if (e.Data.GetData(VarDragFormat) is not string payload) return;
+        if (ItemUnder(ScopeList, ItemHitTest(ScopeList, e))?.Tag is not VarScope target) return;
+        bool copy = (e.KeyStates & DragDropKeyStates.ControlKey) != 0;
 
-        var indices = payload.Split(',', StringSplitOptions.RemoveEmptyEntries)
+        if (e.Data.GetData(VarDragFormat) is string varPayload)
+            MoveVars(target.Key, ParseDragIndices(varPayload), copy);
+        else if (e.Data.GetData(CmdDragFormat) is string cmdPayload)
+            MoveCmds(target.Key, ParseDragIndices(cmdPayload), copy);
+    }
+
+    /// <summary>El payload del drag viaja como "3,5,8" (ver OnVarDragMove por qué string).</summary>
+    private static List<int> ParseDragIndices(string payload) =>
+        payload.Split(',', StringSplitOptions.RemoveEmptyEntries)
             .Select(s => int.TryParse(s, out int i) ? i : -1)
             .Where(i => i >= 0).ToList();
-
-        MoveVars(target.Key, indices, (e.KeyStates & DragDropKeyStates.ControlKey) != 0);
-    }
 
     /// <summary>Elemento visual bajo el puntero durante un drag (el hit-test normal no aplica en drop).</summary>
     private static DependencyObject? ItemHitTest(ListBox list, DragEventArgs e) =>
@@ -2159,13 +2169,11 @@ public partial class ConfigWindow : Window
                 System.Windows.Media.Color.FromArgb(0x70, 0x4F, 0xC3, 0xF7));
     }
 
-    // ── Pestaña Comandos (servicios) ───────────────────────────────────────────────────────────
+    // ── Sub-pestaña Comandos (servicios) ───────────────────────────────────────────────────────
     //
-    // Trilliza de Espacios y Variables. Reusa a propósito TODO lo que ya existe de aquélla —
-    // AllVarScopes, BuildVarScopeItem, ItemUnder/ItemHitTest, HighlightDropTarget — y no una copia
-    // propia: si el mapa de scopes se dibujara distinto en cada pestaña, el usuario tendría que
-    // aprender dos veces la misma pantalla. Lo único propio es la fila del panel derecho, porque un
-    // servicio tiene cuatro campos y una variable dos.
+    // Gemela de Variables sobre el MISMO árbol y el MISMO _scope: reusa AllVarScopes, el drop del
+    // árbol, ItemUnder/ItemHitTest y HighlightDropTarget, no una copia propia. Lo único propio es la
+    // fila del contenido, porque un servicio tiene cuatro campos y una variable dos.
     //
     // Qué NO hay acá, y por qué: no se LANZA nada. Config es donde se define lo que hay; lanzar es
     // la ventana del atajo (Win+Numpad+), que además tiene el estado vivo 🟢/⚪ para saber qué está
@@ -2178,7 +2186,6 @@ public partial class ConfigWindow : Window
 
     private const string CmdDragFormat = "AmpzDesktopBooster.CommandDrag";
 
-    private string _cmdScope = ProjectStore.GlobalScope;
     private System.Windows.Point _cmdDragOrigin;
     private List<int>? _cmdDragSnapshot;
 
@@ -2187,11 +2194,9 @@ public partial class ConfigWindow : Window
 
     private void InitCmdsTab()
     {
-        CmdScopeList.SelectionChanged += (_, _) => OnCmdScopeChanged();
         CmdList.SelectionChanged += (_, _) => UpdateCmdButtons();
         CmdList.MouseDoubleClick += (_, _) => EditCommand();
         CmdList.PreviewKeyDown += OnCmdListKeyDown;
-        CmdScopeList.PreviewKeyDown += OnCmdScopeListKeyDown;
         CmdFilterBox.TextChanged += (_, _) => RefreshCmds();
 
         CmdNewBtn.Click    += (_, _) => NewCommand();
@@ -2204,42 +2209,6 @@ public partial class ConfigWindow : Window
 
         CmdList.PreviewMouseLeftButtonDown += OnCmdDragPress;
         CmdList.MouseMove += OnCmdDragMove;
-        CmdScopeList.DragOver += OnCmdScopeDragOver;
-        CmdScopeList.Drop += OnCmdScopeDrop;
-        CmdScopeList.DragLeave += (_, _) => HighlightDropTarget(null);
-
-        RefreshCmdScopes();
-    }
-
-    /// <summary>Repinta el panel de scopes con el conteo de comandos PROPIOS de cada uno.</summary>
-    private void RefreshCmdScopes(string? select = null)
-    {
-        // Igual que RefreshVarScopes: la pestaña de Espacios la llama ANTES de que ésta se
-        // inicialice, así que el refresco del panel derecho se dispara explícito al final en vez de
-        // confiar en el SelectionChanged (que todavía no está enganchado).
-        string wanted = select ?? _cmdScope;
-        CmdScopeList.Items.Clear();
-
-        var scopes = AllVarScopes();
-        foreach (var s in scopes)
-            CmdScopeList.Items.Add(BuildVarScopeItem(s, _projects.PeekServices(s.Key).Count));
-
-        if (!scopes.Any(s => string.Equals(s.Key, wanted, StringComparison.OrdinalIgnoreCase)))
-            wanted = ProjectStore.GlobalScope;
-
-        CmdScopeList.SelectedItem = CmdScopeList.Items.OfType<ListBoxItem>().FirstOrDefault(i =>
-            i.Tag is VarScope s && string.Equals(s.Key, wanted, StringComparison.OrdinalIgnoreCase));
-
-        OnCmdScopeChanged();
-    }
-
-    private VarScope? SelectedCmdScope => (CmdScopeList.SelectedItem as ListBoxItem)?.Tag as VarScope;
-
-    private void OnCmdScopeChanged()
-    {
-        _cmdScope = SelectedCmdScope?.Key ?? ProjectStore.GlobalScope;
-        RefreshCmdTargets();
-        RefreshCmds();
     }
 
     /// <summary>
@@ -2250,7 +2219,7 @@ public partial class ConfigWindow : Window
     private void RefreshCmds()
     {
         string filter = CmdFilterBox.Text.Trim();
-        var entries = _projects.PeekServices(_cmdScope);
+        var entries = _projects.PeekServices(_scope);
         var duplicated = _projects.Ports.Duplicates();
 
         CmdList.Items.Clear();
@@ -2277,7 +2246,7 @@ public partial class ConfigWindow : Window
             CmdList.Items.Add(BuildCmdItem(r));
 
         CmdScopeHeader.Text = string.Format(Loc.T("Config.CmdsScopeHeader"),
-            ProjectStore.PrettyScope(_cmdScope) is { Length: > 0 } label ? label : Loc.T("Config.VarsGlobal"),
+            ProjectStore.PrettyScope(_scope) is { Length: > 0 } label ? label : Loc.T("Config.VarsGlobal"),
             entries.Count);
 
         CmdEmptyHint.Text = entries.Count == 0 ? Loc.T("Config.CmdsEmpty") : Loc.T("Config.VarsNoMatch");
@@ -2338,7 +2307,7 @@ public partial class ConfigWindow : Window
 
         foreach (var s in AllVarScopes())
         {
-            if (string.Equals(s.Key, _cmdScope, StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.Equals(s.Key, _scope, StringComparison.OrdinalIgnoreCase)) continue;
             CmdTargetCombo.Items.Add(s.IsContext ? s with { Label = ProjectStore.PrettyScope(s.Key) } : s);
         }
 
@@ -2386,26 +2355,18 @@ public partial class ConfigWindow : Window
         }
     }
 
-    /// <summary>En el panel de scopes sólo se PEGA (mismo criterio que Variables).</summary>
-    private void OnCmdScopeListKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key != Key.V || !Ctrl) return;
-        PasteCmds();
-        e.Handled = true;
-    }
-
     // ── Acciones sobre comandos ────────────────────────────────────────────────
 
     private void NewCommand()
     {
         var entry = ServiceEditWindow.Show(this, Loc.T("Services.DlgNewTitle"),
-                                           VarScopeLabel(_cmdScope), ports: _projects.Ports);
+                                           VarScopeLabel(_scope), ports: _projects.Ports);
         if (entry is null) return;
 
-        _projects.GetServicePoolFor(_cmdScope)
+        _projects.GetServicePoolFor(_scope)
                  .Add(entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.Url,
                       entry.AutoStart, entry.CloseOnExit);
-        RefreshCmdScopes(_cmdScope);
+        RefreshScopeTree(_scope);
     }
 
     private void EditCommand()
@@ -2415,15 +2376,15 @@ public partial class ConfigWindow : Window
         // Se pasa la entry VIVA de la pool (no una copia armada con los campos de la fila): el
         // registro de puertos la excluye POR REFERENCIA, así que una copia se chocaría consigo misma
         // y no te dejaría guardar sin cambiarle el puerto.
-        var live = _projects.PeekServices(_cmdScope);
+        var live = _projects.PeekServices(_scope);
         if (row.PoolIndex < 0 || row.PoolIndex >= live.Count) return;
 
         var entry = ServiceEditWindow.Show(this, Loc.T("Services.DlgEditTitle"),
-                                           VarScopeLabel(_cmdScope), live[row.PoolIndex],
+                                           VarScopeLabel(_scope), live[row.PoolIndex],
                                            _projects.Ports);
         if (entry is null) return;
 
-        _projects.UpdateService(_cmdScope, row.PoolIndex, entry);
+        _projects.UpdateService(_scope, row.PoolIndex, entry);
         RefreshCmds();
     }
 
@@ -2439,7 +2400,7 @@ public partial class ConfigWindow : Window
     {
         var indices = SelectedCmdIndices();
         if (indices.Count == 0) return;
-        MoveCmdsFrom(_cmdScope, _cmdScope, indices, copy: true);
+        MoveCmdsFrom(_scope, _scope, indices, copy: true);
     }
 
     private void DeleteCommands()
@@ -2454,8 +2415,8 @@ public partial class ConfigWindow : Window
         if (MessageBox.Show(this, msg, Loc.T("Config.VarsDeleteTitle"),
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
 
-        _projects.DeleteServices(_cmdScope, indices);
-        RefreshCmdScopes(_cmdScope);
+        _projects.DeleteServices(_scope, indices);
+        RefreshScopeTree(_scope);
     }
 
     /// <summary>
@@ -2466,7 +2427,7 @@ public partial class ConfigWindow : Window
     private void ToggleCmdAutoStart()
     {
         if (SingleSelectedCmd is not { } row) return;
-        _projects.SetServiceAutoStart(_cmdScope, row.PoolIndex, !row.AutoStarts);
+        _projects.SetServiceAutoStart(_scope, row.PoolIndex, !row.AutoStarts);
         RefreshCmds();
     }
 
@@ -2478,7 +2439,7 @@ public partial class ConfigWindow : Window
 
     /// <summary>Botón y drag&amp;drop: el origen es SIEMPRE el scope que estás viendo.</summary>
     private void MoveCmds(string targetKey, IEnumerable<int> indices, bool copy) =>
-        MoveCmdsFrom(_cmdScope, targetKey, indices, copy);
+        MoveCmdsFrom(_scope, targetKey, indices, copy);
 
     /// <summary>Origen explícito por el mismo motivo que <see cref="MoveVarsFrom"/>: al pegar difiere.</summary>
     private bool MoveCmdsFrom(string fromScope, string targetKey, IEnumerable<int> indices, bool copy)
@@ -2501,7 +2462,7 @@ public partial class ConfigWindow : Window
         // Queda seleccionado el scope que el usuario ESTÁ MIRANDO, mismo criterio que Variables:
         // arrastrando o con el botón es el ORIGEN (vaciar un scope mal cargado moviendo varios
         // seguidos); pegando es el DESTINO, y ve aparecer las filas donde las mandó.
-        RefreshCmdScopes(_cmdScope);
+        RefreshScopeTree(_scope);
         return true;
     }
 
@@ -2521,13 +2482,13 @@ public partial class ConfigWindow : Window
 
     private void CopyCmds(bool cut)
     {
-        var entries = _projects.PeekServices(_cmdScope);
+        var entries = _projects.PeekServices(_scope);
         var indices = SelectedCmdIndices().Where(i => i >= 0 && i < entries.Count).ToList(); // ver CopyVars
         if (indices.Count == 0) return;
 
         var fps = indices.Select(i => CmdFingerprint(entries[i])).ToList();
 
-        _cmdClip = new ScopeClipboard(_cmdScope, indices, fps, cut);
+        _cmdClip = new ScopeClipboard(_scope, indices, fps, cut);
         UpdateCmdClipHint();
     }
 
@@ -2536,8 +2497,8 @@ public partial class ConfigWindow : Window
     ///
     /// El portapapeles de comandos es SEPARADO del de variables a propósito: un servicio tiene cinco
     /// campos y una variable dos, así que "pegar" de una lista en la otra no tiene un significado que
-    /// se pueda definir sin inventarlo. Con dos portapapeles, Ctrl+V en cada pestaña pega lo que esa
-    /// pestaña copió, y nunca hay que explicar por qué el atajo no hizo nada.
+    /// se pueda definir sin inventarlo. Con dos portapapeles, Ctrl+V en cada sub-pestaña pega lo que esa
+    /// sub-pestaña copió (en el árbol, la VISIBLE), y nunca hay que explicar por qué el atajo no hizo nada.
     /// </summary>
     private void PasteCmds()
     {
@@ -2555,7 +2516,7 @@ public partial class ConfigWindow : Window
         // copy: !IsCut — o sea que Ctrl+C hereda la regla del puerto tal cual está escrita en
         // MoveServices: la copia NO se lleva el puerto y sale con el primero libre, avisando. Ctrl+X
         // sí lo conserva, porque la entrada se va del origen y nunca hay dos dueños del mismo número.
-        if (!MoveCmdsFrom(clip.SourceScope, _cmdScope, clip.Indices, copy: !clip.IsCut)) return;
+        if (!MoveCmdsFrom(clip.SourceScope, _scope, clip.Indices, copy: !clip.IsCut)) return;
 
         if (clip.IsCut) _cmdClip = null;
         UpdateCmdClipHint();
@@ -2601,36 +2562,6 @@ public partial class ConfigWindow : Window
         DragDrop.DoDragDrop(CmdList, new DataObject(CmdDragFormat, string.Join(",", indices)),
             DragDropEffects.Move | DragDropEffects.Copy);
         HighlightDropTarget(null);
-    }
-
-    private void OnCmdScopeDragOver(object sender, DragEventArgs e)
-    {
-        var item = ItemUnder(CmdScopeList, ItemHitTest(CmdScopeList, e));
-        bool ok = e.Data.GetDataPresent(CmdDragFormat)
-                  && item?.Tag is VarScope s
-                  && !string.Equals(s.Key, _cmdScope, StringComparison.OrdinalIgnoreCase);
-
-        e.Effects = !ok ? DragDropEffects.None
-            : (e.KeyStates & DragDropKeyStates.ControlKey) != 0 ? DragDropEffects.Copy
-            : DragDropEffects.Move;
-
-        HighlightDropTarget(ok ? item : null);
-        e.Handled = true;
-    }
-
-    private void OnCmdScopeDrop(object sender, DragEventArgs e)
-    {
-        HighlightDropTarget(null);
-        e.Handled = true;
-
-        if (ItemUnder(CmdScopeList, ItemHitTest(CmdScopeList, e))?.Tag is not VarScope target) return;
-        if (e.Data.GetData(CmdDragFormat) is not string payload) return;
-
-        var indices = payload.Split(',', StringSplitOptions.RemoveEmptyEntries)
-            .Select(s => int.TryParse(s, out int i) ? i : -1)
-            .Where(i => i >= 0).ToList();
-
-        MoveCmds(target.Key, indices, (e.KeyStates & DragDropKeyStates.ControlKey) != 0);
     }
 
     /// <summary>Materializa el sub-objeto de credenciales del Kind activo si está null.</summary>
