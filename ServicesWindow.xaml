@@ -9,8 +9,8 @@
         Background="#1E1E1E" UseLayoutRounding="True"
         FontFamily="Segoe UI">
 
-    <!-- El TAMAÑO no se declara acá: lo pone SizeToWorkArea en el constructor (90% x 80% del área de
-         trabajo), igual que Notas. El ancho fijo de 1020 que había antes dejaba el comando y el
+    <!-- El TAMAÑO no se declara acá: lo pone SizeToWorkArea en el constructor (94% x 80% del área de
+         trabajo). El ancho fijo de 1020 que había antes dejaba el comando y el
          directorio cortados con puntos suspensivos justo en la parte que más importa: los
          parámetros. Por eso WindowStartupLocation es Manual — con CenterScreen, WPF pisaría el
          Left/Top que calcula el helper. -->
@@ -255,7 +255,7 @@
                                             DisplayMemberBinding="{Binding PortText}" />
                             <!-- Contexto: nombre + color del contexto (mismo criterio que Variables, la
                                  barra y el DeskPicker). Vacío si la fila es del espacio pelado o global. -->
-                            <GridViewColumn Header="{loc:Translate Paths.ColContext}" Width="120">
+                            <GridViewColumn Header="{loc:Translate Paths.ColContext}" Width="240">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding Module}" Foreground="{Binding ModuleBrush}"

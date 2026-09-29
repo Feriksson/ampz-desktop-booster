@@ -434,8 +434,8 @@ public sealed class HotkeyRouter
 
     /// <summary>
     /// Espacio+contexto ya elegidos (paso 1 + paso 2 del launcher) → le pasa la posta a
-    /// <see cref="DeskLauncher"/>: dedupe, reparto de tecla, creación del desk, sesión, salto y
-    /// auto-arranque de servicios. Sin tecla libre no crea nada y avisa por qué.
+    /// <see cref="DeskLauncher"/>: dedupe, reparto de tecla, creación del desk, sesión y salto (ya
+    /// sin auto-arranque de servicios, ver DeskLauncher.Open). Sin tecla libre no crea nada y avisa por qué.
     /// </summary>
     private void CompleteLauncher(string project, string module)
     {

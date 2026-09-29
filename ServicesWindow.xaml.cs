@@ -212,11 +212,12 @@ public partial class ServicesWindow : Window
 
         Icon = AppIcon.TryLoadForWindow();
 
-        // 90% x 80% del área de trabajo, como Notas. Antes era 1020 fijo, y con eso el comando —que
-        // es lo que más se necesita leer de un vistazo, porque ahí están los parámetros— entraba en
-        // 230px y se cortaba SIEMPRE. Va antes de RefreshList para que el reparto de columnas se
-        // calcule sobre el ancho definitivo.
-        this.SizeToWorkArea();
+        // 94% x 80% del área de trabajo. Antes era 1020 fijo, y con eso el comando —que es lo que más
+        // se necesita leer de un vistazo, porque ahí están los parámetros— entraba en 230px y se
+        // cortaba SIEMPRE. Del 90% (como Notas) pasó a 94% cuando la columna Contexto se ensanchó:
+        // ese margen extra es lo que la paga sin achicar tanto el resto. Va antes de RefreshList
+        // para que el reparto de columnas se calcule sobre el ancho definitivo.
+        this.SizeToWorkArea(widthRatio: 0.94);
         LayoutColumns();
 
         _networkIp = LocalIp.Get();
@@ -267,36 +268,35 @@ public partial class ServicesWindow : Window
     /// se seguía cortando exactamente igual que antes.
     ///
     /// Estado y Puerto quedan FIJOS a propósito: uno es un puntito y el otro cuatro dígitos: darles
-    /// ancho proporcional sería regalarle a un círculo el espacio que necesita un comando. Espacio y
-    /// Contexto también (120 cada una, el mismo ancho que en Variables): son nombres cortos que
-    /// tipeaste vos, y se reconocen por el principio.
+    /// ancho proporcional sería regalarle a un círculo el espacio que necesita un comando. Espacio
+    /// (120) y Contexto también fijas. CONTEXTO va en 240 —el doble, igual que en Variables— por
+    /// pedido del usuario: es la columna que se lee para no errarle de contexto (la razón de ser de
+    /// los contextos con color), y en 120 se cortaba.
     ///
-    /// El DIRECTORIO se lleva la tajada más grande, y no por gusto: se midió contra el catálogo real.
-    /// Un comando típico ronda los 60 caracteres ("php artisan queue:work --queue=default --tries=3
-    /// --timeout=60"), pero un directorio es un path ABSOLUTO de Windows con repos anidados y se va a
-    /// los 86 ("C:\...\Repos clientes\Geocontrol\geoplataform -dev\worktrees\wt-desk-01"). Los paths
-    /// son estructuralmente más largos que los comandos, así que darle la mayor al comando —que es lo
-    /// que parecía obvio— dejaba al directorio cortándose igual.
+    /// El DIRECTORIO antes se llevaba la tajada más grande (un path absoluto de Windows con repos
+    /// anidados es más largo que un comando típico). Se la achicó a propósito cuando Contexto se
+    /// ensanchó: el usuario la marcó como la MENOS importante de la fila — el directorio se escribe
+    /// una vez en el editor y casi nunca se relee acá, mientras que el comando y el contexto sí.
     ///
     /// El TÍTULO es el que mejor tolera quedarse corto: lo escribiste vos y lo reconocés por el
     /// principio, mientras que en un comando y en un path lo que se necesita leer está al FINAL.
     /// </summary>
     private void LayoutColumns()
     {
-        const double fixedCols = 60 + 50 + 80 + 120 + 120;   // Estado + Auto + Puerto + Espacio + Contexto (ver los Width del XAML)
+        const double fixedCols = 60 + 50 + 80 + 120 + 240;   // Estado + Auto + Puerto + Espacio + Contexto (ver los Width del XAML)
         const double chrome = 34 + 4 + 24;  // borde+padding de la ventana, padding del panel, scrollbar
 
         double free = Width - fixedCols - chrome;
         if (free <= 0) return; // pantalla absurdamente chica: dejamos los anchos de arranque del XAML
 
-        TitleCol.Width   = free * 0.21;
-        CommandCol.Width = free * 0.29;
-        WorkDirCol.Width = free * 0.32;
+        TitleCol.Width   = free * 0.23;
+        CommandCol.Width = free * 0.31;
+        WorkDirCol.Width = free * 0.26;
         // La URL se lleva la tajada más chica de las cuatro y no por descuido: es la ÚNICA que se
         // lee de izquierda a derecha y cuya parte identificatoria está al principio (el host y el
         // path), así que es la que menos sufre quedarse corta. Un comando y un path, al revés,
         // esconden al FINAL lo que se necesita ver.
-        UrlCol.Width     = free * 0.18;
+        UrlCol.Width     = free * 0.20;
     }
 
     // ── Lista ───────────────────────────────────────────────────────────────────
@@ -329,13 +329,14 @@ public partial class ServicesWindow : Window
         AddSection(_parentPool, RowScope.Parent, filter, listening, duplicated);
         AddSection(_globalPool, RowScope.Global, filter, listening, duplicated);
 
-        // Toggle "otros espacios" (Ctrl+P/botón) o AMPLIACIÓN AUTOMÁTICA en scope GLOBAL con filtro
-        // escrito — la misma regla que Variables: parado en la global no hay un scope "tuyo" más
-        // cercano donde buscar, así que tipear ya significa "¿dónde está esto?". En un espacio NO se
-        // amplía solo: ahí el filtro es para acotar lo tuyo, y llenarlo de ajenos sería ruido.
-        // UN solo divisor para ambos modos, y se saca si abajo no matcheó nada.
-        bool autoWiden = !_showAllProjects && filter != "" && _pool.Key == ProjectStore.GlobalScope
-                         && _otherPools.Count > 0;
+        // Toggle "otros espacios" (Ctrl+P/botón) o AMPLIACIÓN AUTOMÁTICA con filtro escrito, en
+        // CUALQUIER scope — la misma regla que Variables. Antes sólo se ampliaba parado en la global
+        // ("en un espacio el filtro es para acotar lo tuyo"), y el uso real lo desmintió: desde un
+        // contexto también se busca "¿dónde estaba ese comando?", y tener que acordarse del Ctrl+P
+        // era el mismo corto circuito. No ensucia lo tuyo: los ajenos van DEBAJO del divisor, y
+        // lo propio + heredado sigue arriba, primero. UN solo divisor para ambos modos, y se saca si
+        // abajo no matcheó nada.
+        bool autoWiden = !_showAllProjects && filter != "" && _otherPools.Count > 0;
         if (_showAllProjects || autoWiden)
         {
             int headerAt = _rows.Count;

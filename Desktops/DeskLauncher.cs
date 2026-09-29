@@ -41,9 +41,10 @@ public static class DeskLauncher
     /// Sin tecla libre, NO se crea nada (se devuelve <see cref="LauncherOpenResult.NoFreeKey"/>): un
     /// desk sin atajo de navegación sería un callejón sin salida hasta el DeskPicker.
     ///
-    /// Tras crear, asienta la sesión (espacio+contexto del desk YA es éste, no el de origen), salta
-    /// ahí y dispara el auto-arranque de servicios del scope (misma herencia contexto→espacio→global
-    /// que "levantar lo básico" de la ventana de Servicios, sin abrir ninguna ventana).
+    /// Tras crear, asienta la sesión (espacio+contexto del desk YA es éste, no el de origen) y salta
+    /// ahí. NADA MÁS: antes además auto-lanzaba los servicios "levantar todo" del scope, y se RETIRÓ
+    /// a pedido del usuario — abrir un escritorio no tiene que disparar procesos por su cuenta. Para
+    /// levantar lo básico está el re-press de Win+Numpad+ (o Ctrl+Enter en Servicios).
     /// </summary>
     public static LauncherOpenResult Open(DesktopService desktops, ProjectStore projects,
         DesktopConfig catalog, DynamicDeskStore dynamic, string project, string module, out int deskIndex)
@@ -75,8 +76,6 @@ public static class DeskLauncher
         projects.AssignDeskSession(idx, project, module);
         deskIndex = idx;
         desktops.GoTo(idx);
-
-        LaunchAutoStartServices(projects, name, idx);
 
         return LauncherOpenResult.Created;
     }
@@ -117,20 +116,5 @@ public static class DeskLauncher
             if (Close(desktops, dynamic, idx))
                 closed++;
         return closed;
-    }
-
-    /// <summary>
-    /// Dispara "levantar lo básico" del scope recién creado, con la MISMA herencia de tres niveles
-    /// (contexto → espacio → global) y la misma regla de "la global no se mete si estás en un
-    /// espacio/contexto" que <c>ServicesWindow.LaunchMissing</c> — ver el comentario de esa clase.
-    /// Sin ventana: el launcher no abre Servicios, sólo dispara el efecto.
-    /// </summary>
-    private static void LaunchAutoStartServices(ProjectStore projects, string deskName, int deskIdx)
-    {
-        var pool = projects.ResolveServicePoolWithGlobal(deskName, deskIdx, out var globalPool, out var parentPool);
-        var scoped = globalPool is not null
-            ? new ServicePool?[] { pool, parentPool }
-            : new ServicePool?[] { pool, parentPool, globalPool };
-        ServiceLauncher.LaunchGroupMissing(scoped);
     }
 }

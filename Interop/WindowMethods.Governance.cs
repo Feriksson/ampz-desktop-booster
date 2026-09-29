@@ -47,6 +47,17 @@ internal static partial class WindowMethods
         return list;
     }
 
+    /// <summary>
+    /// true si el hwnd pertenece a NUESTRO proceso. Por PID y no por la lista de ventanas de WPF: un
+    /// MessageBox o un diálogo Win32 también es nuestro y NO figura en <c>Application.Windows</c>.
+    /// </summary>
+    public static bool IsOwnProcessWindow(IntPtr hWnd)
+    {
+        if (hWnd == IntPtr.Zero) return false;
+        GetWindowThreadProcessId(hWnd, out uint pid);
+        return pid == (uint)Environment.ProcessId;
+    }
+
     /// <summary>Nombre del proceso dueño del hwnd (ej. "brave.exe"), o "" si no se pudo.</summary>
     public static string ProcessNameOf(IntPtr hWnd)
     {
