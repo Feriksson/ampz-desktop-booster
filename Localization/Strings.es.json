@@ -371,7 +371,7 @@
   "Services.HeaderSuffix": "Servicios",
   "Services.ColStatus": "Estado",
   "Services.ColAuto": "Auto",
-  "Services.ColAutoTip": "⏩ = se levanta con \"Levantar todo\" y al abrir el escritorio del espacio",
+  "Services.ColAutoTip": "⏩ = se levanta con \"Levantar todo\"",
   "Services.ColTitle": "Título",
   "Services.ColCommand": "Comando",
   "Services.ColWorkDir": "Directorio",

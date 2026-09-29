@@ -371,7 +371,7 @@
   "Services.HeaderSuffix": "Services",
   "Services.ColStatus": "Status",
   "Services.ColAuto": "Auto",
-  "Services.ColAutoTip": "⏩ = starts with \"Launch all\" and when the space desktop opens",
+  "Services.ColAutoTip": "⏩ = starts with \"Launch all\"",
   "Services.ColTitle": "Title",
   "Services.ColCommand": "Command",
   "Services.ColWorkDir": "Directory",

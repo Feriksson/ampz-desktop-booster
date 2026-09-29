@@ -126,10 +126,9 @@ public static class ServiceLauncher
     /// <summary>
     /// Arranca todo lo AUTO-START y todavía no arriba de un conjunto de pools (scope propio + los
     /// heredados), en una sola tanda: procesos primero, URLs después. Es el corazón de "levantar lo
-    /// básico" — lo comparten <c>ServicesWindow.LaunchMissing</c> (Win+Numpad+, re-press) y el
-    /// launcher de escritorios DINÁMICOS (Win+NumpadEnter autolanza los servicios del scope recién
-    /// creado, sin abrir ninguna ventana de Servicios). Vive acá y no en la ventana justamente para
-    /// que el launcher no tenga que instanciarla sólo para disparar el arranque.
+    /// básico" — lo usa <c>ServicesWindow.LaunchMissing</c> (Win+Numpad+ re-press, Ctrl+Enter). El
+    /// launcher de escritorios dinámicos (Win+NumpadEnter) también lo disparaba al crear el desk; eso
+    /// se RETIRÓ a pedido del usuario (abrir un escritorio ya no lanza nada por su cuenta).
     ///
     /// <paramref name="groupLaunchedPortless"/> es la marca anti-duplicado de tareas SIN puerto (un
     /// puerto vivo ya se detecta solo vía <see cref="TcpPortInfo.ListeningPorts"/>); null crea una
