@@ -466,7 +466,9 @@ public partial class App : Application
         // pasa por onApplied —que es el "Guardar" de Escritorios—: la barra la recarga cuando avisa.
         _configWindow.OnBrandChanged = () => _bar?.ReloadBrand();
         _configWindow.Closed += (_, _) => _configWindow = null;
-        _configWindow.ShowFocused();
+        // Config NO se cierra al perder el foco: es la superficie de trabajo largo (ir y volver de
+        // otra app, drag & drop), a diferencia de los modales de un atajo. Ver ShowFocused.
+        _configWindow.ShowFocused(closeOnDeactivate: false);
     }
 
     /// <summary>

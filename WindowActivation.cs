@@ -44,14 +44,23 @@ internal static class WindowActivation
         window.Top = wa.Top + (wa.Height - window.Height) / 2;
     }
 
-    /// <summary>Muestra la ventana y le fuerza el primer plano + foco de teclado.</summary>
-    public static void ShowFocused(this Window window)
+    /// <summary>
+    /// Muestra la ventana y le fuerza el primer plano + foco de teclado. Por defecto la ventana además
+    /// se CIERRA SOLA al perder el foco (<see cref="CloseOnDeactivate"/>): pedido del usuario — un
+    /// modal olvidado abierto mientras trabajás en otra cosa es ruido, y todo acá se reabre con un
+    /// atajo. <paramref name="closeOnDeactivate"/>=false es para superficies de trabajo largo (Config),
+    /// donde ir y volver de otra app es el uso normal y cerrarla sería perder el lugar.
+    /// </summary>
+    public static void ShowFocused(this Window window, bool closeOnDeactivate = true)
     {
         // Al cerrarse, re-armamos el hook (ver OnUtilityWindowClosed). Una sola suscripción por
         // ventana: ShowFocused se llama una vez al abrir; el re-press de los singletons usa
         // BringToFront, que NO pasa por acá → no se suscribe dos veces.
         window.Closed += (_, _) => OnUtilityWindowClosed?.Invoke();
+        // ANTES del Show(): CloseOnDeactivate arranca su timer en Loaded, que dispara dentro del Show.
+        if (closeOnDeactivate) window.CloseOnDeactivate();
         window.Show();
+        if (closeOnDeactivate) CloseOtherUtilityWindows(window);
         // Show() es síncrono: al volver, el HWND ya existe y la ventana está visible.
         ForceWithRetry(window);
     }
@@ -77,10 +86,23 @@ internal static class WindowActivation
     /// evento Deactivated NO dispara → clicks afuera no cierran. Sólo después de clickear ON la
     /// ventana se sincronizaba. Forzar Activate al armar tickea WPF y los Deactivated posteriores
     /// disparan normales.
+    ///
+    /// ⚠ NO se cierra si el foco se fue a OTRA ventana NUESTRA (un diálogo hijo: editar variable,
+    /// editar servicio, el prompt, el QR, un MessageBox; o la ventana encadenada, como el picker de
+    /// contexto). Abrir un hijo DESACTIVA al padre, y sin esta guarda el padre se cerraría con el
+    /// diálogo recién abierto encima. Se exceptúan la barra y el overlay: clickear la barra ES irse.
+    /// El chequeo se DIFIERE un tick: dentro de Deactivated el foreground todavía puede no haber
+    /// cambiado, y leerlo ahí daría la ventana vieja.
+    ///
+    /// Idempotente: TaskPicker/TaskDetail lo llaman en su ctor y ADEMÁS se abren con ShowFocused,
+    /// que ahora también lo arma. Sin el guard serían dos timers y dos Close().
     /// </summary>
     public static void CloseOnDeactivate(this Window window)
     {
+        if (!_closeOnDeactivateArmed.Add(window)) return;
+
         bool armed = false;
+        bool closing = false;
         var arm = new DispatcherTimer { Interval = System.TimeSpan.FromMilliseconds(700) };
         arm.Tick += (_, _) =>
         {
@@ -90,8 +112,86 @@ internal static class WindowActivation
         };
 
         window.Loaded += (_, _) => arm.Start();
-        window.Deactivated += (_, _) => { if (armed) window.Close(); };
-        window.Closed += (_, _) => arm.Stop(); // si cierra antes de armar, no dejamos el timer colgado
+        window.Deactivated += (_, _) =>
+        {
+            if (!armed) return;
+            window.Dispatcher.BeginInvoke(() =>
+            {
+                if (closing || !window.IsLoaded || window.IsActive) return;
+                if (FocusWentToOwnWindow()) return;
+                closing = true;
+                window.Close();
+            }, DispatcherPriority.Input);
+        };
+
+        // RED por POLL: el Deactivated de WPF NO siempre llega. Cazado con log: abierta desde un
+        // hotkey con otra app en foreground y dejada con Alt+Tab, la ventana nunca recibió
+        // Deactivated (el click afuera sí lo disparaba) — quedaba abierta encima mientras escribías
+        // en otra app. Mismo remedio que DesktopChangeListener: no confiar sólo en el aviso, mirar
+        // el foreground REAL cada 250ms mientras está armada. Se cierra si el foreground es de OTRO
+        // proceso (o nadie); una ventana nuestra (hijo, picker encadenado) la deja abierta.
+        var poll = new DispatcherTimer { Interval = System.TimeSpan.FromMilliseconds(250) };
+        var hwnd = System.IntPtr.Zero;
+        poll.Tick += (_, _) =>
+        {
+            if (!armed || closing || !window.IsLoaded) return;
+            if (hwnd == System.IntPtr.Zero) hwnd = new WindowInteropHelper(window).Handle;
+            var fg = WindowMethods.GetForegroundWindow();
+            if (fg == hwnd || FocusWentToOwnWindow()) return;
+            closing = true;
+            poll.Stop();
+            window.Close();
+        };
+        window.Loaded += (_, _) => poll.Start();
+
+        window.Closing += (_, _) => closing = true;
+        window.Closed += (_, _) =>
+        {
+            arm.Stop(); // si cierra antes de armar, no dejamos el timer colgado
+            poll.Stop();
+            _closeOnDeactivateArmed.Remove(window);
+        };
+    }
+
+    private static readonly System.Collections.Generic.HashSet<Window> _closeOnDeactivateArmed = new();
+
+    /// <summary>
+    /// UN solo modal utilitario a la vez: al abrir uno, se cierran los demás que estén armados con
+    /// <see cref="CloseOnDeactivate"/>. Hace falta porque la guarda de ese método ("el foco se fue a
+    /// una ventana NUESTRA → no cierres") no distingue un diálogo HIJO de un modal HERMANO: abrir
+    /// Servicios con Variables abierta dejaba las dos apiladas. Quedan afuera los que no están
+    /// armados — Config (opt-out) y los diálogos hijos (ShowDialog: editar variable/servicio, prompt,
+    /// QR) — así que el padre de un diálogo nunca se cierra por esto.
+    ///
+    /// DIFERIDO (Background): el launcher abre el picker de contexto ANTES de cerrarse a sí mismo
+    /// (a propósito, ver ProjectSetterWindow). Diferido, su propio Close() corre primero y acá ya
+    /// no aparece; sin diferir lo cerraríamos nosotros en medio de su handler.
+    /// </summary>
+    private static void CloseOtherUtilityWindows(Window opened)
+    {
+        opened.Dispatcher.BeginInvoke(() =>
+        {
+            foreach (var w in new System.Collections.Generic.List<Window>(_closeOnDeactivateArmed))
+                if (!ReferenceEquals(w, opened) && w.IsLoaded)
+                    w.Close();
+        }, DispatcherPriority.Background);
+    }
+
+    /// <summary>
+    /// ¿El foreground actual es una ventana de nuestro proceso que NO sea la barra ni el overlay?
+    /// (ver la guarda de <see cref="CloseOnDeactivate"/>).
+    /// </summary>
+    private static bool FocusWentToOwnWindow()
+    {
+        var fg = WindowMethods.GetForegroundWindow();
+        if (!WindowMethods.IsOwnProcessWindow(fg)) return false;
+
+        foreach (Window w in Application.Current.Windows)
+        {
+            if (w is not (BarWindow or OverlayWindow)) continue;
+            if (new WindowInteropHelper(w).Handle == fg) return false;
+        }
+        return true;
     }
 
     /// <summary>
