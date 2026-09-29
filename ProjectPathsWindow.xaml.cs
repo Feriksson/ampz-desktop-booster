@@ -261,14 +261,15 @@ public partial class ProjectPathsWindow : Window
         if (_globalPool is not null)
             AddGroupedByType(PoolRows(_globalPool, RowScope.Global, filter).ToList());
 
-        // 4) Toggle "todos los espacios" (F4/botón) o AMPLIACIÓN AUTOMÁTICA en scope GLOBAL con
-        //    filtro escrito: buscamos además en TODOS los demás espacios y contextos, sin obligarte
-        //    a apretar F4. Antes cada espacio ajeno llevaba su propio separador (su nombre) — ya no
-        //    hace falta: la columna Espacio (y Contexto) identifica cada fila. Se mantiene UN SOLO
-        //    divisor ("Paths.SepAutoWiden") que separa "lo tuyo" de "lo de otros espacios", usado
-        //    para AMBOS modos (toggle y ampliación automática) — y se saca si abajo no quedó nada.
-        bool autoWiden = !_showAllProjects && filter != "" && _scopeKey == ""
-                         && _otherProjectPools.Count > 0;
+        // 4) Toggle "todos los espacios" (Ctrl+P/botón) o AMPLIACIÓN AUTOMÁTICA con filtro escrito,
+        //    en CUALQUIER scope: buscamos además en TODOS los demás espacios y contextos, sin
+        //    obligarte a apretar el toggle. Antes sólo se ampliaba en la GLOBAL; desde un espacio o
+        //    contexto también se busca "¿dónde estaba esto?", y exigir el toggle ahí era el mismo
+        //    corto circuito. Lo tuyo no se ensucia: los ajenos van DEBAJO del divisor. Antes cada
+        //    espacio ajeno llevaba su propio separador (su nombre) — ya no hace falta: la columna
+        //    Espacio (y Contexto) identifica cada fila. Se mantiene UN SOLO divisor
+        //    ("Paths.SepAutoWiden") para AMBOS modos — y se saca si abajo no quedó nada.
+        bool autoWiden = !_showAllProjects && filter != "" && _otherProjectPools.Count > 0;
         if (_showAllProjects || autoWiden)
         {
             int headerAt = PathList.Items.Count;
