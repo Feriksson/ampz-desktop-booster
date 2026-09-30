@@ -1419,14 +1419,12 @@ public sealed class ProjectStore
     {
         try
         {
-            if (File.Exists(_jsonPath))
-            {
-                var json = File.ReadAllText(_jsonPath);
-                var loaded = JsonSerializer.Deserialize<ProjectData>(json);
-                if (loaded is not null) return loaded;
-            }
+            // EL archivo que motivó SafeFile: un JSON truncado acá ya no se pisa con un catálogo vacío
+            // (se recupera el .bak o se aparta el dañado y se avisa). Ver SafeFile.
+            var loaded = SafeFile.LoadJson(_jsonPath, json => JsonSerializer.Deserialize<ProjectData>(json));
+            if (loaded is not null) return loaded;
         }
-        catch { /* JSON corrupto → arrancamos con catálogo vacío, no crasheamos */ }
+        catch { /* nunca crasheamos por la persistencia */ }
         return new ProjectData();
     }
 
@@ -1435,7 +1433,7 @@ public sealed class ProjectStore
         try
         {
             var opts = new JsonSerializerOptions { WriteIndented = true };
-            File.WriteAllText(_jsonPath, JsonSerializer.Serialize(_data, opts));
+            SafeFile.WriteAllText(_jsonPath, JsonSerializer.Serialize(_data, opts));
         }
         catch { /* disco/permisos → seguimos en memoria */ }
     }

@@ -53,11 +53,9 @@ public sealed class AppShortcutStore
     {
         try
         {
-            if (File.Exists(FilePath))
-            {
-                var loaded = JsonSerializer.Deserialize<AppShortcutStore>(File.ReadAllText(FilePath));
-                if (loaded is not null) return loaded;
-            }
+            // Lectura a prueba de archivo roto (.bak / aparta el dañado) — ver SafeFile.
+            var loaded = SafeFile.LoadJson(FilePath, json => JsonSerializer.Deserialize<AppShortcutStore>(json));
+            if (loaded is not null) return loaded;
         }
         catch { /* corrupto → vacío */ }
         return new AppShortcutStore();
@@ -65,7 +63,7 @@ public sealed class AppShortcutStore
 
     public void Save()
     {
-        try { File.WriteAllText(FilePath, JsonSerializer.Serialize(this, JsonOpts)); }
+        try { SafeFile.WriteAllText(FilePath, JsonSerializer.Serialize(this, JsonOpts)); }
         catch { /* disco/permisos → seguimos en memoria */ }
     }
 

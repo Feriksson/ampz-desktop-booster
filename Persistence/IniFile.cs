@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace AmpzDesktopBooster.Persistence;
 
@@ -93,14 +94,16 @@ public sealed class IniFile
 
     private void WriteAll(List<(string Name, List<KeyValuePair<string, string>> Pairs)> model)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        using var w = new StreamWriter(_path, append: false);
+        // Armamos el texto entero y lo escribimos ATÓMICO (tmp + Replace): antes el StreamWriter
+        // truncaba settings.ini in situ, y un crash a mitad lo dejaba a medias. Ver SafeFile.
+        var sb = new StringBuilder();
         foreach (var (name, pairs) in model)
         {
-            w.WriteLine($"[{name}]");
+            sb.AppendLine($"[{name}]");
             foreach (var p in pairs)
-                w.WriteLine($"{p.Key}={p.Value}");
-            w.WriteLine();
+                sb.AppendLine($"{p.Key}={p.Value}");
+            sb.AppendLine();
         }
+        SafeFile.WriteAllText(_path, sb.ToString());
     }
 }

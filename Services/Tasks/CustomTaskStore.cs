@@ -35,11 +35,9 @@ public sealed class CustomTaskStore
     {
         try
         {
-            if (File.Exists(StorePath))
-            {
-                var loaded = JsonSerializer.Deserialize<CustomTaskStore>(File.ReadAllText(StorePath));
-                if (loaded is not null) return loaded;
-            }
+            // Lectura a prueba de archivo roto (.bak / aparta el dañado) — ver SafeFile.
+            var loaded = SafeFile.LoadJson(StorePath, json => JsonSerializer.Deserialize<CustomTaskStore>(json));
+            if (loaded is not null) return loaded;
         }
         catch
         {
@@ -52,7 +50,7 @@ public sealed class CustomTaskStore
     {
         try
         {
-            File.WriteAllText(StorePath, JsonSerializer.Serialize(this, JsonOpts));
+            SafeFile.WriteAllText(StorePath, JsonSerializer.Serialize(this, JsonOpts));
         }
         catch
         {

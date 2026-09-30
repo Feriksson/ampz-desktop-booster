@@ -39,11 +39,9 @@ public sealed class LanguageSettings
     {
         try
         {
-            if (File.Exists(FilePath))
-            {
-                var loaded = JsonSerializer.Deserialize<LanguageSettings>(File.ReadAllText(FilePath), JsonOpts);
-                if (loaded is not null) return loaded;
-            }
+            // Lectura a prueba de archivo roto (.bak / aparta el dañado) — ver SafeFile.
+            var loaded = SafeFile.LoadJson(FilePath, json => JsonSerializer.Deserialize<LanguageSettings>(json, JsonOpts));
+            if (loaded is not null) return loaded;
         }
         catch { /* corrupto → default por SO, no crasheamos */ }
         return new LanguageSettings();
@@ -51,7 +49,7 @@ public sealed class LanguageSettings
 
     public void Save()
     {
-        try { File.WriteAllText(FilePath, JsonSerializer.Serialize(this, JsonOpts)); }
+        try { SafeFile.WriteAllText(FilePath, JsonSerializer.Serialize(this, JsonOpts)); }
         catch { /* disco/permisos → seguimos en memoria */ }
     }
 }

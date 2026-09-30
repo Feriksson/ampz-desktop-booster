@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using AmpzDesktopBooster.Persistence;
 
 namespace AmpzDesktopBooster.Services;
 
@@ -81,13 +82,9 @@ public sealed class WidgetSettings
     {
         try
         {
-            var path = SettingsPath;
-            if (File.Exists(path))
-            {
-                var json = File.ReadAllText(path);
-                var loaded = JsonSerializer.Deserialize<WidgetSettings>(json);
-                if (loaded is not null) return loaded;
-            }
+            // Lectura a prueba de archivo roto (.bak / aparta el dañado) — ver SafeFile.
+            var loaded = SafeFile.LoadJson(SettingsPath, json => JsonSerializer.Deserialize<WidgetSettings>(json));
+            if (loaded is not null) return loaded;
         }
         catch
         {
@@ -100,9 +97,7 @@ public sealed class WidgetSettings
     {
         try
         {
-            var path = SettingsPath;
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(this, JsonOpts));
+            SafeFile.WriteAllText(SettingsPath, JsonSerializer.Serialize(this, JsonOpts));
         }
         catch
         {
