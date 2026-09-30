@@ -392,6 +392,20 @@ public partial class App : Application
         bar.UpdateDesk(desktops.GetName(current), desktops.GetProject(current), desktops.GetModule(current), current);
         bar.UpdateDeskTask(taskSession.GetDeskTask(current));
 
+        // Archivos de datos que se encontraron dañados al cargar (ver SafeFile): los avisamos RECIÉN
+        // ahora, con todo montado, y quedamos escuchando los de stores que cargan más tarde. Degradar
+        // a defaults en silencio fue justamente lo que borraba el catálogo sin que nadie se enterara.
+        Persistence.SafeFile.AttachNotifier(i => Dispatcher.BeginInvoke(() =>
+        {
+            string detail = i.MovedAsideTo is not null
+                ? string.Format(Services.Localization.Loc.T("Toast.DataFileMovedAside"), i.MovedAsideTo)
+                : i.Recovered ? "" : Services.Localization.Loc.T("Toast.DataFileNotMoved");
+            if (i.Recovered)
+                Services.Toasts.Info(string.Format(Services.Localization.Loc.T("Toast.DataFileRecovered"), i.FileName), detail);
+            else
+                Services.Toasts.Error(string.Format(Services.Localization.Loc.T("Toast.DataFileLost"), i.FileName), detail);
+        }));
+
         // Caso "app cerrada + click en link": Windows nos lanzó CON la URL y somos la primaria.
         // Ya está todo montado → la abrimos en el navegador real, en el desk actual.
         if (urlArg is not null)

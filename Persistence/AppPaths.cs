@@ -41,6 +41,13 @@ public static class AppPaths
     public static string DynamicDesksFile => Path.Combine(DataDir, "dynamic_desks.json");
 
     /// <summary>
+    /// Notas SUELTAS (muchas, con título y etiqueta opcional de espacio/contexto) — ver
+    /// <see cref="Desktops.LooseNoteStore"/>. Archivo propio y no dentro de <see cref="ProjectDataFile"/>:
+    /// se escribe en cada edición de una nota, y si se daña no arrastra el catálogo de espacios.
+    /// </summary>
+    public static string LooseNotesFile => Path.Combine(DataDir, "notes.json");
+
+    /// <summary>
     /// Borra TODA la config del usuario: todos los archivos de DataDir (espacios, settings.ini,
     /// apps, atajos, desktops, widgets, uso). Operación DESTRUCTIVA — el caller confirma y luego
     /// reinicia la app para arrancar con defaults limpios. No toca nada fuera de DataDir (ni el

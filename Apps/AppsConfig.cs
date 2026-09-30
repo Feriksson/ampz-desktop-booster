@@ -34,11 +34,9 @@ public sealed class AppsConfig
     {
         try
         {
-            if (File.Exists(Path))
-            {
-                var loaded = JsonSerializer.Deserialize<AppsConfig>(File.ReadAllText(Path));
-                if (loaded is not null) return loaded;
-            }
+            // Lectura a prueba de archivo roto (.bak / aparta el dañado) — ver SafeFile.
+            var loaded = SafeFile.LoadJson(Path, json => JsonSerializer.Deserialize<AppsConfig>(json));
+            if (loaded is not null) return loaded;
         }
         catch { /* corrupto → vacío */ }
         return new AppsConfig();
@@ -46,7 +44,7 @@ public sealed class AppsConfig
 
     public void Save()
     {
-        try { File.WriteAllText(Path, JsonSerializer.Serialize(this, JsonOpts)); }
+        try { SafeFile.WriteAllText(Path, JsonSerializer.Serialize(this, JsonOpts)); }
         catch { /* disco/permisos → en memoria */ }
     }
 }

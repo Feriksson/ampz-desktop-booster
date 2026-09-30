@@ -42,11 +42,9 @@ public sealed class BrowserSettings
     {
         try
         {
-            if (File.Exists(SettingsPath))
-            {
-                var loaded = JsonSerializer.Deserialize<BrowserSettings>(File.ReadAllText(SettingsPath));
-                if (loaded is not null) return loaded;
-            }
+            // Lectura a prueba de archivo roto (.bak / aparta el dañado) — ver SafeFile.
+            var loaded = SafeFile.LoadJson(SettingsPath, json => JsonSerializer.Deserialize<BrowserSettings>(json));
+            if (loaded is not null) return loaded;
         }
         catch { /* corrupto o ilegible → defaults */ }
         return new BrowserSettings();
@@ -57,7 +55,7 @@ public sealed class BrowserSettings
         try
         {
             Directory.CreateDirectory(AppPaths.DataDir);
-            File.WriteAllText(SettingsPath, JsonSerializer.Serialize(this, JsonOpts));
+            SafeFile.WriteAllText(SettingsPath, JsonSerializer.Serialize(this, JsonOpts));
         }
         catch { /* permisos/disco → seguimos en memoria */ }
     }

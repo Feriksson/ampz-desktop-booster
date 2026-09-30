@@ -112,11 +112,9 @@ public sealed class BrandSettings
     {
         try
         {
-            if (File.Exists(SettingsPath))
-            {
-                var loaded = JsonSerializer.Deserialize<BrandSettings>(File.ReadAllText(SettingsPath));
-                if (loaded is not null) return loaded;
-            }
+            // Lectura a prueba de archivo roto (.bak / aparta el dañado) — ver SafeFile.
+            var loaded = SafeFile.LoadJson(SettingsPath, json => JsonSerializer.Deserialize<BrandSettings>(json));
+            if (loaded is not null) return loaded;
         }
         catch
         {
@@ -129,7 +127,7 @@ public sealed class BrandSettings
     {
         try
         {
-            File.WriteAllText(SettingsPath, JsonSerializer.Serialize(this, JsonOpts));
+            SafeFile.WriteAllText(SettingsPath, JsonSerializer.Serialize(this, JsonOpts));
         }
         catch
         {

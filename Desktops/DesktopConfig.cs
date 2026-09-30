@@ -115,26 +115,25 @@ public sealed class DesktopConfig
     {
         try
         {
-            if (File.Exists(Path))
+            // Lectura a prueba de archivo roto (.bak / aparta el dañado) — ver SafeFile.
+            bool migrated = false;
+            var loaded = SafeFile.LoadJson(Path, json => Parse(json, out migrated));
+            if (loaded is not null && loaded.Managed.Count > 0)
             {
-                var loaded = Parse(File.ReadAllText(Path), out bool migrated);
-                if (loaded is not null && loaded.Managed.Count > 0)
-                {
-                    // Paradigma nuevo: las entradas de rol Espacio ("DESK +N" de versiones previas)
-                    // SALEN del catálogo — ahora las crea/borra el launcher dinámicamente, no viven
-                    // acá aunque estén vacías. Un desk vivo de una sesión anterior con ese nombre
-                    // sigue existiendo en Windows; simplemente deja de estar "gestionado" (cae al
-                    // criterio legado por nombre, igual que cualquier desk creado a mano).
-                    int before = loaded.Managed.Count;
-                    loaded.Managed.RemoveAll(d => d.DeskRole == DeskRole.Space);
-                    if (loaded.Managed.Count != before) migrated = true;
+                // Paradigma nuevo: las entradas de rol Espacio ("DESK +N" de versiones previas)
+                // SALEN del catálogo — ahora las crea/borra el launcher dinámicamente, no viven
+                // acá aunque estén vacías. Un desk vivo de una sesión anterior con ese nombre
+                // sigue existiendo en Windows; simplemente deja de estar "gestionado" (cae al
+                // criterio legado por nombre, igual que cualquier desk creado a mano).
+                int before = loaded.Managed.Count;
+                loaded.Managed.RemoveAll(d => d.DeskRole == DeskRole.Space);
+                if (loaded.Managed.Count != before) migrated = true;
 
-                    // Persistimos la migración YA, no en el próximo "Guardar": mientras el archivo
-                    // siga en formato viejo, cada arranque vuelve a adivinar atajos y roles. Con una
-                    // escritura, lo adivinado pasa a ser un dato del usuario que él puede corregir.
-                    if (migrated) loaded.Save();
-                    return loaded;
-                }
+                // Persistimos la migración YA, no en el próximo "Guardar": mientras el archivo
+                // siga en formato viejo, cada arranque vuelve a adivinar atajos y roles. Con una
+                // escritura, lo adivinado pasa a ser un dato del usuario que él puede corregir.
+                if (migrated) loaded.Save();
+                return loaded;
             }
         }
         catch { /* corrupto → defaults */ }
@@ -228,7 +227,7 @@ public sealed class DesktopConfig
 
     public void Save()
     {
-        try { File.WriteAllText(Path, JsonSerializer.Serialize(this, JsonOpts)); }
+        try { SafeFile.WriteAllText(Path, JsonSerializer.Serialize(this, JsonOpts)); }
         catch { /* disco/permisos → seguimos en memoria */ }
     }
 }

@@ -46,14 +46,12 @@ public sealed class TasksSettings
     {
         try
         {
-            if (File.Exists(SettingsPath))
+            // Lectura a prueba de archivo roto (.bak / aparta el dañado) — ver SafeFile.
+            var loaded = SafeFile.LoadJson(SettingsPath, json => JsonSerializer.Deserialize<TasksSettings>(json));
+            if (loaded is not null)
             {
-                var loaded = JsonSerializer.Deserialize<TasksSettings>(File.ReadAllText(SettingsPath));
-                if (loaded is not null)
-                {
-                    loaded.MigrateLegacyIfNeeded();
-                    return loaded;
-                }
+                loaded.MigrateLegacyIfNeeded();
+                return loaded;
             }
         }
         catch
@@ -67,7 +65,7 @@ public sealed class TasksSettings
     {
         try
         {
-            File.WriteAllText(SettingsPath, JsonSerializer.Serialize(this, JsonOpts));
+            SafeFile.WriteAllText(SettingsPath, JsonSerializer.Serialize(this, JsonOpts));
         }
         catch
         {

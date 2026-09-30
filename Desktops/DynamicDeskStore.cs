@@ -71,13 +71,11 @@ public sealed class DynamicDeskStore
         var entries = new Dictionary<Guid, DynamicDeskEntry>();
         try
         {
-            if (File.Exists(AppPaths.DynamicDesksFile))
-            {
-                var list = JsonSerializer.Deserialize<List<DynamicDeskEntry>>(
-                    File.ReadAllText(AppPaths.DynamicDesksFile)) ?? new List<DynamicDeskEntry>();
-                foreach (var e in list)
-                    entries[e.Id] = e;
-            }
+            // Lectura a prueba de archivo roto (.bak / aparta el dañado) — ver SafeFile.
+            var list = SafeFile.LoadJson(AppPaths.DynamicDesksFile,
+                json => JsonSerializer.Deserialize<List<DynamicDeskEntry>>(json)) ?? new List<DynamicDeskEntry>();
+            foreach (var e in list)
+                entries[e.Id] = e;
         }
         catch { /* corrupto → arrancamos vacío, nunca tumbamos la app por esto */ }
 
@@ -103,7 +101,7 @@ public sealed class DynamicDeskStore
 
     private void Save()
     {
-        try { File.WriteAllText(AppPaths.DynamicDesksFile, JsonSerializer.Serialize(_entries.Values.ToList(), JsonOpts)); }
+        try { SafeFile.WriteAllText(AppPaths.DynamicDesksFile, JsonSerializer.Serialize(_entries.Values.ToList(), JsonOpts)); }
         catch { /* disco/permisos → seguimos en memoria */ }
     }
 
