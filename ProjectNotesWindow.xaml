@@ -6,57 +6,267 @@
         WindowStyle="None" ResizeMode="CanResize"
         WindowStartupLocation="Manual"
         ShowInTaskbar="False" Topmost="True"
-        MinWidth="480" MinHeight="320"
+        MinWidth="960" MinHeight="420"
         Background="#1E1E1E" UseLayoutRounding="True"
         FontFamily="Segoe UI">
+
+    <Window.Resources>
+        <!-- Filas del navegador: MISMO estilo que Variables/Servicios (ProjectPathsWindow). El GridView
+             crea ListViewItems que no heredan el tema oscuro → se estilan acá. El divisor
+             ("Paths.SepAutoWiden") se pinta a ancho completo en vez de las columnas. -->
+        <Style TargetType="ListViewItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#E6E6EA" />
+            <Setter Property="Padding" Value="4,3" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListViewItem">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                            <Grid>
+                                <GridViewRowPresenter x:Name="Presenter" Content="{TemplateBinding Content}"
+                                                      Columns="{TemplateBinding GridView.ColumnCollection}" />
+                                <TextBlock x:Name="SepText" Text="{Binding Title}" VerticalAlignment="Center"
+                                           Visibility="Collapsed" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2D4A57" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                    <Condition Property="IsSelected" Value="False" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Bd" Property="Background" Value="#262626" />
+                            </MultiTrigger>
+                            <DataTrigger Binding="{Binding IsSeparator}" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#383838" />
+                                <Setter TargetName="Bd" Property="BorderThickness" Value="0,1,0,0" />
+                                <Setter TargetName="Bd" Property="Margin" Value="0,7,0,2" />
+                                <Setter TargetName="Presenter" Property="Visibility" Value="Collapsed" />
+                                <Setter TargetName="SepText" Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <!-- La nota de ESTE escritorio (la que la ventana abre desde siempre) va en negrita:
+                     es el ancla de la lista, la que buscás de reflejo al volver del resto. -->
+                <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                    <Setter Property="FontWeight" Value="SemiBold" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsSeparator}" Value="True">
+                    <Setter Property="IsEnabled" Value="False" />
+                    <Setter Property="Foreground" Value="#6E6E78" />
+                    <Setter Property="FontSize" Value="11" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Botones con KEYCAP (el atajo impreso en el botón): mismo template que Variables — ver el
+             comentario largo en ProjectPathsWindow.xaml. Acá se suma el estado deshabilitado
+             (renombrar/borrar no aplican a las notas de scope): atenuado, para que no parezca roto. -->
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="#2A2A2A" />
+            <Setter Property="Foreground" Value="#F2F2F2" />
+            <Setter Property="BorderBrush" Value="#444" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                        VerticalAlignment="Center">
+                                <ContentPresenter VerticalAlignment="Center" />
+                                <Border x:Name="Keycap" Margin="8,0,0,0" Padding="4,0,4,1"
+                                        CornerRadius="3" VerticalAlignment="Center"
+                                        Background="#1A1A1A" BorderBrush="#4A4A52" BorderThickness="1">
+                                    <TextBlock x:Name="KeycapText" FontFamily="Consolas" FontSize="10"
+                                               Foreground="#9A9A9A"
+                                               Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" />
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Tag" Value="{x:Null}">
+                                <Setter TargetName="Keycap" Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2D4A57" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#4FC3F7" />
+                                <Setter TargetName="KeycapText" Property="Foreground" Value="#E6E6EA" />
+                                <Setter TargetName="Keycap" Property="BorderBrush" Value="#4FC3F7" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#34505C" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#4FC3F7" />
+                                <Setter TargetName="KeycapText" Property="Foreground" Value="#E6E6EA" />
+                                <Setter TargetName="Keycap" Property="BorderBrush" Value="#4FC3F7" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#3A6070" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="GridViewColumnHeader">
+            <Setter Property="Background" Value="#262626" />
+            <Setter Property="Foreground" Value="#9A9A9A" />
+            <Setter Property="BorderBrush" Value="#333" />
+            <Setter Property="BorderThickness" Value="0,0,1,1" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+        </Style>
+    </Window.Resources>
 
     <Border BorderBrush="#33FFFFFF" BorderThickness="1" Padding="16">
         <Grid>
             <Grid.RowDefinitions>
-                <!-- Panel SUPERIOR: notas del espacio/global (lo de siempre). -->
-                <RowDefinition x:Name="ProjectRow" Height="*" />
-                <!-- Splitter para repartir el alto entre los dos paneles a gusto. -->
-                <RowDefinition x:Name="SplitterRow" Height="Auto" />
-                <!-- Panel INFERIOR: notas de la carpeta activa del Explorer (se colapsa si no hay). -->
-                <RowDefinition x:Name="FolderRow" Height="*" />
+                <RowDefinition Height="*" />
                 <!-- Footer con las hints de teclado. -->
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <!-- Navegador a la IZQUIERDA con ancho fijo (las 4 columnas entran justas) y el editor a
+                     la derecha con TODO el resto: se escribe cómodo, que es lo que más se hace acá. El
+                     splitter deja repartirlo a gusto. -->
+                <ColumnDefinition Width="660" MinWidth="360" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" MinWidth="280" />
+            </Grid.ColumnDefinitions>
 
-            <!-- ── Notas del espacio / global ─────────────────────────────────── -->
-            <DockPanel Grid.Row="0">
-                <TextBlock DockPanel.Dock="Top" x:Name="HeaderText" Foreground="#FFD700"
-                           FontSize="18" FontWeight="SemiBold" />
-                <TextBlock DockPanel.Dock="Top" x:Name="SubHeaderText" Foreground="#9A9A9A"
-                           FontSize="11" Margin="0,2,0,10" />
-                <TextBox x:Name="NotesBox"
-                         Background="#161616" Foreground="#E6E6EA" BorderBrush="#333"
-                         FontFamily="Consolas" FontSize="14" Padding="8"
-                         AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
-                         VerticalScrollBarVisibility="Auto" />
-            </DockPanel>
+            <!-- ── Navegador: filtro + lista + acciones ───────────────────────────── -->
+            <Grid Grid.Row="0" Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-            <!-- ── Splitter horizontal entre los dos paneles ───────────────────── -->
-            <GridSplitter x:Name="PanelSplitter" Grid.Row="1" Height="7"
-                          HorizontalAlignment="Stretch" VerticalAlignment="Center"
-                          Background="#2A2A2A" Margin="0,8" ResizeBehavior="PreviousAndNext"
-                          ResizeDirection="Rows" />
-
-            <!-- ── Notas de la carpeta activa (celeste = "carpeta") ────────────── -->
-            <DockPanel x:Name="FolderPanel" Grid.Row="2">
-                <TextBlock DockPanel.Dock="Top" x:Name="FolderHeaderText" Foreground="#5BC0EB"
-                           FontSize="18" FontWeight="SemiBold" />
-                <TextBlock DockPanel.Dock="Top" x:Name="FolderSubHeaderText" Foreground="#9A9A9A"
+                <TextBlock Grid.Row="0" x:Name="HeaderText" Foreground="#F2F2F2"
+                           FontSize="16" FontWeight="SemiBold" />
+                <TextBlock Grid.Row="1" x:Name="SubHeaderText" Foreground="#9A9A9A"
                            FontSize="11" Margin="0,2,0,10" TextTrimming="CharacterEllipsis" />
-                <TextBox x:Name="FolderNotesBox"
-                         Background="#13181B" Foreground="#E6E6EA" BorderBrush="#2C3A40"
-                         FontFamily="Consolas" FontSize="14" Padding="8"
-                         AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
-                         VerticalScrollBarVisibility="Auto" />
-            </DockPanel>
 
-            <TextBlock Grid.Row="3" Foreground="#6E6E78" FontSize="10" Margin="0,8,0,0"
-                       Text="{loc:Translate Notes.Hint}" />
+                <TextBox Grid.Row="2" x:Name="FilterBox" Background="#2A2A2A" Foreground="#F2F2F2"
+                         BorderBrush="#444" Padding="6,4" FontSize="13" Margin="0,0,0,8" />
+
+                <Border Grid.Row="3" Background="#161616" CornerRadius="4" Padding="2">
+                    <ListView x:Name="NoteList" Background="Transparent" BorderThickness="0"
+                              Foreground="#E6E6EA" FontSize="13" SelectionMode="Single">
+                        <ListView.View>
+                            <GridView>
+                                <!-- Tipo: 📌 la de este escritorio · 📋 nota de otro espacio/contexto/global · 📝 suelta. -->
+                                <GridViewColumn Header="" Width="34">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding TypeIcon}" HorizontalAlignment="Center" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="{loc:Translate Paths.ColTitle}" Width="220">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding Title}" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="{loc:Translate Paths.ColSpace}" Width="130">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Project}" TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding Project}" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="{loc:Translate Paths.ColContext}" Width="240">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Module}" Foreground="{Binding ModuleBrush}"
+                                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Module}" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                </Border>
+
+                <!-- WrapPanel: con los keycaps los botones no siempre entran en una línea; un
+                     StackPanel recortaría en silencio el último (ver ProjectPathsWindow). -->
+                <WrapPanel Grid.Row="4" Orientation="Horizontal" Margin="0,10,0,0">
+                    <Button x:Name="NewBtn"    Content="{loc:Translate Notes.BtnNew}" Tag="{loc:Translate Keys.CtrlN}" MinWidth="90" Margin="0,0,6,6" Padding="10,4" />
+                    <Button x:Name="EditBtn"   Content="{loc:Translate Notes.BtnRename}" Tag="{loc:Translate Keys.F2}" MinWidth="100" Margin="0,0,6,6" Padding="10,4" />
+                    <Button x:Name="DeleteBtn" Content="{loc:Translate Paths.BtnDelete}" Tag="{loc:Translate Keys.Delete}" MinWidth="80" Margin="0,0,6,6" Padding="10,4" />
+                    <Button x:Name="SaveBtn"   Content="{loc:Translate Notes.BtnSave}" Tag="{loc:Translate Keys.CtrlS}" MinWidth="80" Margin="0,0,6,6" Padding="10,4" />
+                    <Button x:Name="SearchBtn" Content="{loc:Translate Notes.BtnSearch}" Tag="{loc:Translate Keys.CtrlF}" MinWidth="80" Margin="0,0,6,6" Padding="10,4" />
+                    <Button x:Name="AllProjectsBtn" Content="{loc:Translate Paths.BtnAllProjectsOff}" Tag="{loc:Translate Keys.CtrlP}" MinWidth="160" Margin="0,0,6,6" Padding="10,4" />
+                    <!-- IsCancel: Esc cierra aunque el foco esté en un botón (ver ProjectPathsWindow). -->
+                    <Button x:Name="CloseBtn"  Content="{loc:Translate Paths.BtnClose}" Tag="{loc:Translate Keys.Escape}" MinWidth="80" Margin="0,0,6,6" Padding="10,4" IsCancel="True" />
+                </WrapPanel>
+            </Grid>
+
+            <GridSplitter Grid.Row="0" Grid.Column="1" Width="7" Margin="10,0"
+                          HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                          Background="#2A2A2A" ResizeBehavior="PreviousAndNext" ResizeDirection="Columns"
+                          Focusable="False" />
+
+            <!-- ── Editor (derecha): la nota seleccionada arriba, la de la carpeta abajo ───────── -->
+            <Grid Grid.Row="0" Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition x:Name="ProjectRow" Height="*" />
+                    <RowDefinition x:Name="SplitterRow" Height="Auto" />
+                    <RowDefinition x:Name="FolderRow" Height="*" />
+                </Grid.RowDefinitions>
+
+                <DockPanel Grid.Row="0">
+                    <TextBlock DockPanel.Dock="Top" x:Name="EditorTitleText" Foreground="#FFD700"
+                               FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock DockPanel.Dock="Top" x:Name="EditorSubText" Foreground="#9A9A9A"
+                               FontSize="11" Margin="0,2,0,10" TextTrimming="CharacterEllipsis" />
+                    <TextBox x:Name="NotesBox"
+                             Background="#161616" Foreground="#E6E6EA" BorderBrush="#333"
+                             FontFamily="Consolas" FontSize="14" Padding="8"
+                             AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" />
+                </DockPanel>
+
+                <GridSplitter x:Name="PanelSplitter" Grid.Row="1" Height="7"
+                              HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                              Background="#2A2A2A" Margin="0,8" ResizeBehavior="PreviousAndNext"
+                              ResizeDirection="Rows" Focusable="False" />
+
+                <!-- Notas de la carpeta activa del Explorer (celeste = "carpeta"). Se colapsa si no hay. -->
+                <DockPanel x:Name="FolderPanel" Grid.Row="2">
+                    <TextBlock DockPanel.Dock="Top" x:Name="FolderHeaderText" Foreground="#5BC0EB"
+                               FontSize="18" FontWeight="SemiBold" />
+                    <TextBlock DockPanel.Dock="Top" x:Name="FolderSubHeaderText" Foreground="#9A9A9A"
+                               FontSize="11" Margin="0,2,0,10" TextTrimming="CharacterEllipsis" />
+                    <TextBox x:Name="FolderNotesBox"
+                             Background="#13181B" Foreground="#E6E6EA" BorderBrush="#2C3A40"
+                             FontFamily="Consolas" FontSize="14" Padding="8"
+                             AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" />
+                </DockPanel>
+            </Grid>
+
+            <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Foreground="#6E6E78" FontSize="10" Margin="0,8,0,0"
+                       TextWrapping="Wrap" Text="{loc:Translate Notes.Hint}" />
         </Grid>
     </Border>
 </Window>

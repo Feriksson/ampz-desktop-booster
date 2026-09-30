@@ -73,6 +73,14 @@ public sealed class ProjectStore
 
     public ProjectData Data => _data;
 
+    /// <summary>
+    /// Notas SUELTAS (archivo propio, ver <see cref="LooseNoteStore"/>). La construye ProjectStore y no
+    /// App — a diferencia de <see cref="Dynamic"/> — porque no depende de nada más, y así ninguna
+    /// reorganización del catálogo puede correr sin ella: sus etiquetas de espacio/contexto se mueven
+    /// en el mismo acto que el resto de las capas (ver el bloque "Gestión de Espacios y Contextos").
+    /// </summary>
+    public LooseNoteStore LooseNotes { get; } = LooseNoteStore.Load();
+
     public ProjectStore()
     {
         _data = Load();
@@ -317,6 +325,7 @@ public sealed class ProjectStore
                      .Select(kv => kv.Key).ToList())
             _session[idx] = new DeskAssignment(project, "");
 
+        LooseNotes.ClearTag(project, module); // la nota suelta se queda, pierde sólo el contexto
         Save();
     }
 
@@ -743,6 +752,27 @@ public sealed class ProjectStore
         Save();
     }
 
+    // Acceso por KEY de scope (no por desk): el navegador de notas deja leer y editar la nota de
+    // CUALQUIER espacio/contexto, no sólo la del desk en el que estás. Key "" = global, igual que
+    // los predeterminados (GlobalScope).
+
+    /// <summary>Nota de un scope por su key ("" = global). "" si no tiene.</summary>
+    public string GetScopeNotes(string scopeKey) =>
+        scopeKey == GlobalScope ? _data.SharedNotes
+            : _data.Notes.TryGetValue(scopeKey, out var n) ? n : "";
+
+    /// <summary>Guarda la nota de un scope por su key y persiste.</summary>
+    public void SetScopeNotes(string scopeKey, string text)
+    {
+        if (scopeKey == GlobalScope) _data.SharedNotes = text;
+        else _data.Notes[scopeKey] = text;
+        Save();
+    }
+
+    /// <summary>Notas de espacio/contexto NO vacías, por key (la global va aparte: <see cref="GetScopeNotes"/> con "").</summary>
+    public IEnumerable<(string Key, string Text)> NonEmptyScopeNotes() =>
+        _data.Notes.Where(kv => !string.IsNullOrWhiteSpace(kv.Value)).Select(kv => (kv.Key, kv.Value));
+
     // ── Notas de CARPETA (ligadas al disco, no al desk/espacio) ────────────────
 
     /// <summary>
@@ -836,6 +866,7 @@ public sealed class ProjectStore
                      .Select(kv => kv.Key).ToList())
             _session.Remove(idx);
 
+        LooseNotes.ClearTag(name, module: null); // las notas sueltas se quedan, sin etiqueta
         Save();
     }
 
@@ -950,6 +981,7 @@ public sealed class ProjectStore
         MapSession((p, m) => new DeskAssignment(Same(p, oldName) ? newName : p, m));
         MapSuggestions((p, m) => (Same(p, oldName) ? newName : p, m));
         Dynamic?.RemapScope((p, m) => (Same(p, oldName) ? newName : p, m));
+        LooseNotes.RemapScope((p, m) => (Same(p, oldName) ? newName : p, m));
         Save();
         return ScopeOpResult.Ok;
     }
@@ -970,6 +1002,7 @@ public sealed class ProjectStore
             ? new DeskAssignment(p, newName) : new DeskAssignment(p, m));
         MapSuggestions((p, m) => Same(p, project) && Same(m, oldName) ? (p, newName) : (p, m));
         Dynamic?.RemapScope((p, m) => Same(p, project) && Same(m, oldName) ? (p, newName) : (p, m));
+        LooseNotes.RemapScope((p, m) => Same(p, project) && Same(m, oldName) ? (p, newName) : (p, m));
         Save();
         return ScopeOpResult.Ok;
     }
@@ -1007,6 +1040,7 @@ public sealed class ProjectStore
             ? new DeskAssignment(toProject, module) : new DeskAssignment(p, m));
         MapSuggestions((p, m) => Same(p, fromProject) && Same(m, module) ? (toProject, module) : (p, m));
         Dynamic?.RemapScope((p, m) => Same(p, fromProject) && Same(m, module) ? (toProject, module) : (p, m));
+        LooseNotes.RemapScope((p, m) => Same(p, fromProject) && Same(m, module) ? (toProject, module) : (p, m));
         Save();
         return ScopeOpResult.Ok;
     }
@@ -1028,6 +1062,7 @@ public sealed class ProjectStore
             ? new DeskAssignment(module, "") : new DeskAssignment(p, m));
         MapSuggestions((p, m) => Same(p, project) && Same(m, module) ? (module, "") : (p, m));
         Dynamic?.RemapScope((p, m) => Same(p, project) && Same(m, module) ? (module, "") : (p, m));
+        LooseNotes.RemapScope((p, m) => Same(p, project) && Same(m, module) ? (module, "") : (p, m));
         Save();
         return ScopeOpResult.Ok;
     }
@@ -1053,6 +1088,7 @@ public sealed class ProjectStore
         MapSession((p, m) => Same(p, project) ? new DeskAssignment(toProject, project) : new DeskAssignment(p, m));
         MapSuggestions((p, m) => Same(p, project) ? (toProject, project) : (p, m));
         Dynamic?.RemapScope((p, m) => Same(p, project) ? (toProject, project) : (p, m));
+        LooseNotes.RemapScope((p, m) => Same(p, project) ? (toProject, project) : (p, m));
         Save();
         return ScopeOpResult.Ok;
     }
