@@ -8,15 +8,23 @@ namespace AmpzDesktopBooster;
 /// <summary>
 /// Alta/edición de una VARIABLE (path o URL) con sus dos campos en una sola pantalla.
 ///
-/// El alta desde el Paths Manager (Win+Numpad*) encadena dos <see cref="PromptDialog"/> seguidos, y
-/// ahí tiene sentido: es un alta rápida sobre la marcha con el path ya sembrado del Explorer. Acá NO:
-/// la pestaña de config es la superficie donde se EDITA lo ya cargado, y editar con prompts
-/// encadenados te deja sin ver el valor viejo del otro campo y sin poder corregir hacia atrás.
-/// Mismo criterio (y mismo piso visual) que <see cref="ServiceEditWindow"/>.
+/// Es la ÚNICA puerta de alta de variables: la usan la pestaña de config y el Paths Manager
+/// (Win+Numpad*). El Paths Manager encadenaba antes dos <see cref="PromptDialog"/> (path, después
+/// título) y se descartó por lo mismo que acá: con prompts encadenados no ves el otro campo, no podés
+/// corregir hacia atrás y un typo del primer paso te obliga a cancelar todo. Mismo criterio (y mismo
+/// piso visual) que <see cref="ServiceEditWindow"/>.
+///
+/// En un ALTA con catálogo suma los combos Espacio + Contexto (<see cref="ScopePicker"/>) para elegir
+/// dónde se guarda, con default en el scope del que abre. En una EDICIÓN no: cambiarle el scope a una
+/// variable existente es moverla, y eso ya vive en la config (con su disciplina de no dejar huérfanos).
 /// </summary>
 public partial class VariableEditWindow : Window
 {
-    private VariableEditWindow(string header, string scope, PathEntry initial)
+    /// <summary>null = sin picker (edición, o alta sin catálogo): el scope es el que pasó el caller.</summary>
+    private readonly ScopePicker? _picker;
+
+    private VariableEditWindow(string header, string scope, PathEntry initial,
+                               ProjectStore? store = null, string? scopeKey = null)
     {
         InitializeComponent();
         HeaderText.Text = header;
@@ -25,12 +33,28 @@ public partial class VariableEditWindow : Window
         TitleBox.Text = initial.Title;
         PathBox.Text = initial.Path;
 
+        if (store is not null && scopeKey is not null)
+        {
+            ScopePickerPanel.Visibility = Visibility.Visible;
+            _picker = new ScopePicker(store, SpaceCombo, ContextCombo, scopeKey, UpdateScopeText);
+            UpdateScopeText();
+        }
+
         PathBox.TextChanged += (_, _) => UpdateStatus();
         UpdateStatus();
 
         OkBtn.Click += (_, _) => Accept();
         CancelBtn.Click += (_, _) => { DialogResult = false; };
+        // El foco arranca en el Título aunque los combos estén arriba: el default del scope ya es el
+        // caso común, y obligar a tabular dos combos para empezar a tipear castigaría el 90% de las altas.
         Loaded += (_, _) => { TitleBox.Focus(); TitleBox.SelectAll(); };
+    }
+
+    /// <summary>El renglón de scope deja de ser "dónde estás" y pasa a decir DÓNDE VA A QUEDAR.</summary>
+    private void UpdateScopeText()
+    {
+        if (_picker is null) return;
+        ScopeText.Text = string.Format(Loc.T("Scope.SavesIn"), _picker.Label);
     }
 
     /// <summary>
@@ -88,10 +112,27 @@ public partial class VariableEditWindow : Window
     /// <summary>
     /// Muestra el editor modal. Devuelve la variable cargada, o null si se canceló.
     /// <paramref name="initial"/> null = alta; con valor = edición (campos pre-cargados).
+    /// Para un alta que elige DÓNDE se guarda, usar <see cref="ShowNew"/>.
     /// </summary>
     public static PathEntry? Show(Window owner, string header, string scope, PathEntry? initial = null)
     {
         var dlg = new VariableEditWindow(header, scope, initial ?? new PathEntry()) { Owner = owner };
         return dlg.ShowDialog() == true ? dlg.Result : null;
+    }
+
+    /// <summary>
+    /// Alta con elección de scope. Devuelve la variable y la key de scope ELEGIDA ("" global,
+    /// "Espacio" o "Espacio/Contexto"), o null si se canceló. Sin <paramref name="store"/> no hay
+    /// combos (degradar, nunca romper) y el scope devuelto es <paramref name="scopeKey"/> tal cual;
+    /// <paramref name="scopeLabel"/> es lo que se muestra en ese caso.
+    /// <paramref name="pathSeed"/> pre-carga el path (el del Explorer activo, como el legacy).
+    /// </summary>
+    public static (PathEntry Entry, string ScopeKey)? ShowNew(Window owner, string header,
+        ProjectStore? store, string scopeKey, string scopeLabel, string pathSeed = "")
+    {
+        var dlg = new VariableEditWindow(header, scopeLabel, new PathEntry { Path = pathSeed },
+                                         store, scopeKey) { Owner = owner };
+        if (dlg.ShowDialog() != true) return null;
+        return (dlg.Result, dlg._picker?.ScopeKey ?? scopeKey);
     }
 }

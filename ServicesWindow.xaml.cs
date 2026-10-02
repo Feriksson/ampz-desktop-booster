@@ -172,7 +172,7 @@ public partial class ServicesWindow : Window
     private readonly ServicePool? _parentPool;   // el espacio, si estás parado en un contexto
     private readonly ServicePool? _globalPool;
     private readonly IReadOnlyList<ServicePool> _otherPools; // los demás espacios/contextos (Ctrl+P), read-only
-    private readonly ProjectStore? _store;                   // sólo para el color del contexto
+    private readonly ProjectStore? _store;                   // color del contexto + scope a elegir en el alta
     /// <summary>Toggle "otros espacios". OFF por default: arrancás en TU scope y te abrís al resto a pedido.</summary>
     private bool _showAllProjects;
     private readonly ObservableCollection<Row> _rows = new();
@@ -897,14 +897,26 @@ public partial class ServicesWindow : Window
 
     // ── Alta / edición / borrado (SÓLO sobre el scope primario) ────────────────
 
+    /// <summary>
+    /// Alta con elección de DÓNDE se guarda (default = el scope primario de esta ventana). Mismo
+    /// criterio que el alta del Paths Manager: mismo scope → pool viva; otro → la del catálogo.
+    /// </summary>
     private void AddNew()
     {
-        var entry = ServiceEditWindow.Show(this, Loc.T("Services.DlgNewTitle"), _pool.Label,
-                                           ports: _ports);
-        if (entry is null) return;
-        _pool.Add(entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.Url, entry.AutoStart,
-                  entry.CloseOnExit);
+        var added = ServiceEditWindow.ShowNew(this, Loc.T("Services.DlgNewTitle"), _store, _pool.Key,
+                                              _pool.Label, _ports);
+        if (added is not { } a) return;
+
+        var e = a.Entry;
+        bool here = _store is null || string.Equals(a.ScopeKey, _pool.Key, StringComparison.OrdinalIgnoreCase);
+        var target = here ? _pool : _store!.GetServicePoolFor(a.ScopeKey);
+        target.Add(e.Title, e.Command, e.WorkDir, e.Port, e.Url, e.AutoStart, e.CloseOnExit);
         RefreshList();
+
+        // En otro espacio/contexto la fila no aparece en esta lista (salvo que sea el padre o la
+        // global): sin el aviso, el alta parece perdida.
+        if (!here)
+            Toasts.Info($"✓  {string.Format(Loc.T("Scope.SavedIn"), ScopePicker.LabelOf(a.ScopeKey))}", e.Title);
     }
 
     private void EditSelected()

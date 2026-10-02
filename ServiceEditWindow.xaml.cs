@@ -15,6 +15,10 @@ namespace AmpzDesktopBooster;
 /// cargaste, sin poder corregir hacia atrás, y obliga a cancelar todo para arreglar un typo del primer
 /// paso. Un formulario con los cuatro juntos es además el único lugar donde se ve la RELACIÓN entre
 /// comando y puerto, que es lo que define si el servicio es un servidor o una tarea.
+///
+/// En un ALTA con catálogo (<see cref="ShowNew"/>) suma Espacio + Contexto arriba para elegir dónde
+/// se guarda (<see cref="ScopePicker"/>, compartido con <see cref="VariableEditWindow"/>). En una
+/// edición no: cambiarle el scope a un servicio existente es moverlo, y eso vive en la config.
 /// </summary>
 public partial class ServiceEditWindow : Window
 {
@@ -39,14 +43,27 @@ public partial class ServiceEditWindow : Window
     /// </summary>
     private readonly ServiceEntry? _editing;
 
+    /// <summary>null = sin picker (edición, o alta sin catálogo): el scope es el que pasó el caller.</summary>
+    private readonly ScopePicker? _picker;
+
     private ServiceEditWindow(string header, string scope, ServiceEntry initial,
-                              PortRegistry? ports, ServiceEntry? editing)
+                              PortRegistry? ports, ServiceEntry? editing,
+                              ProjectStore? store = null, string? scopeKey = null)
     {
         InitializeComponent();
         _ports = ports;
         _editing = editing;
         HeaderText.Text = header;
         ScopeText.Text = scope;
+
+        // El picker NO toca la validación de puertos: el registro es de TODO el catálogo (ver
+        // PortRegistry), así que el choque es el mismo guardes donde guardes.
+        if (store is not null && scopeKey is not null)
+        {
+            ScopePickerPanel.Visibility = Visibility.Visible;
+            _picker = new ScopePicker(store, SpaceCombo, ContextCombo, scopeKey, UpdateScopeText);
+            UpdateScopeText();
+        }
 
         TitleBox.Text = initial.Title;
         WorkDirBox.Text = initial.WorkDir;
@@ -96,6 +113,13 @@ public partial class ServiceEditWindow : Window
         OkBtn.Click += (_, _) => Accept();
         CancelBtn.Click += (_, _) => { DialogResult = false; };
         Loaded += (_, _) => { TitleBox.Focus(); TitleBox.SelectAll(); };
+    }
+
+    /// <summary>El renglón de scope deja de ser "dónde estás" y pasa a decir DÓNDE VA A QUEDAR.</summary>
+    private void UpdateScopeText()
+    {
+        if (_picker is null) return;
+        ScopeText.Text = string.Format(Loc.T("Scope.SavesIn"), _picker.Label);
     }
 
     /// <summary>Traduce el estado del checkbox a lo que REALMENTE va a pasar en "levantar todo".</summary>
@@ -319,5 +343,19 @@ public partial class ServiceEditWindow : Window
             Owner = owner,
         };
         return dlg.ShowDialog() == true ? dlg.Result : null;
+    }
+
+    /// <summary>
+    /// Alta con elección de scope (gemelo de <see cref="VariableEditWindow.ShowNew"/>). Devuelve el
+    /// servicio y la key de scope ELEGIDA, o null si se canceló. Sin <paramref name="store"/> no hay
+    /// combos y el scope devuelto es <paramref name="scopeKey"/> tal cual.
+    /// </summary>
+    public static (ServiceEntry Entry, string ScopeKey)? ShowNew(Window owner, string header,
+        ProjectStore? store, string scopeKey, string scopeLabel, PortRegistry? ports = null)
+    {
+        var dlg = new ServiceEditWindow(header, scopeLabel, new ServiceEntry(), ports, editing: null,
+                                        store, scopeKey) { Owner = owner };
+        if (dlg.ShowDialog() != true) return null;
+        return (dlg.Result, dlg._picker?.ScopeKey ?? scopeKey);
     }
 }

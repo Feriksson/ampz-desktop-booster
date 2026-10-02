@@ -268,6 +268,11 @@
   "Vars.StatusExists": "Exists on disk.",
   "Vars.StatusMissing": "Not found on disk (saved anyway: it may be a disconnected drive or something you haven't cloned yet).",
   "Vars.NeedPath": "Path or URL is missing.",
+  "Scope.FldSpace": "Space",
+  "Scope.FldContext": "Context",
+  "Scope.NoContext": "— whole space —",
+  "Scope.SavesIn": "Will be saved in: {0}",
+  "Scope.SavedIn": "Saved in: {0}",
   "Config.ScopeErrTitle": "Cannot do that",
 
   "Config.ClipTitle": "Clipboard",
