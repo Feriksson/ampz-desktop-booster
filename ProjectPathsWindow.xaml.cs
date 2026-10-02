@@ -565,9 +565,15 @@ public partial class ProjectPathsWindow : Window
     /// "copiado" porque en esta ventana conviven filas propias, heredadas y globales: ver el texto
     /// exacto que quedó en el portapapeles confirma que copiaste la fila que creías.
     /// </summary>
-    private void ShowCopyToast(string value)
+    private void ShowCopyToast(string value) => ShowFlash($"{Loc.T("Paths.Copied")}: {value}");
+
+    /// <summary>
+    /// El mismo flash de arriba de la lista con un texto cualquiera. Lo reusa el alta en OTRO scope:
+    /// el aviso tiene que aparecer donde estás mirando, no en un toast en la esquina de la pantalla.
+    /// </summary>
+    private void ShowFlash(string text)
     {
-        CopyToastText.Text = $"{Loc.T("Paths.Copied")}: {value}";
+        CopyToastText.Text = text;
         if (TryFindResource("CopyToastAnim") is Storyboard sb)
             sb.Begin(this);
     }
@@ -641,15 +647,28 @@ public partial class ProjectPathsWindow : Window
         RefreshList();
     }
 
+    /// <summary>
+    /// Alta en UN formulario (título + path + dónde se guarda), con el path pre-cargado con el del
+    /// Explorer activo (si lo capturamos al abrir), como el legacy. Antes eran dos prompts encadenados.
+    /// </summary>
     private void AddNew()
     {
-        // Path pre-cargado con el del Explorer activo (si lo capturamos al abrir), como el legacy.
-        string? path = PromptDialog.Show(this, Loc.T("Paths.DlgNewTitle"), Loc.T("Paths.DlgNewPathLabel"), _explorerSeed);
-        if (string.IsNullOrWhiteSpace(path)) return;
-        string? title = PromptDialog.Show(this, Loc.T("Paths.DlgNewTitle"), Loc.T("Paths.DlgRenameLabel"), "");
-        if (title is null) return;
-        if (title.Trim() == "") title = path.Trim();
-        _pool.Add(title, path);
+        var added = VariableEditWindow.ShowNew(this, Loc.T("Paths.DlgNewTitle"), _store, _scopeKey,
+                                               _pool.Label, _explorerSeed);
+        if (added is not { } a) return;
+
+        // Mismo scope que el de la ventana → a la pool VIVA (la que pinta la lista). Otro scope → a la
+        // del catálogo: si el destino es el padre o la global, igual aparece en su sección al refrescar
+        // (las pools envuelven la MISMA lista del store); si es otro espacio, no se ve acá — por eso
+        // se avisa dónde quedó, o el usuario creería que el alta se perdió.
+        bool here = _store is null || string.Equals(a.ScopeKey, _scopeKey, System.StringComparison.OrdinalIgnoreCase);
+        if (here)
+            _pool.Add(a.Entry.Title, a.Entry.Path);
+        else
+            _store!.GetPoolFor(a.ScopeKey).Add(a.Entry.Title, a.Entry.Path);
+
         RefreshList();
+        if (!here)
+            ShowFlash(string.Format(Loc.T("Scope.SavedIn"), ScopePicker.LabelOf(a.ScopeKey)));
     }
 }

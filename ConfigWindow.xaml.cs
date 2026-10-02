@@ -1909,11 +1909,14 @@ public partial class ConfigWindow : Window
 
     private void NewVariable()
     {
-        var entry = VariableEditWindow.Show(this, Loc.T("Config.VarsDlgNew"), VarScopeLabel(_scope));
-        if (entry is null) return;
+        var added = VariableEditWindow.ShowNew(this, Loc.T("Config.VarsDlgNew"), _projects, _scope,
+                                               VarScopeLabel(_scope));
+        if (added is not { } a) return;
 
-        _projects.GetPoolFor(_scope).Add(entry.Title, entry.Path);
-        RefreshScopeTree(_scope);
+        _projects.GetPoolFor(a.ScopeKey).Add(a.Entry.Title, a.Entry.Path);
+        // El árbol salta al scope ELEGIDO (no al que estabas mirando): ves la fila nueva y el conteo
+        // del destino subir, que es la confirmación de que aterrizó donde dijiste.
+        RefreshScopeTree(a.ScopeKey);
     }
 
     private void EditVariable()
@@ -2359,14 +2362,15 @@ public partial class ConfigWindow : Window
 
     private void NewCommand()
     {
-        var entry = ServiceEditWindow.Show(this, Loc.T("Services.DlgNewTitle"),
-                                           VarScopeLabel(_scope), ports: _projects.Ports);
-        if (entry is null) return;
+        var added = ServiceEditWindow.ShowNew(this, Loc.T("Services.DlgNewTitle"), _projects, _scope,
+                                              VarScopeLabel(_scope), _projects.Ports);
+        if (added is not { } a) return;
 
-        _projects.GetServicePoolFor(_scope)
+        var entry = a.Entry;
+        _projects.GetServicePoolFor(a.ScopeKey)
                  .Add(entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.Url,
                       entry.AutoStart, entry.CloseOnExit);
-        RefreshScopeTree(_scope);
+        RefreshScopeTree(a.ScopeKey); // ver NewVariable: el árbol salta al scope elegido
     }
 
     private void EditCommand()

@@ -52,6 +52,89 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- ComboBox oscuro: mismo template que VariableEditWindow / LooseNoteDialog (el default
+             pinta el área de selección con el blanco del sistema e ignora Background/Foreground). -->
+        <Style TargetType="ComboBox">
+            <Setter Property="Foreground" Value="#F2F2F2" />
+            <Setter Property="Background" Value="#2A2A2A" />
+            <Setter Property="BorderBrush" Value="#444" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton Focusable="False"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border Background="#2A2A2A" CornerRadius="3" />
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <Border IsHitTestVisible="False" CornerRadius="3" BorderThickness="{TemplateBinding BorderThickness}"
+                                    BorderBrush="{TemplateBinding BorderBrush}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="22" />
+                                    </Grid.ColumnDefinitions>
+                                    <ContentPresenter Margin="8,0,0,0" VerticalAlignment="Center"
+                                                      Content="{TemplateBinding SelectionBoxItem}"
+                                                      TextElement.Foreground="{TemplateBinding Foreground}" />
+                                    <Path Grid.Column="1" Fill="#F2F2F2" HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" Data="M 0 0 L 8 0 L 4 5 Z" />
+                                </Grid>
+                            </Border>
+                            <Popup Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   AllowsTransparency="True" Focusable="False" PopupAnimation="None">
+                                <Border Background="#2A2A2A" BorderBrush="#444" BorderThickness="1" CornerRadius="3"
+                                        MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
+                                    <ScrollViewer MaxHeight="280">
+                                        <ItemsPresenter />
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="BorderBrush" Value="#4FC3F7" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.45" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="#F2F2F2" />
+            <Setter Property="Background" Value="#2A2A2A" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#3C3C3C" />
+                            </Trigger>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#2D4A57" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Border BorderBrush="#33FFFFFF" BorderThickness="1" Padding="16">
@@ -59,6 +142,24 @@
             <TextBlock x:Name="HeaderText" Foreground="#F2F2F2" FontSize="14"
                        FontWeight="SemiBold" Margin="0,0,0,2" />
             <TextBlock x:Name="ScopeText" Margin="0,0,0,12" />
+
+            <!-- Dónde se guarda: SÓLO en un alta con catálogo (ver ScopePicker y el gemelo en
+                 VariableEditWindow). Editar no cambia de scope: eso es MOVER, y vive en la config. -->
+            <Grid x:Name="ScopePickerPanel" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="{loc:Translate Scope.FldSpace}" />
+                    <ComboBox x:Name="SpaceCombo" />
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                    <TextBlock Text="{loc:Translate Scope.FldContext}" />
+                    <ComboBox x:Name="ContextCombo" />
+                </StackPanel>
+            </Grid>
 
             <TextBlock Text="{loc:Translate Services.FldTitle}" />
             <TextBox x:Name="TitleBox" />
