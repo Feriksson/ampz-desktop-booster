@@ -134,7 +134,10 @@ public partial class ProjectNotesWindow : Window
         // Closing corre TAMBIÉN cuando la ventana se cierra sola por perder el foco (ShowFocused →
         // CloseOnDeactivate): es el único punto que cubre todos los caminos de cierre.
         Closing += (_, _) => AutoSave();
-        Loaded += (_, _) => FocusEditor();
+        // Abre con el foco en el BUSCADOR (pedido del usuario), igual que Variables y Servicios: la
+        // ventana ya es un navegador, y lo primero que se hace es buscar. La nota de este escritorio
+        // sigue seleccionada y cargada en el editor — Enter/Tab la edita al toque.
+        Loaded += (_, _) => FocusFilter();
     }
 
     // ── Lista ─────────────────────────────────────────────────────────────────
