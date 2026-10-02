@@ -554,7 +554,7 @@ public sealed class HotkeyRouter
             .Where(p => !string.Equals(p.Key, pool.Key, StringComparison.OrdinalIgnoreCase)
                      && !string.Equals(p.Key, parentPool?.Key, StringComparison.OrdinalIgnoreCase)
                      && p.Entries.Count > 0)
-            .ToList();
+            .ToList(); // ya vienen ordenadas espacio → contexto (ProjectStore.ScopeOrder)
 
         _servicesWindow = new ServicesWindow(pool, name, parentPool: parentPool, globalPool: globalPool,
                                              ports: _projects.Ports,

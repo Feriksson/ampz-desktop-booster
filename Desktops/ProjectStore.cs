@@ -362,8 +362,29 @@ public sealed class ProjectStore
         var list = new List<PathPool>();
         foreach (var kv in _data.Paths)
             list.Add(new PathPool(kv.Value, Save, kv.Key, PrettyScope(kv.Key)));
-        return list;
+        return list.OrderBy(p => p.Key, ScopeOrder).ToList();
     }
+
+    /// <summary>
+    /// Orden de las keys de scope en la búsqueda general: ESPACIO y después CONTEXTO, alfabético en
+    /// ambos niveles. El diccionario del catálogo itera en orden de inserción del JSON, así que sin
+    /// esto los contextos de un mismo espacio salían mezclados. Se parte la key cruda por "/"
+    /// (prohibida en los nombres, ver <see cref="Sanitize"/>): el scope del espacio solo tiene
+    /// contexto "" y queda primero dentro de su grupo. Lo comparten Variables y Servicios.
+    /// </summary>
+    private static readonly IComparer<string> ScopeOrder = Comparer<string>.Create((a, b) =>
+    {
+        static (string Project, string Module) Split(string key)
+        {
+            int slash = key.IndexOf('/');
+            return slash < 0 ? (key, "") : (key[..slash], key[(slash + 1)..]);
+        }
+
+        var (pa, ma) = Split(a);
+        var (pb, mb) = Split(b);
+        int byProject = StringComparer.CurrentCultureIgnoreCase.Compare(pa, pb);
+        return byProject != 0 ? byProject : StringComparer.CurrentCultureIgnoreCase.Compare(ma, mb);
+    });
 
     /// <summary>
     /// Resuelve QUÉ pool corresponde según el desk actual. Con contexto activo la pool primaria es la
@@ -432,7 +453,7 @@ public sealed class ProjectStore
         var list = new List<ServicePool>();
         foreach (var kv in _data.Services)
             list.Add(new ServicePool(kv.Value, Save, kv.Key, PrettyScope(kv.Key)));
-        return list;
+        return list.OrderBy(p => p.Key, ScopeOrder).ToList();
     }
 
     /// <summary>
