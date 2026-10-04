@@ -20,6 +20,20 @@ public sealed class AppShortcut
 }
 
 /// <summary>
+/// Atajo LIBRE: no está atado a ningún proceso. Existe para lo que nunca tiene el foco cuando abrís
+/// el helper — PowerToys corriendo atrás, los atajos del propio Windows — y que por eso la cheatsheet
+/// per-proc no puede guardar. <see cref="App"/> es un título simple que tipea el usuario ("PowerToys",
+/// "Windows") y sirve de agrupador; NO es un process name.
+/// </summary>
+public sealed class CustomShortcut
+{
+    [JsonPropertyName("id")]   public int Id { get; set; }
+    [JsonPropertyName("app")]  public string App { get; set; } = "";
+    [JsonPropertyName("key")]  public string Key { get; set; } = "";
+    [JsonPropertyName("desc")] public string Desc { get; set; } = "";
+}
+
+/// <summary>
 /// Cheatsheets de atajos POR APP + aliases visibles, para el Shortcuts Helper (Win+/). Persiste en
 /// %APPDATA%\AmpzDesktopBooster\app_shortcuts.json. Reemplaza las secciones [AppShortcuts_&lt;proc&gt;],
 /// [AppAliases] y los flags [Meta] preloaded_&lt;proc&gt; del settings.ini del legacy — mismo modelo,
@@ -39,6 +53,15 @@ public sealed class AppShortcutStore
     [JsonPropertyName("preloaded")]
     public Dictionary<string, bool> Preloaded { get; set; } = new();
 
+    /// <summary>
+    /// Atajos LIBRES (ver <see cref="CustomShortcut"/>). Lista plana con id global — no un diccionario
+    /// por app — porque el título lo tipea el usuario y puede cambiarlo al editar: si fuera la key, editar
+    /// el título obligaría a mover la entrada de diccionario. Un archivo viejo sin "custom" carga igual
+    /// (queda el initializer); un "custom": null explícito se normaliza en <see cref="Load"/>.
+    /// </summary>
+    [JsonPropertyName("custom")]
+    public List<CustomShortcut> Custom { get; set; } = new();
+
     // ── Persistencia (mismo patrón que AppsConfig / UsageSettings) ──
     // Encoder relajado: el archivo es config en español que el usuario puede abrir/editar; sin esto
     // los acentos y el '+' salen escapados (ó, +) e ilegibles. No es contenido web → seguro.
@@ -55,7 +78,11 @@ public sealed class AppShortcutStore
         {
             // Lectura a prueba de archivo roto (.bak / aparta el dañado) — ver SafeFile.
             var loaded = SafeFile.LoadJson(FilePath, json => JsonSerializer.Deserialize<AppShortcutStore>(json));
-            if (loaded is not null) return loaded;
+            if (loaded is not null)
+            {
+                loaded.Custom ??= new();
+                return loaded;
+            }
         }
         catch { /* corrupto → vacío */ }
         return new AppShortcutStore();
@@ -115,6 +142,42 @@ public sealed class AppShortcutStore
             if (s.Id > max) max = s.Id;
         return max + 1;
     }
+
+    // ── Atajos libres (no atados a un proceso) ──
+
+    /// <summary>Atajos libres ordenados por título de app y después por id (orden de alta).</summary>
+    public IReadOnlyList<CustomShortcut> GetCustom()
+        => Custom.OrderBy(s => s.App, System.StringComparer.CurrentCultureIgnoreCase).ThenBy(s => s.Id).ToList();
+
+    /// <summary>Títulos de app ya usados (sin repetir, ignorando mayúsculas) — para sugerir al dar de alta.</summary>
+    public IReadOnlyList<string> CustomApps()
+        => Custom.Select(s => s.App).Where(a => a != "")
+                 .Distinct(System.StringComparer.CurrentCultureIgnoreCase)
+                 .OrderBy(a => a, System.StringComparer.CurrentCultureIgnoreCase).ToList();
+
+    /// <summary>Alta (id nuevo) o edición (si el id ya existe). Persiste.</summary>
+    public void AddOrUpdateCustom(CustomShortcut shortcut)
+    {
+        var existing = Custom.FirstOrDefault(s => s.Id == shortcut.Id);
+        if (existing is null)
+            Custom.Add(shortcut);
+        else
+        {
+            existing.App = shortcut.App;
+            existing.Key = shortcut.Key;
+            existing.Desc = shortcut.Desc;
+        }
+        Save();
+    }
+
+    public void DeleteCustom(int id)
+    {
+        if (Custom.RemoveAll(s => s.Id == id) > 0)
+            Save();
+    }
+
+    /// <summary>Siguiente id libre de los atajos libres (max + 1), mismo criterio que <see cref="NextId"/>.</summary>
+    public int NextCustomId() => Custom.Count == 0 ? 1 : Custom.Max(s => s.Id) + 1;
 
     // ── Aliases ──
 

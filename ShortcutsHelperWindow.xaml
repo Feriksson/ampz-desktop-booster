@@ -7,7 +7,8 @@
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="False" Topmost="True"
         Background="Transparent" UseLayoutRounding="True"
-        FontFamily="Segoe UI">
+        FontFamily="Segoe UI"
+        FocusManager.FocusedElement="{Binding ElementName=SearchBox}">
 
     <Window.Resources>
         <!-- Botones chicos de acción de fila (✎ / ✕) y el de alias / agregar. -->
@@ -42,6 +43,15 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#0F0F0F" />
+            <Setter Property="Foreground" Value="#F2F2F2" />
+            <Setter Property="BorderBrush" Value="#3A3A3A" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="CaretBrush" Value="#F2F2F2" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
     </Window.Resources>
 
     <!-- Alpha F2 ≈ 242/255: leve transparencia como el legacy (SetLayeredWindowAttributes 245). -->
@@ -50,35 +60,54 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <!-- Header -->
+            <!-- Header: título + alta de atajo libre + cerrar -->
             <Grid Grid.Row="0" Margin="0,0,0,10">
-                <TextBlock Text="{loc:Translate Helper.Header}"
+                <TextBlock Text="{loc:Translate Helper.Header}" VerticalAlignment="Center"
                            Foreground="#EDEDED" FontSize="17" FontWeight="Bold" />
-                <Button x:Name="CloseBtn" Content="✕" Width="30" Height="26"
-                        HorizontalAlignment="Right" VerticalAlignment="Top" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                    <Button x:Name="NewBtn" Content="{loc:Translate Helper.NewCustomBtn}" Height="26"
+                            Padding="10,0" Margin="0,0,8,0" />
+                    <Button x:Name="CloseBtn" Content="✕" Width="30" Height="26" />
+                </StackPanel>
             </Grid>
 
-            <!-- Dos columnas -->
-            <Grid Grid.Row="1">
+            <!-- Buscador: SIEMPRE tiene el foco al abrir (FocusedElement + Loaded en el code-behind).
+                 Con texto, el contenido principal se reemplaza por la lista de resultados. -->
+            <Grid Grid.Row="1" Margin="0,0,0,8">
+                <TextBox x:Name="SearchBox" FontSize="15" Height="36" />
+                <TextBlock x:Name="SearchPlaceholder" IsHitTestVisible="False"
+                           Text="{loc:Translate Helper.SearchPlaceholder}"
+                           Foreground="#6E6E78" FontSize="15" VerticalAlignment="Center" Margin="11,0,0,0" />
+            </Grid>
+
+            <!-- Estado principal (buscador vacío): dos columnas, como siempre -->
+            <Grid x:Name="MainView" Grid.Row="2">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="24" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
-                    <StackPanel x:Name="LeftColumn" />
+                <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" Focusable="False">
+                    <StackPanel x:Name="LeftColumn" Margin="0,0,8,0" />
                 </ScrollViewer>
-                <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
-                    <StackPanel x:Name="RightColumn" />
+                <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" Focusable="False">
+                    <StackPanel x:Name="RightColumn" Margin="0,0,8,0" />
                 </ScrollViewer>
             </Grid>
 
+            <!-- Resultados de búsqueda (buscador con texto): lista plana agrupada por app/origen -->
+            <ScrollViewer x:Name="ResultsScroll" Grid.Row="2" Visibility="Collapsed"
+                          VerticalScrollBarVisibility="Auto" Focusable="False">
+                <StackPanel x:Name="ResultsPanel" Margin="0,0,8,0" />
+            </ScrollViewer>
+
             <!-- Footer -->
-            <TextBlock Grid.Row="2" Margin="0,14,0,0" HorizontalAlignment="Center"
+            <TextBlock Grid.Row="3" Margin="0,14,0,0" HorizontalAlignment="Center"
                        Foreground="#5A5A5A" FontSize="12" Text="{loc:Translate Helper.Footer}" />
         </Grid>
     </Border>
