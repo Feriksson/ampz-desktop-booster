@@ -61,6 +61,15 @@
             <TextBlock x:Name="HeaderText" Foreground="#FFD700" FontSize="14" FontWeight="Bold"
                        Margin="0,0,0,14" />
 
+            <!-- Sólo en modo atajo LIBRE (ShowCustom): el título simple que agrupa ("PowerToys",
+                 "Windows"). Los chips de abajo son los títulos ya usados — un click lo completa, así
+                 no terminás con "PowerToys" y "Powertoys" como dos grupos distintos. -->
+            <StackPanel x:Name="AppPanel" Visibility="Collapsed" Margin="0,0,0,14">
+                <TextBlock Text="{loc:Translate Shortcut.AppLabel}" Foreground="#888" FontSize="12" Margin="0,0,0,3" />
+                <TextBox x:Name="AppBox" FontSize="13" Foreground="#FFD700" />
+                <WrapPanel x:Name="AppChips" Margin="0,6,0,0" />
+            </StackPanel>
+
             <TextBlock Text="{loc:Translate Shortcut.KeyComboLabel}" Foreground="#888" FontSize="12" Margin="0,0,0,3" />
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -76,18 +85,22 @@
             <TextBlock Text="{loc:Translate Shortcut.DescLabel}" Foreground="#888" FontSize="12" Margin="0,14,0,3" />
             <TextBox x:Name="DescBox" FontSize="13" />
 
-            <TextBlock Text="{loc:Translate Shortcut.TitleFilterLabel}" Foreground="#888" FontSize="12"
-                       Margin="0,14,0,3" />
-            <TextBlock x:Name="CurrentTitleHint" Foreground="#5577AA" FontSize="11"
-                       TextWrapping="Wrap" Margin="0,0,0,3" Visibility="Collapsed" />
-            <TextBox x:Name="TitleBox" FontSize="13" />
-            <TextBlock Foreground="#666" FontSize="11" FontStyle="Italic" TextWrapping="Wrap"
-                       Margin="0,6,0,0"
-                       Text="{loc:Translate Shortcut.TitleFilterHint1}" />
-            <TextBlock Foreground="#666" FontSize="11" FontStyle="Italic" TextWrapping="Wrap"
-                       Text="{loc:Translate Shortcut.TitleFilterHint2}" />
-            <TextBlock Foreground="#666" FontSize="11" FontStyle="Italic" TextWrapping="Wrap"
-                       Text="{loc:Translate Shortcut.TitleFilterHint3}" />
+            <!-- Filtro de título: sólo tiene sentido per-proc (se compara contra la ventana con foco).
+                 En modo atajo LIBRE se colapsa entero. -->
+            <StackPanel x:Name="TitlePanel">
+                <TextBlock Text="{loc:Translate Shortcut.TitleFilterLabel}" Foreground="#888" FontSize="12"
+                           Margin="0,14,0,3" />
+                <TextBlock x:Name="CurrentTitleHint" Foreground="#5577AA" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,0,0,3" Visibility="Collapsed" />
+                <TextBox x:Name="TitleBox" FontSize="13" />
+                <TextBlock Foreground="#666" FontSize="11" FontStyle="Italic" TextWrapping="Wrap"
+                           Margin="0,6,0,0"
+                           Text="{loc:Translate Shortcut.TitleFilterHint1}" />
+                <TextBlock Foreground="#666" FontSize="11" FontStyle="Italic" TextWrapping="Wrap"
+                           Text="{loc:Translate Shortcut.TitleFilterHint2}" />
+                <TextBlock Foreground="#666" FontSize="11" FontStyle="Italic" TextWrapping="Wrap"
+                           Text="{loc:Translate Shortcut.TitleFilterHint3}" />
+            </StackPanel>
 
             <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
                 <Button x:Name="SaveBtn" Width="170" Content="{loc:Translate Shortcut.CreateBtn}" />
