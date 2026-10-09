@@ -18,7 +18,13 @@ public static class Toasts
 {
     public enum Kind { Pin, Move, Protect, Info, Error, Success }
 
-    private const double TopStart = 20;
+    private const double TopMargin = 20;
+
+    // El apilado arranca desde el TECHO del área de trabajo, no desde el borde físico de la pantalla:
+    // con la barra acoplada ARRIBA (o la taskbar arriba), un Y fijo de 20 dejaba los toasts encima de
+    // la barra. WorkArea ya descuenta toda appbar registrada, así que respeta cualquier borde. Se
+    // lee en cada uso (no se cachea) porque cambia en caliente si el usuario re-acopla la barra.
+    private static double TopStart => SystemParameters.WorkArea.Top + TopMargin;
     private const double Gap = 8;
 
     // Toasts vivos, para apilarlos. Se limpian al cerrarse.

@@ -34,6 +34,18 @@ public sealed class WidgetSettings
     // terminal o una web. Un widget que hay que ir a descubrir en el tray no resuelve ese problema.
     public bool Ip { get; set; } = true;
 
+    /// <summary>
+    /// true = la barra se acopla ARRIBA de la pantalla; false (default) = abajo, como siempre fue.
+    /// No es un widget (por eso no entra al enum ni a Get/Set), pero vive acá porque widgets.json ES
+    /// el archivo de "cómo se ve la barra" y la única dueña que lo escribe es la propia BarWindow —
+    /// abrir un segundo archivo para un solo bool habría sido una fuente de verdad más sin ganar nada.
+    /// Un bool y no un enum de 4 bordes: lateral (izq/der) no tiene sentido con una barra horizontal
+    /// de widgets. Un widgets.json viejo sin el campo deserializa false → abajo, sin migración.
+    /// ⚠ Lo escribe SÓLO la barra (BarWindow.SetDockTop): la config le avisa, no guarda su copia —
+    /// si no, el próximo toggle de widget desde el tray pisaría el valor con su instancia vieja.
+    /// </summary>
+    public bool DockTop { get; set; }
+
     // ---- Acceso genérico por enum: permite que el tray sea agnóstico del orden ----
 
     public bool Get(WidgetKind kind) => kind switch

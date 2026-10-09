@@ -12,8 +12,10 @@
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
 
-    <!-- Borde + fondo de la barra -->
-    <Border Background="{StaticResource BarBackground}"
+    <!-- Borde + fondo de la barra. La línea de acento y la sombra van del lado que da a la pantalla:
+         arriba si la barra está abajo (default) — BarWindow.ApplyDockVisuals las espeja si se acopla arriba. -->
+    <Border x:Name="BarBorder"
+            Background="{StaticResource BarBackground}"
             BorderBrush="#2A4FC3F7"
             BorderThickness="0,1,0,0">
         <Border.Effect>
