@@ -43,9 +43,9 @@ public sealed class BrowserPipeServer : IDisposable
         {
             try
             {
-                using var server = new NamedPipeServerStream(
-                    PipeName, PipeDirection.In, maxNumberOfServerInstances: 1,
-                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+                // DACL al usuario actual: la 2da instancia que lanza Windows como navegador corre
+                // SIN elevar y el DACL default de una app elevada la rechazaba (ver UserPipe).
+                using var server = UserPipe.CreateServer(PipeName, PipeDirection.In);
                 await server.WaitForConnectionAsync(ct).ConfigureAwait(false);
 
                 using var reader = new StreamReader(server);
