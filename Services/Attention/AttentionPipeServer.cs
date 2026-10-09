@@ -81,18 +81,11 @@ public sealed class AttentionPipeServer : IDisposable
     /// Crea el pipe de escucha. Solo recibimos (PipeDirection.In) — el cliente postea y cierra, no
     /// espera respuesta (fire-and-forget). Async para que el accept no bloquee un hilo propio.
     ///
-    /// TODO (endurecimiento — primer ítem de la próxima iteración): restringir la DACL al usuario
-    /// actual con NamedPipeServerStreamAcl + PipeSecurity (requiere el package
-    /// System.IO.Pipes.AccessControl). Esto cierra el pipe a cualquier otro principal a nivel del SO
-    /// — la ventaja de seguridad concreta del pipe sobre un puerto TCP. El slice usa el DACL default
-    /// (el creador tiene full control) solo para validar el flujo punta a punta primero.
+    /// DACL explícita al usuario actual (ver <see cref="UserPipe"/>): con el DACL default, la app
+    /// arrancada ELEVADA rechazaba al hook (que corre sin elevar) y el aviso se perdía en silencio.
     /// </summary>
     private static NamedPipeServerStream CreateServer() =>
-        new(PipeName,
-            PipeDirection.In,
-            maxNumberOfServerInstances: 1,
-            PipeTransmissionMode.Byte,
-            PipeOptions.Asynchronous);
+        UserPipe.CreateServer(PipeName, PipeDirection.In);
 
     // ── Wire DTO: el formato del mensaje en el cable, separado del modelo de dominio ──
 
