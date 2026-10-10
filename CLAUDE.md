@@ -23,6 +23,10 @@ diseño, la respuesta casi siempre es "así lo hacía el .ahk". El comportamient
 - `VirtualDesktopAccessor.dll` (nativa, x64, **build PARCHEADA de Ciantic** — ya NO es la del .ahk original;
   ver `native/VirtualDesktopAccessor/README.md` y la sección ⚠ de Interop) se copia al
   output con `PreserveNewest`. Los `Providers/*.png` se embeben como `Resource`.
+- **`Microsoft.Data.Sqlite`** (NuGet) — SÓLO para la biblioteca de conocimiento (`Knowledge/`, ver la
+  sección 6 y la ⚠ de Persistencia). Arrastra el `e_sqlite3.dll` nativo, que cae en el output bajo
+  `runtimes/win-x64/native/` (el paquete lo trae por RID: no hace falta fijar un `RuntimeIdentifier`).
+  Los otros paquetes son `NAudio` (sonido de atención) y `QRCoder` (QR de servicios).
 
 Build / run:
 ```powershell
@@ -42,8 +46,20 @@ NO le pidas al usuario que la cierre/relance — hacelo vos, siempre, en este or
    del `.exe` — ese error NO es de código, es la app abierta):
    `powershell.exe -Command "Stop-Process -Name AmpzDesktopBooster -Force -ErrorAction SilentlyContinue"`
 2. **Rebuildear**: `dotnet build "AmpzDesktopBooster.csproj"`
-3. **Relanzar** (detached, no bloquear el shell):
+3. **Relanzar ELEVADA, por la tarea programada** (no bloquea el shell):
+   `powershell.exe -Command "Start-ScheduledTask -TaskName AmpzDesktopBooster"`
+   La app está pensada para correr con token de administrador: "Iniciar con Windows" es una TAREA
+   PROGRAMADA (`\AmpzDesktopBooster`, `RunLevel=HighestAvailable`, ver `Services/AutoStartService.cs`)
+   justamente para arrancar elevada sin prompt de UAC, y el resto del código asume ese caso
+   (`Apps/Shell.cs`, `Interop/UnelevatedLauncher.cs`: todo lo que la app lanza sale DE-elevado a
+   propósito). Un `Start-Process` pelado desde el shell del agente la deja SIN elevar, y una instancia
+   sin elevar se porta mal en cuanto el foreground es una ventana elevada: Windows no le entrega esas
+   teclas al hook de bajo nivel ni la deja mover esas ventanas (UIPI) — hotkeys y gobierno de ventanas
+   "andan a veces", que es el peor modo de fallar.
+   La tarea ejecuta el exe con el que se activó el toggle (`Environment.ProcessPath` en ese momento).
+   Si la tarea NO existe (autoarranque apagado) o apunta a otra copia del exe, caé a
    `powershell.exe -Command "Start-Process 'bin\Debug\net10.0-windows\AmpzDesktopBooster.exe'"`
+   y AVISALE al usuario que quedó sin elevar.
 4. **Confirmar** que levantó (el PID cambia):
    `powershell.exe -Command "Get-Process -Name '*Ampz*' -ErrorAction SilentlyContinue | Select-Object Id,ProcessName"`
 
@@ -61,7 +77,10 @@ filtrá por `-Name` en vez de `Where-Object { $_... }`).
 2. Handlers de crash → escriben a `ampz-crash.log` (junto al exe). La app NUNCA crashea en silencio.
 3. Servicios core: `DesktopService`, `ProjectStore`, `AppsConfig`, `PinStore`, `RestrictionStore`.
    Se inyecta `desktops.ProjectLookup = projects.GetDeskProject` (desacople: DesktopService no
-   conoce la capa de persistencia).
+   conoce la capa de persistencia). Acá también se construye el `KnowledgeStore` (abre o crea
+   `knowledge.db`; su constructor nunca tira). Sus avisos quedan EN COLA hasta que se conecta
+   `KnowledgeStore.Notify`, más abajo, con la UI ya montada — sin eso un "base dañada" del arranque
+   no tendría dónde mostrarse.
 4. **`DynamicDeskStore.Load`** (poda los GUID que Windows ya cerró) → **`DesktopBootstrapper.Ensure`**
    (si `AutoCreate`) — asegura los fijos del catálogo, resolviendo por NOMBRE (nunca por índice: ver
    la sección del catálogo más abajo, "⚠ el bootstrapper NUNCA renombra por posición"). El orden
@@ -94,6 +113,8 @@ que `WH_KEYBOARD_LL` y el `PostMessage` de la DLL necesitan.
 | `Apps/` | Apps externas: detección, "Abrir con", Docker, quick actions, contexto de Explorer. |
 | `Services/` | AppBar, tray, autostart, monitor de sistema, toasts, extracción de íconos. |
 | `Providers/` | Logos PNG de proveedores de IA (embebidos como Resource). |
+| `Knowledge/` | Biblioteca de conocimiento: modelo (`KnowledgeModels`), `KnowledgeStore` (el ÚNICO que toca SQLite; partials `.Seed` y `.Exchange`), `Solidity` y `KnowledgeStats` (cálculo puro, sin base ni UI), `KnowledgeExchange` (formato de import/export). Ver sección 6. |
+| `Themes/` | `ResourceDictionary` compartidos que se mergean donde hacen falta: `DarkScrollBar.xaml` (barra de scroll oscura, estilo implícito) y `KnowledgeDialog.xaml` (paleta/botones/combo de los diálogos de conocimiento). Existen para no tener dos copias de un mismo control que divergen en la primera corrección. |
 | raíz | Las ventanas WPF (`*.xaml` + `.xaml.cs`) y el `App`. |
 
 ---
@@ -343,6 +364,104 @@ Motor de enforcement que escucha `EVENT_OBJECT_SHOW` (vía `WinEventHook`) + el 
   `Space` tiene que poder traer cualquier app porque rota de espacio.
 - Procesos del sistema y la propia app están en blocklist/exempt — nunca se anclan ni se mueven.
 
+### 6. Biblioteca de CONOCIMIENTO: bibliotecas, solidez y el playbooker (`Knowledge/` + `PlaybookWindow`)
+La barra dejó de ser sólo productividad: también acompaña el crecimiento personal. El usuario quería
+dónde guardar, practicar y SEGUIR los conceptos y el vocabulario de su campo. Son **bibliotecas** de
+**cards** (frente/dorso) y **términos** de vocabulario que se juegan desde el **playbooker**
+(`NumpadClear` pelado) y se administran en Config → Conocimiento. En la UI se dice "card", no
+"tarjeta" (decisión del usuario).
+
+**⚠ Esto NO es Anki — y hay vocabulario PROHIBIDO (no lo "simplifiques" de vuelta).** No hay fechas
+de vencimiento, ni cola acumulada (backlog), ni contador de lo que "toca hoy". Las palabras
+«pendiente», «atrasado» y «te faltan» (y sus equivalentes) NO van en textos de UI, ni en
+identificadores, ni en comentarios. El usuario rechazó ese modelo de forma explícita y enfática:
+convierte estudiar en una deuda que crece si faltás una semana. El modelo es otro — lo que sabés se
+DESGASTA de a poco y **nunca llega a cero sólo por el paso del tiempo**; el quiz simplemente muestra
+más seguido lo más flojo, y las estadísticas son un ESPEJO, no una agenda. Cualquier número nuevo
+que agregues tiene que describir un estado, no reclamar una obligación.
+
+**El modelo** (`Knowledge/KnowledgeModels.cs`, records inmutables: el store es el único que escribe):
+
+| Pieza | Qué es | Lo que NO es obvio |
+|---|---|---|
+| `Library` | Árbol por `ParentId` (null = raíz) | **Este árbol SÍ anida (hijas, nietas…) y NO tiene nada que ver con Espacio/Contexto** (que son dos niveles y punto). Dos HERMANAS no pueden llamarse igual: la regla vive sola en `LibraryTree.SiblingNames` porque crear, renombrar, mover e importar tienen que opinar lo mismo. Mover dentro de sí misma se rechaza (`KnowledgeOpResult.WouldCycle`). |
+| `Entry` | `EntryKind.Card` o `EntryKind.Term`, conviven en la misma biblioteca | Un solo motor, un solo quiz, un solo seguimiento. En un término `Front` = palabra y `Back` = definición, más `WordType`, `UsageContext`, `Origin`. |
+| `Nature` | Lista PERSONAL y creciente (técnica, legal, general…), UNA por entrada | `Entry.NatureId` null NO es "sin naturaleza": es "la que herede", subiendo por el árbol hasta la primera biblioteca con `DefaultNatureId`. La regla está DOS veces y tienen que coincidir: `LibraryTree.EffectiveNatureId` (memoria) y `KnowledgeStore.GetEntriesByNature` (SQL). Tampoco es Espacio/Contexto. |
+| `Language` / `Translation` | Idiomas dinámicos; a lo sumo una traducción por término+idioma | Un idioma es además un LADO jugable. |
+| `Review` | Historial de SÓLO-AGREGAR: entrada + lado MOSTRADO + `Grade` (1..4) + fecha UTC | `Side` es el lado que se mostró como pregunta: `front`, `back` o `lang:<id>` (`ReviewSide`). Cada lado lleva su propia solidez: reconocer una palabra no es evocarla desde la definición. Los números de `Grade` SE PERSISTEN: no reordenar el enum. |
+
+Las operaciones devuelven `KnowledgeOpResult` (un motivo), por lo mismo que `ScopeOpResult`.
+
+**Solidez (`Knowledge/Solidity.cs`): se DERIVA del historial, nunca se guarda.** Así la fórmula se
+puede afinar y todo el pasado se re-lee con la nueva, sin migrar nada. `ComputeAt` es la ÚNICA
+implementación (`Compute` es el mismo recorrido con una fecha): el gráfico y el número de hoy no
+pueden contar dos historias. Con las constantes de hoy:
+- Cada respuesta EMPUJA hacia un objetivo (`GradeTarget`): 1→0, 2→35, 3→70, 4→100, recorriendo la
+  mitad del camino (`LearningRate` 0.5): `s += 0.5 × (objetivo − s)`. Se parte de 0.
+- Racha `n` = respuestas ≥3 seguidas (una floja la corta). Vida media = `14d × 2^(max(n,1)−1)`, con
+  tope de 365d (`HalfLifeDays`).
+- Desgaste: baja hacia un PISO de `0.4 × s` (`FloorRatio`) con esa vida media, sin cruzarlo. Se
+  aplica dos veces con la misma regla: desde el último repaso hasta hoy, y ENTRE repasos (cada
+  respuesta parte de lo que realmente quedaba ese día — si no, dos años sin uso no costarían nada).
+- **"No jugada" es un estado PROPIO, no 0%** (`SolidityState.NotPlayed`); la UI lo dice con texto.
+  En un promedio de conjunto pesa 0, pero `Played`/`Total` van aparte (`SolidityAverage`).
+- El número de UNA entrada (`Solidity.EntryValue`) promedia sus lados JUGADOS, los de idioma incluidos.
+- Orden del quiz (`WeightedOrder`): azar sesgado, peso = `(100 − solidez) + 10`. El +10 evita que lo
+  que está en 100 no salga nunca más. No es una lista de peor a mejor: eso enseñaría el orden.
+- "Nivel espectáculo" de las estadísticas: `KnowledgeStats.SpectacleThreshold` = 85 (no 100: hacen
+  falta tres «Un espectáculo» seguidos para pasarlo y el desgaste lo baja). La evolución son 26
+  muestras semanales y se dibuja recién con 14 días de historia.
+
+**El playbooker (`PlaybookWindow`, partials `.Browse` / `.Ficha` / `.Stats`)**: una ventana, seis
+vistas alternadas por `Visibility`. Carga TODO una vez al abrir (`LoadData`) y arma conteos y solidez
+en memoria. Teclado primero, pero cada tecla tiene su botón a la vista.
+
+| Vista | Teclas |
+|---|---|
+| Búsqueda | tipear filtra · `↑ ↓` · `Enter` JUEGA una biblioteca/naturaleza/«Vocabulario», LEE una entrada (ficha), o CARGA lo tipeado si no existía (`KnowledgeEntryWindow.ShowCapture`) · `F2` estadísticas · `Esc` limpia el texto y, vacío, cierra |
+| Armado | `← →` o `1..n` eligen qué lado se muestra (frente, dorso, mezclado o un idioma) · `F` filtra términos/cards · `Enter` arranca · `Esc` vuelve |
+| Quiz | `Espacio` revela (y, ya revelada, salta sin anotar) · `1..4` responden, SÓLO con la respuesta a la vista (fila superior o numpad) · `Esc` corta la ronda |
+| Resumen | `Enter` otra ronda · `Esc` vuelve a la búsqueda |
+| Ficha | `E` edita · `← →` entrada anterior/siguiente · `Esc` vuelve. Leer NO anota nada |
+| Estadísticas | `Enter` juega la fila enfocada · `← →` cambian de lista · `Esc`/`F2` vuelven |
+
+- **Tamaño**: 90% × 90% del área de trabajo del monitor primario (`WorkAreaRatio`), con TODO el
+  contenido escalado por `LayoutTransform` según el alto (`ReferenceHeight` 972, entre `MinScale`
+  0.82 y `MaxScale` 1.6). Requisito del usuario, no estética: **una entrada revelada tiene que entrar
+  ENTERA sin scrollear**. Los `ScrollViewer` de la card y la ficha son red de seguridad para un texto
+  desmesurado, no el diseño. Si agregás campos a la card, comprobalo en la altura de referencia.
+- **`ShowFocused(closeOnDeactivate: false)`**: una sesión de estudio tiene que sobrevivir a un
+  Alt+Tab o a un cambio de escritorio (mismo criterio que la Config).
+- **Re-press de `NumpadClear`** (`App.TogglePlaybook`): cierra SÓLO desde la búsqueda
+  (`CanCloseOnRepress`); en cualquier otra vista la trae al frente. El numpad 5 está en el medio del
+  teclado con el que se navega: una tecla suelta no puede matar un quiz a la mitad.
+
+**Config → Conocimiento** (sub-pestañas «Bibliotecas» y «Naturalezas e idiomas», con `SubTabControl` /
+`SubTabItem`): árbol de bibliotecas como lista plana con sangría (un `TreeView` trae su template
+claro), entradas de la elegida, y los diálogos `KnowledgeEntryWindow` (alta/edición; guarda él mismo
+por el "Guardar y nueva") y `KnowledgeImportWindow`. Vive en DOS partials de `ConfigWindow` —
+`ConfigWindow.Knowledge.cs` y `ConfigWindow.KnowledgeExchange.cs` — porque `ConfigWindow.xaml.cs` ya
+pasa las 2.700 líneas y esta pestaña no comparte nada con las demás. Cada botón es UNA operación del
+store que se guarda sola, y después se relee todo (`RefreshKnowledge`): no hay "Guardar" ni estado a
+medias.
+
+**Import / export** (`Knowledge/KnowledgeExchange.cs` = el formato; `KnowledgeStore.Exchange.cs` = la
+base). Formato `"format": "ampz-knowledge-library"`, `"version": 1`; una versión distinta se RECHAZA
+con su mensaje en vez de importarse "como se pueda".
+- Viaja el CONTENIDO **por NOMBRE**: sin ids, sin repasos, sin solidez. Naturalezas e idiomas se
+  buscan por nombre en el destino y se crean los que falten. La naturaleza de una entrada viaja sólo
+  si es PROPIA (escribir la heredada la congelaría).
+- Ante un choque de nombre en el destino (`ImportCollisionMode`): **`Copy`** crea una biblioteca
+  nueva con nombre sufijado ("Nombre (2)") y no toca lo existente; **`Merge`** suma a la existente lo
+  que falte, emparejando sub-bibliotecas por nombre y salteando entradas idénticas (tipo + frente +
+  dorso). En ningún modo se modifica ni se borra una entrada o un repaso que ya estaba.
+- **Todo o nada**: `ImportLibraries` es UNA transacción. La vista previa (`PreviewImport`) es el MISMO
+  recorrido sin escribir, así que los números que se confirman son los que ocurren.
+- **El archivo es ENTRADA NO CONFIABLE** (lo mandó otro, o se editó a mano): se valida ENTERO antes
+  de tocar la base, con topes `MaxFileBytes` (20 MB), `MaxDepth` (32 niveles) y `MaxEntries`
+  (200.000). De él sólo sale texto que se guarda como texto — nunca una ruta, un comando ni una
+  referencia externa. No aflojes los topes: se lee en memoria y se recorre en el thread de UI.
+
 ---
 
 ## Persistencia — dónde vive cada cosa
@@ -358,6 +477,7 @@ legacy guardaba en `A_ScriptDir`; esto se modernizó para que la app sea compart
 | `dynamic_desks.json` | JSON | `DynamicDeskStore`: los escritorios DINÁMICOS vivos que abrió el launcher (`Win+NumpadEnter`), indexados por GUID del desktop (`id` + `project` + `module` + `key`). Al cargar se descarta cualquier entrada cuyo GUID ya no resuelva a un desktop real (Windows lo cerró). Separado del catálogo de espacios (`desk_project_data.json`, que es durable aunque nadie lo tenga abierto): esto es la lista de "qué desk vivo ES cada asignación", en la práctica vive y muere con la app: `OnExit` cierra los dinámicos y `OnStartup` barre los que dejó una sesión que terminó mal. |
 | `apps.json` | JSON | `AppsConfig`: apps de usuario (`name`, `exePath`, `args` con `{path}`). |
 | `widgets.json` | JSON | `WidgetSettings`: qué widgets de la barra están activos (defaults: Clock + Ram + Ip). |
+| `knowledge.db` | SQLite | `KnowledgeStore`: biblioteca de conocimiento — tablas `libraries`, `entries`, `natures`, `languages`, `translations`, `reviews` (esquema versionado por `PRAGMA user_version`). El ÚNICO dato que no es JSON/INI; ver la ⚠ de abajo. Un archivo ilegible se aparta como `knowledge.db.corrupt-<fecha>`. |
 | ~~`ports.json`~~ | JSON | **MIGRADO** a `services` del catálogo (ver arriba). `PortStore` queda como legacy de sólo-lectura para `ServiceMigration`; al migrar, el archivo se renombra a `ports.json.migrated`. |
 | `ampz-crash.log` | texto | Junto al **exe** (no en APPDATA). Log de excepciones no manejadas. |
 
@@ -366,6 +486,38 @@ legacy guardaba en `A_ScriptDir`; esto se modernizó para que la app sea compart
 
 **Patrón de configs**: `static Load()` (try/catch → defaults si corrupto) + `Save()` (try/catch
 silencioso → si falla el disco, seguimos en memoria). **La persistencia nunca voltea la app.**
+
+### ⚠ `knowledge.db` es SQLite — la ÚNICA excepción, y las reglas del store que no se deshacen
+
+Por qué SQLite acá y JSON en todo lo demás: el historial de repasos crece sin techo (una fila por
+respuesta del quiz) y se consulta por agregados. Los stores JSON reescriben el archivo ENTERO en cada
+cambio — perfecto para 50 KB de config, un despropósito para esto. **No es permiso para migrar los
+otros stores**: siguen en JSON, y nadie fuera de `KnowledgeStore` ve una conexión.
+
+- **UNA conexión por operación, con `Pooling=False`.** `App.OnExit` mata el proceso sin desmontar
+  nada y "Restablecer todo" (`AppPaths.ResetAllData`) BORRA los archivos de la carpeta de datos: un
+  handle vivo en un pool deja el archivo tomado y ese borrado falla en silencio. Por lo mismo cada
+  escritura es su propia transacción, confirmada antes de volver — no hay "guardar al cerrar".
+- **Ningún método público tira.** Todo pasa por `Read` / `Write`: las lecturas degradan a vacío, las
+  escrituras devuelven `false` / `KnowledgeOpResult.Failed`. El PRIMER fallo de una racha se avisa
+  por `Notify` (toast) y los siguientes callan; la racha se cierra con la primera operación que sale
+  bien, así una segunda caída se vuelve a avisar.
+- **Un archivo corrupto se APARTA, nunca se borra** (`MoveAside`, con sus `-journal`/`-wal`/`-shm`):
+  puede ser la única copia. Corrupto = `SQLITE_CORRUPT` / `SQLITE_NOTADB` o un `quick_check` fallido;
+  un archivo tomado o sin permisos NO lo es, y apartarlo sería tirar una biblioteca sana.
+- **El ejemplo se siembra SÓLO en una base que este proceso vio nacer** (`_mayCreateWithSample`: el
+  archivo no existía al construir el store). Nunca tras apartar una corrupta ni en una
+  re-inicialización: encontrar la biblioteca de muestra donde estaban tus cards se lee como "me las
+  cambiaron".
+- **Freno ante un bloqueo** (`_backOffUntil`): cada intento contra una base tomada le cuesta a SQLite
+  ~2s (`DefaultTimeout = 2`), así que tras un fallo de inicialización se espera 15s y tras un
+  `BUSY`/`LOCKED` 5s, degradando al instante mientras tanto. Sin esto, cada tecla del quiz congela la
+  barra.
+- **La base se usa desde el thread de UI** (el mismo del hook de teclado). Toda consulta tiene que
+  ser de UNA pasada: nada de una consulta por fila o por nodo del árbol (N+1). El patrón es leer todo
+  junto y repartir en memoria (`GetAllEntries` + `GetAllReviews` → `Solidity.ComputeAll`); los
+  conjuntos de ids viajan como UN parámetro JSON (`json_each`). Las CTE recursivas usan `UNION` y no
+  `UNION ALL`: es lo que corta un ciclo en una base tocada a mano.
 
 ---
 
@@ -384,22 +536,25 @@ del hook no se puede bloquear).
 | `Win+Shift+`(navegación) | Enviar la ventana activa a ese desk **y seguirla** |
 | `Win+NumpadEnter` | **Launcher**, usable desde CUALQUIER desk: elegís Espacio (`ProjectSetterWindow`) → encadena el picker de Contexto (`ModulePickerWindow`) → crea un escritorio DINÁMICO nuevo (o salta al que ya lo tenga abierto), lo asigna y salta ahí. **Ya NO auto-lanza sus servicios `AutoStart`** (se retiró a pedido del usuario: abrir un escritorio no dispara procesos solo — se levantan a mano con el re-press de `Win+Numpad +` o `Ctrl+Enter` en Servicios). Ambos pasos MARCAN lo que ya está abierto (leyendo `DynamicDeskStore.CountOpenModules`/`OpenKeyFor`, mismo criterio de comparación que el dedupe): el paso Espacio muestra "● N abiertos" junto a los que tengan algún contexto (o "sin contexto") vivo; el paso Contexto marca cada fila abierta con "● abierto — <tecla>" (reusa `NumpadDecoder.Label`), incluida la opción "Sin contexto". Elegir uno YA abierto no crea nada: `DeskLauncher.Open` dedupea primero y SALTA ahí (`LauncherOpenResult.SwitchedExisting`). **Re-press con el launcher abierto** cierra el picker y, si el desk donde estás parado es uno dinámico, lo BORRA (`RemoveDesktop`, fallback = el Main); en un desk fijo sólo cierra el picker (toast). Ver `DeskLauncher`. |
 | `Win+Numpad .` (Del) | Abrir la **Config** (o traerla al frente si ya está abierta; `Esc` la cierra). La tecla quedó libre cuando se RETIRÓ su uso anterior, "cambiar de contexto en el mismo desk": con escritorios dinámicos el contexto se elige UNA sola vez, en el paso 2 del launcher. |
-| `NumpadClear` (Numpad5, **sin Win**) | Abrir el **DeskPicker** (saltar a un espacio de la sesión) |
+| `NumpadClear` (Numpad5, **sin Win ni Shift**) | Abrir el **Playbooker** (jugar / consultar la biblioteca de conocimiento, ver sección 6). Instancia única; el re-press la cierra sólo desde la búsqueda, si no la trae al frente (`App.TogglePlaybook`). Con Win, el Numpad5 es navegación como cualquier otro dígito. |
+| ~~`NumpadClear` → DeskPicker~~ | **RETIRADO** por decisión del usuario el 2026-10-10: la tecla pasó al playbooker. `DeskPickerWindow` y `HotkeyRouter.ShowDeskPicker` se CONSERVAN enteros a propósito, hoy sin ninguna tecla que los llame; re-enlazarlos es una línea en `HotkeyRouter.Route` el día que haya una tecla libre. No los borres por "código muerto". |
 | `Win+Numpad *` | **Variables** del espacio/contexto/global (Paths Manager); re-press dispara el predeterminado |
 | `Win+Numpad /` | **Notas** del espacio/contexto/global |
 | `Win+Numpad −` (Sub) | **Send-window picker** (mandar la ventana activa a un desk elegido) |
 | `Win+Numpad +` (Add) | **Servicios** del espacio/contexto/global: cómo levantar lo básico y qué está levantado (estado vivo 🟢/⚪ por puerto, copiar localhost / IP de red, QR). Re-press → levanta lo que falte |
+| `Win+Numpad 0` (Insert) | **Tareas**: picker para asignarle una tarea al desk actual (`TaskPickerWindow`); re-press con el picker abierto DESASIGNA la del desk donde se abrió y cierra. Migró desde `Win+NumLock`: Shift/Alt+NumLock togglea NumLock por debajo del hook y no se puede neutralizar; el Insert va por scancode. |
 | `Win+F2` | "Abrir con" (sobre el path activo del Explorer) |
 | `Win+F3` | Variables de entorno |
 | `Win+F5` | Panel Docker |
-| `Win+F6` | Toggle pin de la ventana activa |
-| `Win+F7` | Pin Manager |
-| `Win+F8` | Restricciones del desk |
+| `Win+F6` | Toggle pin de la ventana activa (con confirmación). La gestión completa vive en Config → Anclajes |
+| ~~`Win+F7`~~ / ~~`Win+F8`~~ | **RETIRADOS** (Pin Manager y Restricciones del desk): eran popups de gestión compleja que hoy viven en la Config (pestañas Anclajes y Protecciones). Sus ventanas ya no existen. OJO: `HotkeyService` sigue TRAGANDO todo `Win+F1..F12` (`IsFunctionVk`), así que las F sin `case` en el router (F1, F4, F7, F8, F10) no hacen nada y tampoco llegan al shell. |
 | `Win+F9` | Whitelist: permitir la app activa en el desk actual |
 | `Win+F11` | Abrir Descargas |
-| `Win+F12` | Panel de refresh rate (Hz) |
+| `Win+F12` | Picker de refresh rate (Hz) estilo Alt+Tab: abre con la frecuencia SIGUIENTE seleccionada, re-press (sin soltar Win) cicla, y **soltar Win aplica** (`HotkeyService.WinReleased`) |
 | `` Win+` `` (backtick) | Abrir terminal en el path actual del Explorer |
+| `Win+/` | **Shortcuts Helper** (`ShortcutsHelperWindow`): cheatsheet global + atajos de la app con foco + atajos libres, con buscador. Re-press lo cierra. Su columna izquierda (`GetGlobalShortcuts`) es una lista ESCRITA A MANO: si cambiás un atajo acá, cambialo allá también. |
 | `Win+D` | **Interceptado**: reemplaza el "Mostrar escritorio" nativo por uno propio que minimiza todo **menos la barra** (ver ⚠ abajo) |
+| `F1` (**sin Win**) | **Tragado** (down y up) para que nunca abra la Ayuda de Windows en la app activa. Todavía no dispara nada. |
 
 Las ventanas de Variables y Notas son de **instancia única**: re-presionar el atajo con la ventana
 abierta NO abre otra (Variables dispara el path predeterminado; Notas la trae al frente).
@@ -412,7 +567,8 @@ abierta NO abre otra (Variables dispara el path predeterminado; Notas la trae al
 - `AppBarManager` — registra la ventana como **AppBar real** vía `SHAppBarMessage`: Windows EMPUJA
   las demás ventanas (maximizar ya no la tapa). Clava su rect y revierte cualquier Aero Snap/drag.
 - `TrayIconService` — el `NotifyIcon` (único consumidor de WinForms).
-- `AutoStartService` — arranque con Windows.
+- `AutoStartService` — arranque con Windows vía TAREA PROGRAMADA (`\AmpzDesktopBooster`), no la clave
+  `Run`: es lo que permite arrancar ELEVADA sin prompt de UAC (ver "Ciclo build OBLIGATORIO").
 - `SystemMonitor` — snapshot inmutable de CPU/RAM/batería/red vía `NativeMethods`
   (`GetSystemTimes`, `GlobalMemoryStatusEx`, `GetSystemPowerStatus`, `NetworkInterface`).
   No sabe NADA de UI; la barra lo consume. La 1ra muestra de CPU/red da 0 (necesita delta).
@@ -431,10 +587,16 @@ abierta NO abre otra (Variables dispara el path predeterminado; Notas la trae al
 **Ventanas WPF** (raíz): `BarWindow` (la AppBar + widgets), `OverlayWindow` (feedback central de
 cambio de desk), `ConfigWindow` (config, instancia única), `ProjectSetterWindow`, `ProjectPathsWindow`
 (variables), `ProjectNotesWindow`, `EnvVarsWindow`, `DockerWindow`, `HzWindow` (refresh rate),
-`PinManagerWindow`, `DeskRestrictionsWindow`, `WhitelistPickerWindow`, `SendWindowPickerWindow`,
-`AbrirConWindow` ("Abrir con"), `DeskPickerWindow`, `ServicesWindow` (servicios del scope) +
-`ServiceEditWindow` (título, comando, directorio, puerto, URL + los flags "levantar todo" y "cerrar
-la terminal al terminar"), `PromptDialog`, `ToastWindow`.
+`WhitelistPickerWindow`, `SendWindowPickerWindow`, `ModulePickerWindow` (paso 2 del launcher),
+`AbrirConWindow` ("Abrir con"), `DeskPickerWindow` (hoy SIN atajo, ver la tabla de hotkeys),
+`ShortcutsHelperWindow` (`Win+/`), `TaskPickerWindow` + `TaskDetailWindow` (tareas),
+`ServicesWindow` (servicios del scope) + `ServiceEditWindow` (título, comando, directorio, puerto,
+URL + los flags "levantar todo" y "cerrar la terminal al terminar"), `PlaybookWindow` (el playbooker,
+partials `.Browse` / `.Ficha` / `.Stats`), `KnowledgeEntryWindow` (alta/edición de una card o un
+término; también la captura rápida del playbooker) y `KnowledgeImportWindow` (vista previa y
+confirmación de una importación), `PromptDialog`, `ToastWindow`. `PinManagerWindow` y
+`DeskRestrictionsWindow` YA NO EXISTEN: su gestión vive en las pestañas Anclajes y Protecciones de
+la Config, que además suma la pestaña **Conocimiento** (sección 6).
 
 ---
 
@@ -532,7 +694,8 @@ filtrando a Win+numpad) + el usuario observando el PATRÓN, que son COROLARIOS d
 
 **1. El watchdog NO debe resetear `_winDown` a ciegas — descolgaba `Win+Numpad`.**
 Síntoma: con Win MANTENIDA, rafagueando `Win+Numpad`, el combo se descolgaba tras unos saltos
-(NumpadClear pasaba a abrir el DeskPicker PELADO). Patrón clave (lo encontró el usuario): se rafaguea
+(NumpadClear pasaba a abrir el DeskPicker PELADO — así era entonces; hoy esa tecla pelada abre el
+playbooker, y el síntoma equivalente sería ése). Patrón clave (lo encontró el usuario): se rafaguea
 INFINITO entre desks VACÍOS, pero el **primer desk CON ventana** lo mata.
 - **Causa**: `bar.OnBarZOrderChanged → ReinstallHook` NO sólo salta al salir de fullscreen — también
   salta al navegar a un desk CON ventana (la ventana toma foreground → la barra re-evalúa z-order →

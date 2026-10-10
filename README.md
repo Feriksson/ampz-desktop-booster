@@ -152,27 +152,47 @@ The **bar** lives at the bottom of every desktop — system stats, the active ta
 
 | Shortcut | Action |
 |---|---|
-| `Win + Numpad 7 / 8 / 9` | Go to **MAIN** / **MAILS** / **MISCS** |
-| `Win + Numpad 1..6` | Go to **DESK +1 … +6** |
-| `Win + Numpad + / −` | Cycle between the DESK+ that **have an active project** (wrap-around) |
+| `Win + Numpad 1..9` | Go to the desktop that **owns that key** — a fixed desktop (keys are configurable in Config → Desktops; defaults `1 / 2 / 3` → **MAIN** / **CONSOLES** / **MISCS**) or a dynamic one opened by the launcher, which takes the lowest free key |
 | `Win + Shift + (navigation)` | Send the active window to that desktop **and follow it** |
-| `Win + NumpadEnter` | Set the project for the current desktop (DESK +N only) |
-| `Numpad 5` *(no Win)* | Open the **Desk Picker** (jump to a session project) |
+| `Win + NumpadEnter` | **Launcher** — pick a project, then its context: creates a dynamic desktop for that pair (or jumps to it if it is already open). Re-press with the launcher open closes it and, on a dynamic desktop, removes that desktop |
+| `Numpad 5` *(CLEAR, no Win)* | Open the **Playbook** — play, look up and track your knowledge libraries. Re-press closes it from the search view; mid-session it just brings it back to the front |
 | `Win + Numpad *` | **Variables** (Paths Manager) — re-press fires the default |
 | `Win + Numpad /` | **Notes** (project/global **+** active-folder notes) |
-| `Win + Numpad .` *(Del)* | **Send-window picker** — choose a target desktop (shows its project + task) |
-| `Win + NumpadInsert` | **Task picker** — assign a task; re-press **unassigns** it (toggle) |
+| `Win + Numpad −` | **Send-window picker** — choose a target desktop for the active window |
+| `Win + Numpad +` | **Services** of the current scope — what is running and how to start it; re-press starts whatever is missing |
+| `Win + Numpad 0` *(Insert)* | **Task picker** — assign a task; re-press **unassigns** it (toggle) |
+| `Win + Numpad .` *(Del)* | Open the **configuration** window (or bring it to the front) |
 | `Win + F2` | "Open with" (over the active Explorer path) |
 | `Win + F3` | Environment variables |
 | `Win + F5` | Docker panel |
-| `Win + F6` | Toggle pin on the active window |
-| `Win + F7` | Pin Manager |
-| `Win + F8` | Desktop restrictions |
-| `Win + F9` | Whitelist the active app on the current desktop |
+| `Win + F6` | Toggle pin on the active window (full pin management lives in Config → Pins) |
+| `Win + F9` | Whitelist the active app on the current desktop (protections are managed in Config → Protections) |
 | `Win + F11` | Open Downloads |
-| `Win + F12` | Refresh-rate (Hz) picker |
+| `Win + F12` | Refresh-rate (Hz) picker — re-press cycles, releasing `Win` applies |
 | `` Win + ` `` | Open a terminal in the current Explorer path |
+| `Win + /` | **Shortcuts helper** — the built-in cheatsheet, with search; re-press closes it |
 | `Win + D` | Intercepted — a custom "show desktop" that minimizes everything **except the bar** |
+| `F1` *(no Win)* | Swallowed, so it never pops the Windows Help of the active app |
+
+> `Win + F7` (Pin Manager) and `Win + F8` (Desktop restrictions) were retired: both now live in the configuration window. The Desk Picker that used to sit on `Numpad 5` is still in the code, currently without a shortcut.
+
+---
+
+## 📚 Knowledge libraries — grow while you work
+
+The bar is not only about getting things done; it is also a place to get *better* at what you do. Keep the concepts and vocabulary of your field in **libraries**, and play them without leaving the keyboard.
+
+- **Libraries** are a tree — nest them however you think (`Law › Contracts`, `English › Business`).
+- Each library holds **cards** (front / back) and **vocabulary terms** (word, word type, definition, usage context, origin, and a translation per language — you add the languages you study).
+- Every entry has one **nature** (technical, legal, general… your own growing list), inherited from its library unless you set one, so you can also play "everything legal" across libraries.
+
+**Press `Numpad 5` (CLEAR) to open the Playbook.** Type to find a library, a nature or a single entry. `Enter` plays a library or opens an entry to read it — and if what you typed does not exist yet, it lets you add it on the spot. In a round you choose which side is shown first (front, back, mixed, or a language), `Space` reveals the answer, and the top-row keys `1`–`4` say how it went: *I don't know*, *I had doubts*, *Good, could be better*, *Spectacular*. `Esc` ends the round whenever you want; `F2` shows your statistics.
+
+**It is deliberately not a spaced-repetition scheduler.** There are no due dates and nothing piles up while you are away. Each entry has a **solidity** from 0 to 100, derived from your whole review history: it wears down slowly when you do not use it — never to zero just because time passed — and rounds simply lean towards whatever is weakest. Statistics (by library, by nature, and over time) are a mirror of where you stand, not a to-do list.
+
+**Managing libraries** happens in the configuration window (`Win + Numpad .`), tab **Knowledge**: create, rename, nest, move and delete libraries, add and edit entries, and maintain your natures and languages.
+
+**Import / export** lives in the same tab. A library (with all its sub-libraries) or everything at once is exported to a single, readable JSON file that carries the *content only* — never your review history or solidity — so it is safe to share. Importing shows a preview first and lets you choose, when a name already exists, between importing as a **copy** or **merging** into the existing library (which only adds what is missing). An import either goes in completely or not at all.
 
 ---
 
@@ -225,9 +245,10 @@ All user data lives in **`%APPDATA%\AmpzDesktopBooster\`** — never next to the
 | `apps.json` | JSON | User apps for "Open with" |
 | `tasks.json` | JSON | Task accounts (Vikunja / JIRA / Trello) |
 | `widgets.json` | JSON | Which bar widgets are enabled |
+| `knowledge.db` | SQLite | Knowledge libraries: cards, vocabulary terms and the full review history |
 | `ampz-crash.log` | text | Unhandled-exception log (next to the **exe**) |
 
-Every config follows the same resilient pattern: load with a try/catch fallback to defaults, save silently — **a corrupt file or a failed disk write never takes the app down.**
+Every config follows the same resilient pattern: load with a try/catch fallback to defaults, save silently — **a corrupt file or a failed disk write never takes the app down.** The knowledge database is the one store that is not JSON (its review history grows without bound), and it keeps the same promise: an unreadable file is moved aside, never deleted.
 
 ---
 
@@ -244,6 +265,8 @@ Strict layer separation — each piece knows only what it must:
 | `Apps/` | External apps: detection, "Open with", Docker, quick actions, Explorer context |
 | `Services/` | AppBar, tray, autostart, system monitor, toasts, tasks, attention, icons |
 | `Providers/` | AI-provider logos (embedded resources) |
+| `Knowledge/` | Knowledge libraries: model, SQLite store, solidity and statistics, import/export format |
+| `Themes/` | Shared XAML resource dictionaries (dark scrollbar, knowledge dialogs) |
 | *root* | The WPF windows (`*.xaml`) and `App` |
 
 Highlights worth knowing:
@@ -255,6 +278,7 @@ Highlights worth knowing:
 
 - **.NET 10** · **WPF** (UI) · **WinForms** (tray icon only)
 - **[NAudio](https://github.com/naudio/NAudio)** — attention-sound playback with real volume control
+- **[Microsoft.Data.Sqlite](https://learn.microsoft.com/dotnet/standard/data/sqlite/)** — the knowledge-library database
 - **VirtualDesktopAccessor.dll** — third-party native library for the undocumented Windows virtual-desktop API
 
 ---
