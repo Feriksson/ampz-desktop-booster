@@ -290,21 +290,6 @@ public partial class PlaybookWindow : Window
     // ── Solidez de un CONJUNTO (una fila, o la selección antes/después de la ronda) ──
 
     /// <summary>
-    /// La solidez de una entrada como UN número: el promedio de sus lados jugados (frente y dorso).
-    /// null = no se jugó de ningún lado. Cada lado lleva su propia solidez (saber una palabra viéndola
-    /// no es evocarla desde la definición), pero una fila de la lista necesita un solo valor.
-    /// </summary>
-    private static double? EntryValue(long entryId, IReadOnlyDictionary<(long, string), SolidityState> states)
-    {
-        var front = Solidity.StateOf(states, entryId, ReviewSide.Front);
-        var back = Solidity.StateOf(states, entryId, ReviewSide.Back);
-        if (front.Played && back.Played) return (front.Value + back.Value) / 2;
-        if (front.Played) return front.Value;
-        if (back.Played) return back.Value;
-        return null;
-    }
-
-    /// <summary>
     /// Promedio del conjunto. Mismo criterio que <see cref="Solidity.Average"/>: las no jugadas pesan
     /// 0 (una biblioteca recién empezada arranca abajo y SUBE al jugarla) y jugadas/total van aparte.
     /// </summary>
@@ -316,7 +301,7 @@ public partial class PlaybookWindow : Window
         foreach (long id in entryIds)
         {
             total++;
-            if (EntryValue(id, states) is not { } value) continue;
+            if (Solidity.EntryValue(states, id) is not { } value) continue;
             played++;
             sum += value;
         }

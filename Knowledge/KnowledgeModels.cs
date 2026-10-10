@@ -66,6 +66,11 @@ public static class LibraryTree
     }
 }
 
+/// <summary>
+/// Lo que hay DENTRO de una biblioteca contando todo su subárbol: lo que se pierde si se la borra.
+/// </summary>
+public readonly record struct LibraryContents(int SubLibraries, int Entries, int Reviews);
+
 /// <summary>Tarjeta (frente/dorso libres) o término de vocabulario (palabra/definición + ficha).</summary>
 public enum EntryKind { Card, Term }
 

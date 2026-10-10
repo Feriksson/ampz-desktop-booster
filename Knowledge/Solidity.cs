@@ -146,6 +146,24 @@ public static class Solidity
         states.TryGetValue((entryId, side), out var s) ? s : SolidityState.NotPlayed;
 
     /// <summary>
+    /// La solidez de una entrada como UN número: el promedio de sus lados jugados (frente y dorso).
+    /// null = no se jugó de ningún lado. Cada lado lleva su propia solidez (saber una palabra viéndola
+    /// no es evocarla desde la definición), pero una fila de una lista necesita un solo valor.
+    /// Vive acá porque lo muestran dos pantallas —la lista del playbooker y la de la config— y tienen
+    /// que dar EL MISMO número para la misma entrada.
+    /// </summary>
+    public static double? EntryValue(
+        IReadOnlyDictionary<(long EntryId, string Side), SolidityState> states, long entryId)
+    {
+        var front = StateOf(states, entryId, ReviewSide.Front);
+        var back = StateOf(states, entryId, ReviewSide.Back);
+        if (front.Played && back.Played) return (front.Value + back.Value) / 2;
+        if (front.Played) return front.Value;
+        if (back.Played) return back.Value;
+        return null;
+    }
+
+    /// <summary>
     /// Promedio de un conjunto de entradas visto desde un lado. Las no jugadas cuentan como 0 en el
     /// promedio (una biblioteca recién creada arranca en 0 y SUBE a medida que la jugás), y el par
     /// jugadas/total va aparte.

@@ -214,6 +214,20 @@ public sealed partial class KnowledgeStore
                     r => (Id: r.GetInt64(0), Count: r.GetInt32(1)))
                 .ToDictionary(x => x.Id, x => x.Count));
 
+    /// <summary>
+    /// Qué se llevaría puesto borrar esta biblioteca: sub-bibliotecas, entradas (propias y de todo el
+    /// subárbol) y repasos de esas entradas. Una sola consulta, para que la confirmación del borrado
+    /// pueda decir CUÁNTO se pierde en vez de un "¿seguro?" a ciegas.
+    /// </summary>
+    public LibraryContents GetLibraryContents(long id) => Read(default(LibraryContents), c => Query(c, null,
+        "WITH RECURSIVE sub(id) AS (SELECT $id UNION " +
+        "  SELECT l.id FROM libraries l JOIN sub s ON l.parent_id = s.id) " +
+        "SELECT (SELECT COUNT(*) FROM sub) - 1, " +
+        "  (SELECT COUNT(*) FROM entries WHERE library_id IN (SELECT id FROM sub)), " +
+        "  (SELECT COUNT(*) FROM reviews r JOIN entries e ON e.id = r.entry_id WHERE e.library_id IN (SELECT id FROM sub))",
+        r => new LibraryContents(Math.Max(0, r.GetInt32(0)), r.GetInt32(1), r.GetInt32(2)), ("$id", id))
+        .FirstOrDefault());
+
     // ── Entradas ─────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Entradas de una biblioteca, opcionalmente sumando las de todo su subárbol.</summary>
@@ -326,6 +340,63 @@ public sealed partial class KnowledgeStore
     public bool DeleteEntry(long id) => Write(false, (c, tx) =>
         Execute(c, tx, "DELETE FROM entries WHERE id = $id", ("$id", id)) > 0);
 
+    /// <summary>
+    /// Borra VARIAS entradas (con sus traducciones y repasos) en una sola transacción: o se van todas
+    /// o no se va ninguna, y una selección de mil filas es una escritura, no mil. Devuelve cuántas
+    /// se borraron de verdad (0 si falló la base o ya no existía ninguna).
+    /// </summary>
+    public int DeleteEntries(IEnumerable<long> entryIds)
+    {
+        string ids = IdsJson(entryIds);
+        return Write(0, (c, tx) => Execute(c, tx,
+            "DELETE FROM entries WHERE id IN (SELECT value FROM json_each($ids))", ("$ids", ids)));
+    }
+
+    /// <summary>Mueve UNA entrada a otra biblioteca. Ver <see cref="MoveEntries"/>.</summary>
+    public KnowledgeOpResult MoveEntry(long entryId, long libraryId) =>
+        MoveEntries(new[] { entryId }, libraryId, out _);
+
+    /// <summary>
+    /// Mueve entradas a otra biblioteca, en una transacción. Se llevan TODO lo suyo —traducciones e
+    /// historial de repasos— porque cuelgan de la entrada, no de la biblioteca. Lo único que puede
+    /// cambiar es la naturaleza de las que la HEREDABAN: pasan a heredar la de la biblioteca nueva
+    /// (las que tenían una propia la conservan).
+    ///
+    /// <see cref="KnowledgeOpResult.NotFound"/> si la biblioteca destino no existe o ninguna de las
+    /// entradas existe ya; <see cref="KnowledgeOpResult.SameTarget"/> si todas estaban ahí.
+    /// <paramref name="moved"/> = cuántas cambiaron de biblioteca.
+    /// </summary>
+    public KnowledgeOpResult MoveEntries(IEnumerable<long> entryIds, long libraryId, out int moved)
+    {
+        string ids = IdsJson(entryIds);
+        var (result, count) = Write((KnowledgeOpResult.Failed, 0), (c, tx) =>
+        {
+            if (!Exists(c, tx, "libraries", libraryId)) return (KnowledgeOpResult.NotFound, 0);
+            long existing = Convert.ToInt64(Scalar(c, tx,
+                "SELECT COUNT(*) FROM entries WHERE id IN (SELECT value FROM json_each($ids))", ("$ids", ids)),
+                CultureInfo.InvariantCulture);
+            if (existing == 0) return (KnowledgeOpResult.NotFound, 0);
+
+            int changed = Execute(c, tx,
+                "UPDATE entries SET library_id = $l, updated_at = $now " +
+                "WHERE id IN (SELECT value FROM json_each($ids)) AND library_id <> $l",
+                ("$l", libraryId), ("$now", UtcNow()), ("$ids", ids));
+            return (changed == 0 ? KnowledgeOpResult.SameTarget : KnowledgeOpResult.Ok, changed);
+        });
+        moved = count;
+        return result;
+    }
+
+    /// <summary>
+    /// Los tipos de palabra ya usados en algún término, sin repetir (para sugerirlos al cargar el
+    /// siguiente: que "sustantivo femenino" se escriba una vez y después se elija).
+    /// </summary>
+    public IReadOnlyList<string> GetWordTypes() => Read<IReadOnlyList<string>>(Array.Empty<string>(), c =>
+        Query(c, null,
+            "SELECT word_type FROM entries WHERE word_type <> '' GROUP BY word_type " +
+            "ORDER BY COUNT(*) DESC, word_type COLLATE NOCASE",
+            r => r.GetString(0)));
+
     // ── Traducciones ─────────────────────────────────────────────────────────────────────────
 
     public IReadOnlyList<Translation> GetTranslations(long entryId) =>
@@ -402,6 +473,53 @@ public sealed partial class KnowledgeStore
         Execute(c, tx, "DELETE FROM reviews WHERE side = $s", ("$s", ReviewSide.ForLanguage(id)));
         return true;
     });
+
+    // ── Uso de naturalezas e idiomas (para las listas de la config) ───────────────────────────
+    // Cada conteo es UNA consulta agrupada que devuelve id → cantidad; lo que no aparece vale cero.
+    // La pantalla que los muestra pinta una fila por naturaleza / idioma: una consulta por fila
+    // sería un viaje a disco por renglón.
+
+    /// <summary>
+    /// Cuántas entradas tiene cada naturaleza como naturaleza EFECTIVA (propia o heredada del árbol).
+    /// Misma regla, y misma CTE, que <see cref="GetEntriesByNature"/>: el número de acá es exactamente
+    /// la cantidad de tarjetas que salen al jugar esa naturaleza.
+    /// </summary>
+    public IReadOnlyDictionary<long, int> GetEntryCountsByNature() => Counts(
+        "WITH RECURSIVE inherited(id, nature_id) AS (" +
+        "  SELECT id, default_nature_id FROM libraries WHERE parent_id IS NULL UNION " +
+        "  SELECT l.id, COALESCE(l.default_nature_id, p.nature_id) " +
+        "  FROM libraries l JOIN inherited p ON l.parent_id = p.id) " +
+        "SELECT COALESCE(e.nature_id, i.nature_id) AS n, COUNT(*) FROM entries e " +
+        "JOIN inherited i ON i.id = e.library_id WHERE n IS NOT NULL GROUP BY n");
+
+    /// <summary>Cuántas bibliotecas tienen cada naturaleza como naturaleza por defecto.</summary>
+    public IReadOnlyDictionary<long, int> GetLibraryCountsByDefaultNature() => Counts(
+        "SELECT default_nature_id, COUNT(*) FROM libraries WHERE default_nature_id IS NOT NULL GROUP BY default_nature_id");
+
+    /// <summary>Cuántas traducciones hay cargadas en cada idioma.</summary>
+    public IReadOnlyDictionary<long, int> GetTranslationCountsByLanguage() => Counts(
+        "SELECT language_id, COUNT(*) FROM translations GROUP BY language_id");
+
+    /// <summary>
+    /// Cuántos repasos se jugaron DESDE cada idioma (lado <c>lang:&lt;id&gt;</c>). Son los que se
+    /// lleva <see cref="DeleteLanguage"/> además de las traducciones.
+    /// </summary>
+    public IReadOnlyDictionary<long, int> GetReviewCountsByLanguage() =>
+        Read<IReadOnlyDictionary<long, int>>(new Dictionary<long, int>(), c =>
+        {
+            var map = new Dictionary<long, int>();
+            foreach (var (side, count) in Query(c, null,
+                         "SELECT side, COUNT(*) FROM reviews WHERE side LIKE 'lang:%' GROUP BY side",
+                         r => (Side: r.GetString(0), Count: r.GetInt32(1))))
+                if (ReviewSide.TryGetLanguage(side, out long languageId)) map[languageId] = count;
+            return map;
+        });
+
+    // `sql` es SIEMPRE un literal de esta clase: dos columnas, id y cantidad.
+    private IReadOnlyDictionary<long, int> Counts(string sql) =>
+        Read<IReadOnlyDictionary<long, int>>(new Dictionary<long, int>(), c =>
+            Query(c, null, sql, r => (Id: r.GetInt64(0), Count: r.GetInt32(1)))
+                .ToDictionary(x => x.Id, x => x.Count));
 
     // ── Repasos ──────────────────────────────────────────────────────────────────────────────
 

@@ -39,7 +39,8 @@ public partial class ConfigWindow : Window
     private readonly TasksSettings _tasks;
 
     public ConfigWindow(DesktopConfig config, Apps.AppsConfig apps, DesktopService desktops,
-        ProjectStore projects, RestrictionStore restrictions, PinStore pins, Action onApplied)
+        ProjectStore projects, RestrictionStore restrictions, PinStore pins,
+        Knowledge.KnowledgeStore knowledge, Action onApplied)
     {
         InitializeComponent();
 
@@ -49,6 +50,7 @@ public partial class ConfigWindow : Window
         _projects = projects;
         _restrictions = restrictions;
         _pins = pins;
+        _knowledge = knowledge;
         _onApplied = onApplied;
 
         Icon = AppIcon.TryLoadForWindow(); // ícono real en taskbar / Alt-Tab / título
@@ -196,6 +198,10 @@ public partial class ConfigWindow : Window
 
         // ── Pestaña Marca ──
         InitBrandTab();
+
+        // ── Pestaña Conocimiento (bibliotecas, entradas, naturalezas e idiomas) ──
+        // Su código vive en ConfigWindow.Knowledge.cs. Sólo cablea: los datos se leen al entrar a la pestaña.
+        InitKnowledgeTab();
     }
 
     // ── Pestaña Marca ───────────────────────────────────────────────────────────

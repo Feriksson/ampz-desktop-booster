@@ -569,7 +569,12 @@ public partial class App : Application
             return;
         }
 
-        _configWindow = new ConfigWindow(_desktopConfig, _appsConfig, desktops, projects, restrictions, pins, onApplied);
+        // La pestaña Conocimiento administra la MISMA base que juega el playbooker. El store se crea
+        // en OnStartup, antes de que exista cualquier forma de llegar acá; el ??= es sólo para que
+        // el compilador (y un orden de arranque futuro) no dependan de eso.
+        _knowledge ??= new Knowledge.KnowledgeStore();
+        _configWindow = new ConfigWindow(_desktopConfig, _appsConfig, desktops, projects, restrictions, pins,
+            _knowledge, onApplied);
         // La marca (PNG + rótulo del extremo izquierdo) se guarda sola desde su pestaña, así que no
         // pasa por onApplied —que es el "Guardar" de Escritorios—: la barra la recarga cuando avisa.
         _configWindow.OnBrandChanged = () => _bar?.ReloadBrand();
