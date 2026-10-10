@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 
 namespace AmpzDesktopBooster.Knowledge;
 
@@ -88,39 +89,68 @@ public static class Solidity
     /// <paramref name="now"/> se ignoran: pasarle una fecha vieja devuelve la solidez que había ESE
     /// día, y así se grafica la evolución sin otra fórmula.
     /// </summary>
-    public static SolidityState Compute(IEnumerable<Review> reviews, DateTime now)
+    public static SolidityState Compute(IEnumerable<Review> reviews, DateTime now) =>
+        ComputeAt(reviews, new[] { now })[0];
+
+    /// <summary>
+    /// La solidez de UNA entrada+lado en VARIAS fechas a la vez, que tienen que venir de la más vieja
+    /// a la más nueva: el resultado <c>[i]</c> es lo que daría <see cref="Compute"/> con la fecha
+    /// <c>[i]</c>. Existe para graficar la evolución — una muestra por semana durante medio año —
+    /// sin releer y reordenar el historial entero por cada muestra: se recorre UNA vez, y en cada
+    /// fecha se anota cómo venía. Es la ÚNICA implementación de la fórmula (<see cref="Compute"/> es
+    /// este mismo recorrido con una sola fecha), así que el gráfico y los números de hoy no pueden
+    /// contar dos historias distintas.
+    /// </summary>
+    public static SolidityState[] ComputeAt(IEnumerable<Review> reviews, IReadOnlyList<DateTime> ascendingDates)
     {
-        now = Utc(now);
-        var ordered = reviews
-            .Where(r => Utc(r.ReviewedAt) <= now)
-            .OrderBy(r => Utc(r.ReviewedAt)).ThenBy(r => r.Id)
-            .ToList();
-        if (ordered.Count == 0) return SolidityState.NotPlayed;
+        // El historial casi siempre llega YA ordenado (el store lo entrega por fecha): se comprueba en
+        // una pasada y sólo se ordena si hace falta. Con miles de grupos entrada+lado —las
+        // estadísticas calculan uno por uno— ordenar siempre era la mayor parte del costo.
+        var ordered = reviews.ToList();
+        for (int i = 1; i < ordered.Count; i++)
+        {
+            var a = ordered[i - 1];
+            var b = ordered[i];
+            int byDate = Utc(a.ReviewedAt).CompareTo(Utc(b.ReviewedAt));
+            if (byDate < 0 || (byDate == 0 && a.Id <= b.Id)) continue;
+            ordered = ordered.OrderBy(r => Utc(r.ReviewedAt)).ThenBy(r => r.Id).ToList();
+            break;
+        }
+        var result = new SolidityState[ascendingDates.Count];
 
         double s = InitialSolidity;
         int streak = 0;
+        int applied = 0;
         DateTime? previous = null;
-        foreach (var r in ordered)
+        for (int d = 0; d < ascendingDates.Count; d++)
         {
-            var at = Utc(r.ReviewedAt);
+            var date = Utc(ascendingDates[d]);
 
-            // Cada repaso parte de lo que REALMENTE quedaba ese día, no de lo que había al terminar
-            // el repaso anterior. Sin esto, algo que no tocaste en dos años retomaba desde su valor
-            // viejo intacto y un solo acierto lo dejaba más alto que nunca: el tiempo sin uso no
-            // habría costado nada. El desgaste del tramo usa la racha que había DURANTE ese tramo
-            // (la de antes de esta respuesta), que es la que decidió cuánto aguantaba.
-            if (previous is { } before)
-                s = Decay(s, streak, Math.Max(0, (at - before).TotalDays));
+            // Entran los repasos hechos hasta esta fecha (los posteriores todavía "no pasaron").
+            for (; applied < ordered.Count && Utc(ordered[applied].ReviewedAt) <= date; applied++)
+            {
+                var r = ordered[applied];
+                var at = Utc(r.ReviewedAt);
 
-            int grade = Math.Clamp((int)r.Grade, 1, 4);
-            s += LearningRate * (GradeTarget[grade] - s);
-            streak = grade >= StreakMinGrade ? streak + 1 : 0; // una respuesta floja corta la racha
-            previous = at;
+                // Cada repaso parte de lo que REALMENTE quedaba ese día, no de lo que había al terminar
+                // el repaso anterior. Sin esto, algo que no tocaste en dos años retomaba desde su valor
+                // viejo intacto y un solo acierto lo dejaba más alto que nunca: el tiempo sin uso no
+                // habría costado nada. El desgaste del tramo usa la racha que había DURANTE ese tramo
+                // (la de antes de esta respuesta), que es la que decidió cuánto aguantaba.
+                if (previous is { } before)
+                    s = Decay(s, streak, Math.Max(0, (at - before).TotalDays));
+
+                int grade = Math.Clamp((int)r.Grade, 1, 4);
+                s += LearningRate * (GradeTarget[grade] - s);
+                streak = grade >= StreakMinGrade ? streak + 1 : 0; // una respuesta floja corta la racha
+                previous = at;
+            }
+
+            result[d] = previous is { } last
+                ? new SolidityState(true, Decay(s, streak, Math.Max(0, (date - last).TotalDays)), s, last, applied, streak)
+                : SolidityState.NotPlayed;
         }
-
-        var last = Utc(ordered[^1].ReviewedAt);
-        double days = Math.Max(0, (now - last).TotalDays);
-        return new SolidityState(true, Decay(s, streak, days), s, last, ordered.Count, streak);
+        return result;
     }
 
     /// <summary>
@@ -146,22 +176,42 @@ public static class Solidity
         states.TryGetValue((entryId, side), out var s) ? s : SolidityState.NotPlayed;
 
     /// <summary>
-    /// La solidez de una entrada como UN número: el promedio de sus lados jugados (frente y dorso).
-    /// null = no se jugó de ningún lado. Cada lado lleva su propia solidez (saber una palabra viéndola
-    /// no es evocarla desde la definición), pero una fila de una lista necesita un solo valor.
-    /// Vive acá porque lo muestran dos pantallas —la lista del playbooker y la de la config— y tienen
-    /// que dar EL MISMO número para la misma entrada.
+    /// La solidez de una entrada como UN número: el promedio de sus lados jugados — frente, dorso y
+    /// los de idioma («se mostró la traducción»). null = no se jugó de ningún lado. Cada lado lleva su
+    /// propia solidez (saber una palabra viéndola no es evocarla desde la definición ni desde el
+    /// inglés), pero una fila de una lista necesita un solo valor.
+    /// Vive acá porque lo muestran varias pantallas —las listas del playbooker, sus estadísticas y la
+    /// config— y tienen que dar EL MISMO número para la misma entrada.
+    ///
+    /// Los lados de idioma cuentan desde que el playbooker deja jugar «Inglés → término»: sin ellos,
+    /// un término practicado sólo desde su traducción seguía figurando "sin jugar" para siempre.
     /// </summary>
     public static double? EntryValue(
-        IReadOnlyDictionary<(long EntryId, string Side), SolidityState> states, long entryId)
-    {
-        var front = StateOf(states, entryId, ReviewSide.Front);
-        var back = StateOf(states, entryId, ReviewSide.Back);
-        if (front.Played && back.Played) return (front.Value + back.Value) / 2;
-        if (front.Played) return front.Value;
-        if (back.Played) return back.Value;
-        return null;
-    }
+        IReadOnlyDictionary<(long EntryId, string Side), SolidityState> states, long entryId) =>
+        EntryValues(states).TryGetValue(entryId, out double value) ? value : null;
+
+    // Los lados de idioma de una entrada no se pueden preguntar uno por uno (habría que conocer la
+    // lista de idiomas), así que el promedio por entrada se arma recorriendo el mapa UNA vez y se
+    // guarda pegado a ESE mapa: una lista de mil filas pregunta mil veces y el recorrido es uno solo.
+    // La tabla es débil — cuando el mapa se suelta, su índice se va con él.
+    //
+    // Supone lo que ya es cierto en toda la app: un mapa de ComputeAll no se modifica después de
+    // armado (cada pantalla pide uno nuevo cuando hay repasos nuevos).
+    private static readonly ConditionalWeakTable<object, Dictionary<long, double>> EntryValueIndex = new();
+
+    private static Dictionary<long, double> EntryValues(
+        IReadOnlyDictionary<(long EntryId, string Side), SolidityState> states) =>
+        EntryValueIndex.GetValue(states, _ =>
+        {
+            var sums = new Dictionary<long, (double Sum, int Sides)>();
+            foreach (var (key, state) in states)
+            {
+                if (!state.Played) continue;
+                sums.TryGetValue(key.EntryId, out var acc);
+                sums[key.EntryId] = (acc.Sum + state.Value, acc.Sides + 1);
+            }
+            return sums.ToDictionary(p => p.Key, p => p.Value.Sum / p.Value.Sides);
+        });
 
     /// <summary>
     /// Promedio de un conjunto de entradas visto desde un lado. Las no jugadas cuentan como 0 en el

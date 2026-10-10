@@ -178,6 +178,16 @@
                 <TextBlock x:Name="HeaderText" FontSize="16" FontWeight="SemiBold" />
                 <TextBlock x:Name="LibraryText" Style="{StaticResource Lbl}" FontSize="12"
                            Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
+                <!-- Sólo en la captura rápida del playbooker y con más de una biblioteca: dónde se
+                     guarda. Reemplaza al renglón de arriba (dirían lo mismo). Las opciones son el
+                     camino entero de cada biblioteca, en orden de árbol; tipear salta a la que
+                     empieza así. El margen derecho es el mismo carril que deja el formulario para
+                     su barra de scroll: el selector termina donde terminan los campos. -->
+                <StackPanel x:Name="LibraryPanel" Visibility="Collapsed" Margin="0,8,14,0">
+                    <TextBlock Style="{StaticResource Lbl}" Text="{loc:Translate KnowledgeEntry.FldLibrary}" />
+                    <ComboBox x:Name="LibraryCombo" Style="{StaticResource SelectCombo}"
+                              AutomationProperties.Name="{loc:Translate KnowledgeEntry.FldLibrary}" />
+                </StackPanel>
             </StackPanel>
 
             <!-- El formulario. UN solo scroller: los campos largos no scrollean la ventana, scrollean

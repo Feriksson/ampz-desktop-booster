@@ -27,6 +27,11 @@ namespace AmpzDesktopBooster;
 ///      pantalla a crearla cortaría la carga.
 ///   3. Enter es salto de línea en los campos largos, así que guardar es Ctrl+Enter. Y Esc no tira lo
 ///      cargado sin preguntar: un dorso de tres párrafos no se pierde por una tecla.
+///
+/// Tiene además una puerta de CAPTURA RÁPIDA (<see cref="ShowCapture"/>), que usa el playbooker: se
+/// abre con el frente ya escrito —lo que se buscó y no estaba— y, si hay más de una biblioteca, con
+/// un selector de dónde guardarla. Desde la config ese selector no aparece: ahí la biblioteca ya está
+/// elegida en la pantalla, y ofrecer cambiarla sería una segunda forma de mover entradas.
 /// </summary>
 public partial class KnowledgeEntryWindow : Window
 {
@@ -34,8 +39,21 @@ public partial class KnowledgeEntryWindow : Window
     /// ser más de una, por "Guardar y nueva") y cuál fue la última, para dejarla seleccionada.</summary>
     public readonly record struct Outcome(int SavedCount, long? LastSavedId);
 
+    /// <summary>Una biblioteca del selector de la captura rápida: su id y su camino entero.</summary>
+    private sealed record LibraryChoice(long Id, string Label)
+    {
+        public override string ToString() => Label; // lo que pinta el combo y lo que busca al tipear
+    }
+
+    // La última biblioteca elegida en una captura rápida, mientras viva la app: quien carga varias
+    // palabras seguidas casi siempre las quiere en la misma. No se persiste (es una comodidad de
+    // sesión, igual que el último lado jugado del playbooker).
+    private static long? _lastCaptureLibraryId;
+
     private readonly KnowledgeStore _store;
-    private readonly long _libraryId;
+    private readonly IReadOnlyDictionary<long, Library> _libraries;
+    private readonly bool _pickLibrary;
+    private long _libraryId; // fija salvo en la captura rápida, donde la cambia el selector
     private readonly EntryKind _kind;
     private readonly bool _adding;
 
@@ -46,7 +64,7 @@ public partial class KnowledgeEntryWindow : Window
     /// </summary>
     private long? _entryId;
 
-    private readonly string _inheritLabel;
+    private string _inheritLabel = "";
     private List<Nature> _natures;
     private readonly List<Language> _languages;
     private readonly Dictionary<long, TextBox> _translationBoxes = new();
@@ -59,7 +77,8 @@ public partial class KnowledgeEntryWindow : Window
     private int _savedCount;
     private long? _lastSavedId;
 
-    private KnowledgeEntryWindow(KnowledgeStore store, long libraryId, EntryKind kind, Entry? existing)
+    private KnowledgeEntryWindow(KnowledgeStore store, long libraryId, EntryKind kind, Entry? existing,
+        string? prefillFront = null, bool pickLibrary = false)
     {
         InitializeComponent();
         _store = store;
@@ -67,11 +86,14 @@ public partial class KnowledgeEntryWindow : Window
         _kind = kind;
         _adding = existing is null;
         _entryId = existing?.Id;
+        _pickLibrary = pickLibrary && existing is null;
 
         // Nunca más alto que la pantalla: pasado esto, scrollea el formulario (los botones no).
         MaxHeight = SystemParameters.WorkArea.Height * 0.92;
 
-        var libraries = store.GetLibraries().ToDictionary(l => l.Id);
+        var libraryList = store.GetLibraries();
+        var libraries = libraryList.ToDictionary(l => l.Id);
+        _libraries = libraries;
         _natures = store.GetNatures().ToList();
         _languages = store.GetLanguages().ToList();
         bool term = kind == EntryKind.Term;
@@ -85,6 +107,7 @@ public partial class KnowledgeEntryWindow : Window
         });
         LibraryText.Text = string.Format(Loc.T("KnowledgeEntry.SavesIn"),
             string.Join(" › ", LibraryTree.PathOf(libraryId, libraries)));
+        if (_pickLibrary) FillLibraryCombo(libraryList);
 
         // ── Frente / dorso: mismos dos campos, con el nombre que tienen en cada tipo ──
         string frontName = Loc.T(term ? "KnowledgeEntry.FldTerm" : "KnowledgeEntry.FldFront");
@@ -114,16 +137,11 @@ public partial class KnowledgeEntryWindow : Window
 
         // ── Naturaleza: "heredar" dice QUÉ hereda (la de la biblioteca o la de la primera de arriba
         //    que tenga una). Es el valor real, no una promesa genérica. ──
-        string? inherited = LibraryTree.EffectiveNatureId(libraryId, libraries) is { } inheritedId
-            ? _natures.FirstOrDefault(n => n.Id == inheritedId)?.Name
-            : null;
-        _inheritLabel = inherited is null
-            ? Loc.T("KnowledgeEntry.NatureInheritNone")
-            : string.Format(Loc.T("KnowledgeEntry.NatureInherit"), inherited);
+        _inheritLabel = InheritLabelFor(libraryId);
         FillNatureCombo();
 
         // ── Valores iniciales ──
-        FrontBox.Text = existing?.Front ?? "";
+        FrontBox.Text = existing?.Front ?? prefillFront ?? "";
         BackBox.Text = existing?.Back ?? "";
         WordTypeCombo.Text = existing?.WordType ?? "";
         UsageBox.Text = existing?.UsageContext ?? "";
@@ -172,10 +190,97 @@ public partial class KnowledgeEntryWindow : Window
     public static Outcome ShowEdit(Window owner, KnowledgeStore store, Entry entry) =>
         Run(new KnowledgeEntryWindow(store, entry.LibraryId, entry.Kind, entry) { Owner = owner });
 
+    /// <summary>
+    /// CAPTURA RÁPIDA desde el playbooker: alta con el frente ya escrito (<paramref name="front"/> es
+    /// lo que se buscó y no estaba). Con una sola biblioteca va ahí; con varias, el diálogo trae un
+    /// selector, parado en la última que se usó en esta sesión. Sin ninguna biblioteca no hay dónde
+    /// guardar y no se abre nada: quien llama ya lo dijo en pantalla.
+    /// </summary>
+    public static Outcome ShowCapture(Window owner, KnowledgeStore store, EntryKind kind, string front)
+    {
+        var libraries = TreeOrder(store.GetLibraries());
+        if (libraries.Count == 0) return default;
+
+        long libraryId = _lastCaptureLibraryId is { } last && libraries.Any(l => l.Id == last)
+            ? last
+            : libraries[0].Id;
+        return Run(new KnowledgeEntryWindow(store, libraryId, kind, null, front.Trim(), pickLibrary: libraries.Count > 1)
+        {
+            Owner = owner,
+        });
+    }
+
     private static Outcome Run(KnowledgeEntryWindow dialog)
     {
         dialog.ShowDialog();
         return new Outcome(dialog._savedCount, dialog._lastSavedId);
+    }
+
+    // ──────────────────────────── Biblioteca (sólo captura rápida) ────────────────────────────
+
+    /// <summary>Las bibliotecas en ORDEN DE ÁRBOL (cada madre seguida de sus hijas), como en la config.</summary>
+    private static List<Library> TreeOrder(IReadOnlyList<Library> libraries)
+    {
+        var children = libraries.ToLookup(l => l.ParentId);
+        var ordered = new List<Library>();
+        var seen = new HashSet<long>(); // una base tocada a mano con un ciclo no puede girar para siempre
+        void Walk(long? parentId)
+        {
+            foreach (var library in children[parentId].OrderBy(l => l.Sort).ThenBy(l => l.Id))
+            {
+                if (!seen.Add(library.Id)) continue;
+                ordered.Add(library);
+                Walk(library.Id);
+            }
+        }
+        Walk(null);
+        return ordered;
+    }
+
+    private void FillLibraryCombo(IReadOnlyList<Library> libraries)
+    {
+        foreach (var library in TreeOrder(libraries))
+        {
+            var choice = new LibraryChoice(library.Id, string.Join(" › ", LibraryTree.PathOf(library.Id, _libraries)));
+            LibraryCombo.Items.Add(choice);
+            if (library.Id == _libraryId) LibraryCombo.SelectedItem = choice;
+        }
+        // Con el selector a la vista, el renglón "Se guarda en…" diría lo mismo dos veces.
+        LibraryText.Visibility = Visibility.Collapsed;
+        LibraryPanel.Visibility = Visibility.Visible;
+        LibraryCombo.SelectionChanged += (_, _) => OnLibraryChanged();
+    }
+
+    /// <summary>
+    /// Cambió la biblioteca de destino. Lo único del formulario que depende de ella es la opción
+    /// "heredar" de la naturaleza, que nombra lo que REALMENTE se hereda: si estaba elegida, sigue
+    /// elegida con el valor de la biblioteca nueva; si se había fijado otra naturaleza, queda.
+    /// </summary>
+    private void OnLibraryChanged()
+    {
+        if (LibraryCombo.SelectedItem is not LibraryChoice choice || choice.Id == _libraryId) return;
+
+        // Si no había nada sin guardar, el cambio de rótulo de acá abajo no puede fabricarlo: sin
+        // esto, elegir otra biblioteca y arrepentirse con Esc preguntaría "¿descartar?" sobre nada.
+        bool clean = Snapshot() == _snapshot;
+        bool inheriting = string.Equals(NatureCombo.Text.Trim(), _inheritLabel, StringComparison.OrdinalIgnoreCase);
+
+        _libraryId = choice.Id;
+        _inheritLabel = InheritLabelFor(choice.Id);
+        string typed = NatureCombo.Text;
+        FillNatureCombo();
+        NatureCombo.Text = inheriting ? _inheritLabel : typed;
+        if (clean) _snapshot = Snapshot();
+    }
+
+    private string InheritLabelFor(long libraryId)
+    {
+        string? inherited = LibraryTree.EffectiveNatureId(libraryId, _libraries) is { } inheritedId
+            ? _natures.FirstOrDefault(n => n.Id == inheritedId)?.Name
+            : null;
+        return inherited is null
+            ? Loc.T("KnowledgeEntry.NatureInheritNone")
+            : string.Format(Loc.T("KnowledgeEntry.NatureInherit"), inherited);
     }
 
     // ──────────────────────────── Naturaleza e idiomas ────────────────────────────
@@ -366,6 +471,7 @@ public partial class KnowledgeEntryWindow : Window
         // La entrada YA está guardada: desde acá cuenta, aunque las traducciones fallen.
         _savedCount++;
         _lastSavedId = id;
+        if (_pickLibrary) _lastCaptureLibraryId = _libraryId;
 
         if (term)
         {

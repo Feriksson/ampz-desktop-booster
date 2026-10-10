@@ -14,16 +14,22 @@ using AmpzDesktopBooster.Services.Localization;
 namespace AmpzDesktopBooster;
 
 /// <summary>
-/// El PLAYBOOKER (NumpadClear pelado): buscar una biblioteca o una naturaleza y jugarla. Una sola
-/// ventana con cuatro pasos que se alternan por Visibility (mismo recurso que el Shortcuts Helper):
-/// BÚSQUEDA → ARMADO (qué lado se muestra primero) → QUIZ → RESUMEN.
+/// El PLAYBOOKER (NumpadClear pelado): buscar una biblioteca, una naturaleza o una entrada, jugarla,
+/// leerla, y mirar cómo viene todo. Una sola ventana con seis vistas que se alternan por Visibility
+/// (mismo recurso que el Shortcuts Helper):
+///
+///   BÚSQUEDA → ARMADO (qué lado se muestra primero) → QUIZ → RESUMEN        (este archivo)
+///   BÚSQUEDA → FICHA de una entrada, para leerla                             (PlaybookWindow.Ficha.cs)
+///   BÚSQUEDA → ESTADÍSTICAS                                                  (PlaybookWindow.Stats.cs)
+///
+/// La búsqueda, con sus filas y la captura rápida, vive en PlaybookWindow.Browse.cs.
 ///
 /// Tres decisiones que explican casi todo lo de abajo:
 ///
 ///   1. Esto NO es Anki, y es una decisión explícita. No hay cola, ni fechas, ni contador de cosas
 ///      que "te tocan": una ronda es la selección entera mezclada con sesgo a lo más flojo, se puede
 ///      cortar cuando quieras (Esc) y nada queda debiéndose. Ningún texto ni número de esta ventana
-///      puede sugerir una obligación.
+///      puede sugerir una obligación — tampoco las estadísticas, que son un espejo y no una agenda.
 ///   2. Es teclado primero (la app entera lo es), pero NADA es sólo-teclado: cada tecla tiene su
 ///      botón a la vista con la tecla dibujada, y la pista del pie dice siempre qué vale ahora.
 ///   3. Se abre con <c>ShowFocused(closeOnDeactivate: false)</c>: una sesión de estudio tiene que
@@ -32,18 +38,30 @@ namespace AmpzDesktopBooster;
 ///      matar un quiz a la mitad.
 ///
 /// Los datos se cargan UNA vez al abrir (bibliotecas, entradas, naturalezas, historial) y todo lo
-/// que muestra la lista —conteos, solidez— se arma en memoria: nada de una consulta por fila.
+/// que muestran las listas —conteos, solidez— se arma en memoria: nada de una consulta por fila.
 /// </summary>
 public partial class PlaybookWindow : Window
 {
-    private enum Stage { Search, Setup, Quiz, Summary }
+    private enum Stage { Search, Setup, Quiz, Summary, Ficha, Stats }
 
-    /// <summary>Qué lado se muestra como pregunta. "Mezclado" lo sortea tarjeta por tarjeta.</summary>
-    private enum SideMode { Front, Back, Mixed }
+    /// <summary>Qué entra a la ronda cuando la selección mezcla términos y cards.</summary>
+    private enum KindFilter { All, Terms, Cards }
 
-    // La última elección de lado, recordada mientras viva la app (no se persiste: es una comodidad
-    // de sesión, no una preferencia). Estática porque la ventana se recrea en cada apertura.
-    private static SideMode _lastSideMode = SideMode.Front;
+    /// <summary>
+    /// Una opción de "qué lado se muestra primero". <see cref="Side"/> es el lado que se pregunta
+    /// (frente, dorso o <c>lang:&lt;id&gt;</c>); null = "Mezclado", que sortea frente o dorso tarjeta por
+    /// tarjeta. <see cref="Entries"/> son las que PUEDEN jugar esa opción: con un lado de idioma,
+    /// sólo los términos que tienen esa traducción.
+    /// </summary>
+    private sealed record SideOption(string Key, string Label, string? Side, IReadOnlyList<Entry> Entries, string LanguageName = "");
+
+    private const string MixedKey = "mixed";
+
+    // La última elección de lado (su key), recordada mientras viva la app — no se persiste: es una
+    // comodidad de sesión, no una preferencia. Estática porque la ventana se recrea en cada apertura.
+    // Si la selección siguiente no ofrece ese lado (un idioma que ahí no tiene traducciones), vale
+    // la primera opción.
+    private static string _lastSideKey = ReviewSide.Front;
 
     private static readonly Random Rng = new();
 
@@ -53,6 +71,7 @@ public partial class PlaybookWindow : Window
 
     private const double BarTrackWidth = 110; // el mismo ancho que la pista de la barra en el XAML
     private const double IndentPerLevel = 22;
+    private const int MaxSideColumns = 4;     // más opciones que esto pasan a un segundo renglón
 
     // ── Tamaño y escala ──
     // La ventana ocupa el 90% del área de trabajo, a lo ancho y a lo alto: pedido del usuario después
@@ -74,18 +93,29 @@ public partial class PlaybookWindow : Window
     private readonly KnowledgeStore _store;
     private Stage _stage = Stage.Search;
 
-    // ── Foto de la base tomada al abrir (y al volver de una ronda) ──
+    // ── Foto de la base tomada al abrir (y cada vez que algo pudo cambiar) ──
     private IReadOnlyDictionary<long, Library> _libraries = new Dictionary<long, Library>();
     private Dictionary<long, Entry> _entries = new();
     private Dictionary<long, string> _natureNames = new();
     private Dictionary<long, string> _languageNames = new();
+    private IReadOnlyList<Review> _reviews = Array.Empty<Review>();
+    private IReadOnlyDictionary<(long EntryId, string Side), SolidityState> _states =
+        new Dictionary<(long, string), SolidityState>();
+    private DateTime _loadedAt = DateTime.UtcNow; // la fecha con la que se calculó _states
     private List<PickRow> _rows = new();
 
     // ── Lo elegido ──
     private PickRow? _picked;
-    private List<Entry> _selection = new();
+    private Stage _setupOrigin = Stage.Search;      // adónde vuelve Esc desde el armado
+    private List<Entry> _pickedEntries = new();     // todo lo que trae la fila elegida
+    private List<Entry> _selection = new();         // …después del filtro por tipo
+    private KindFilter _kindFilter = KindFilter.All;
+    private List<SideOption> _sideOptions = new();
+    private readonly List<RadioButton> _sideRadios = new();
+    private bool _buildingSetup;                    // true mientras el armado marca radios por código
 
     // ── La ronda en curso ──
+    private SideOption? _roundOption;
     private List<QuizCard> _round = new();
     private IReadOnlyDictionary<(long EntryId, string Side), SolidityState> _roundStates =
         new Dictionary<(long, string), SolidityState>();
@@ -102,32 +132,6 @@ public partial class PlaybookWindow : Window
     /// <summary>Una tarjeta de la ronda: la entrada y el lado que le tocó mostrarse como pregunta.</summary>
     private sealed record QuizCard(Entry Entry, string Side);
 
-    /// <summary>
-    /// Una fila de la lista de búsqueda: una biblioteca (con todo su subárbol) o una naturaleza.
-    /// Trae ya resuelto lo que pinta la plantilla — incluidas las Visibility — para que el XAML no
-    /// necesite convertidores ni lógica.
-    /// </summary>
-    private sealed class PickRow
-    {
-        public bool IsNature { get; init; }
-        public int Depth { get; init; }
-        /// <summary>"Madre › " (vacío en una raíz o en una naturaleza): los ancestros, atenuados.</summary>
-        public string PathPrefix { get; init; } = "";
-        public string Name { get; init; } = "";
-        public string CountText { get; init; } = "";
-        public string SolidityText { get; init; } = "";
-        public double BarFillWidth { get; init; }
-        public Visibility BarVisibility { get; init; }
-        public Visibility ChipVisibility => IsNature ? Visibility.Visible : Visibility.Collapsed;
-        public string AccessibleName { get; init; } = "";
-        /// <summary>Texto ya normalizado (sin tildes, minúsculas) contra el que se filtra.</summary>
-        public string Haystack { get; init; } = "";
-        public IReadOnlyList<long> EntryIds { get; init; } = Array.Empty<long>();
-        /// <summary>Sangría del árbol. Sólo con el buscador vacío: filtrada, la lista es plana.</summary>
-        public Thickness Indent { get; set; }
-        public string FullName => PathPrefix + Name;
-    }
-
     public PlaybookWindow(KnowledgeStore store)
     {
         InitializeComponent();
@@ -143,12 +147,15 @@ public partial class PlaybookWindow : Window
         HeaderBar.MouseLeftButtonDown += OnHeaderMouseDown;
         CloseBtn.Click += (_, _) => Close();
 
-        SearchBox.TextChanged += (_, _) => ApplyFilter();
-        PickList.PreviewTextInput += OnListTextInput;
-        PickList.PreviewMouseLeftButtonUp += OnListMouseUp;
+        InitBrowse();
+        InitFicha();
+        InitStats();
 
         StartBtn.Click += (_, _) => StartRound();
-        SetupBackBtn.Click += (_, _) => BackToSearch(reload: false);
+        SetupBackBtn.Click += (_, _) => LeaveSetup();
+        InitKindRadio(KindAllRadio, KindFilter.All, "Playbook.KindAll");
+        InitKindRadio(KindTermsRadio, KindFilter.Terms, "Playbook.KindTerms");
+        InitKindRadio(KindCardsRadio, KindFilter.Cards, "Playbook.KindCards");
 
         RevealBtn.Click += (_, _) => Reveal();
         SkipBtn.Click += (_, _) => Skip();
@@ -190,14 +197,15 @@ public partial class PlaybookWindow : Window
 
     /// <summary>
     /// ¿El re-press del atajo puede cerrar la ventana? Sólo desde la búsqueda. En cualquier otro paso
-    /// hay algo en curso (una elección, una ronda, un resumen sin leer) y el re-press la trae al frente.
+    /// hay algo en curso (una elección, una ronda, un resumen sin leer, una ficha abierta) y el
+    /// re-press la trae al frente.
     /// </summary>
     public bool CanCloseOnRepress => _stage == Stage.Search;
 
     // ──────────────────────────── Datos ────────────────────────────
 
     /// <summary>
-    /// Lee todo lo que la búsqueda necesita y arma las filas. Cuatro lecturas + el historial, y de
+    /// Lee todo lo que la ventana necesita y arma las filas. Cuatro lecturas + el historial, y de
     /// ahí en más es todo memoria. Con la base caída cada lectura degrada a vacío (el store ya avisó
     /// por su cuenta): la ventana muestra el estado "sin bibliotecas" en vez de romperse.
     /// </summary>
@@ -210,8 +218,12 @@ public partial class PlaybookWindow : Window
         _natureNames = natures.ToDictionary(n => n.Id, n => n.Name);
         _languageNames = _store.GetLanguages().ToDictionary(l => l.Id, l => l.Name);
 
-        // UNA lectura del historial y un solo cálculo para todas las filas.
-        var states = Solidity.ComputeAll(_store.GetAllReviews(), DateTime.UtcNow);
+        // UNA lectura del historial y un solo cálculo para todas las filas (y para las estadísticas,
+        // que lo reusan: por eso se guardan el historial y la fecha del cálculo).
+        _reviews = _store.GetAllReviews();
+        _loadedAt = DateTime.UtcNow;
+        _states = Solidity.ComputeAll(_reviews, _loadedAt);
+        var states = _states;
 
         var ownEntries = _entries.Values.ToLookup(e => e.LibraryId, e => e.Id);
         var children = libraries.ToLookup(l => l.ParentId);
@@ -241,6 +253,13 @@ public partial class PlaybookWindow : Window
         foreach (var nature in natures)
             rows.Add(NatureRow(nature, byNature[nature.Id].ToList(), states));
 
+        // VOCABULARIO: todos los términos de todas las bibliotecas, como una selección más. Va
+        // primera (es la entrada al "playbook de vocabulario") y sólo si hay algún término: una fila
+        // que lleva a una ronda vacía no le sirve a nadie.
+        var terms = _entries.Values.Where(e => e.Kind == EntryKind.Term)
+            .OrderBy(e => e.Front, StringComparer.CurrentCultureIgnoreCase).Select(e => e.Id).ToList();
+        if (terms.Count > 0) rows.Insert(0, VocabularyRow(terms, states));
+
         _rows = rows;
     }
 
@@ -253,10 +272,12 @@ public partial class PlaybookWindow : Window
         string count = CountLabel(entryIds.Count);
         return new PickRow
         {
+            Kind = PickKind.Library,
             Depth = depth,
             PathPrefix = prefix,
             Name = library.Name,
             CountText = count,
+            Average = average,
             SolidityText = SolidityLabel(average),
             BarFillWidth = BarFill(average),
             BarVisibility = average.Played > 0 ? Visibility.Visible : Visibility.Collapsed,
@@ -274,9 +295,12 @@ public partial class PlaybookWindow : Window
         string count = CountLabel(entryIds.Count);
         return new PickRow
         {
-            IsNature = true,
+            Kind = PickKind.Nature,
             Name = nature.Name,
+            ChipText = Loc.T("Playbook.NatureChip"),
+            ChipBrush = (Brush)FindResource("GoldBrush"),
             CountText = count,
+            Average = average,
             SolidityText = SolidityLabel(average),
             BarFillWidth = BarFill(average),
             BarVisibility = average.Played > 0 ? Visibility.Visible : Visibility.Collapsed,
@@ -284,6 +308,31 @@ public partial class PlaybookWindow : Window
                 nature.Name, count, SpokenSolidity(average)),
             Haystack = TextFold.Fold(nature.Name),
             EntryIds = entryIds,
+        };
+    }
+
+    private PickRow VocabularyRow(List<long> termIds, IReadOnlyDictionary<(long, string), SolidityState> states)
+    {
+        var average = AverageOf(termIds, states);
+        string chip = Loc.T("Playbook.VocabularyChip");
+        string name = Loc.T("Playbook.VocabularyName");
+        string count = termIds.Count == 1
+            ? Loc.T("Playbook.TermsOne")
+            : string.Format(Loc.T("Playbook.TermsMany"), termIds.Count);
+        return new PickRow
+        {
+            Kind = PickKind.Vocabulary,
+            Name = name,
+            ChipText = chip,
+            ChipBrush = (Brush)FindResource("AccentBrush"),
+            CountText = count,
+            Average = average,
+            SolidityText = SolidityLabel(average),
+            BarFillWidth = BarFill(average),
+            BarVisibility = average.Played > 0 ? Visibility.Visible : Visibility.Collapsed,
+            AccessibleName = string.Format(Loc.T("Playbook.RowVocabularyAccessible"), chip, name, count, SpokenSolidity(average)),
+            Haystack = TextFold.Fold(chip + " " + name),
+            EntryIds = termIds,
         };
     }
 
@@ -342,6 +391,22 @@ public partial class PlaybookWindow : Window
         ? Loc.T("Playbook.EntriesOne")
         : string.Format(Loc.T("Playbook.EntriesMany"), count);
 
+    /// <summary>
+    /// La cultura de las FECHAS que muestra la ventana (historial, meses del gráfico): la del idioma
+    /// de la app, no la de Windows — en una app en español, "12 Mar" y "Aug" se leen como un descuido.
+    /// </summary>
+    private static CultureInfo DateCulture => Loc.Current == AppLanguage.English
+        ? CultureInfo.GetCultureInfo("en-US")
+        : CultureInfo.GetCultureInfo("es-AR");
+
+    private string PathText(long libraryId) =>
+        string.Join(PathSeparator, LibraryTree.PathOf(libraryId, _libraries));
+
+    /// <summary>La naturaleza EFECTIVA de una entrada (propia o heredada); "" si no tiene ninguna.</summary>
+    private string NatureName(Entry entry) =>
+        LibraryTree.EffectiveNatureId(entry, _libraries) is { } natureId
+        && _natureNames.TryGetValue(natureId, out var name) ? name : "";
+
     // ──────────────────────────── Pasos ────────────────────────────
 
     private void ShowStage(Stage stage)
@@ -351,9 +416,17 @@ public partial class PlaybookWindow : Window
         SetupView.Visibility = stage == Stage.Setup ? Visibility.Visible : Visibility.Collapsed;
         QuizView.Visibility = stage == Stage.Quiz ? Visibility.Visible : Visibility.Collapsed;
         SummaryView.Visibility = stage == Stage.Summary ? Visibility.Visible : Visibility.Collapsed;
+        FichaView.Visibility = stage == Stage.Ficha ? Visibility.Visible : Visibility.Collapsed;
+        StatsView.Visibility = stage == Stage.Stats ? Visibility.Visible : Visibility.Collapsed;
 
-        // Fuera de la búsqueda el encabezado dice QUÉ se está jugando; el avance sólo en el quiz.
-        TitleText.Text = stage == Stage.Search || _picked is null ? Loc.T("Playbook.Header") : _picked.FullName;
+        // El encabezado dice DÓNDE estás: en la búsqueda, la invitación; jugando, QUÉ se juega.
+        TitleText.Text = stage switch
+        {
+            Stage.Ficha => Loc.T("Playbook.FichaTitle"),
+            Stage.Stats => Loc.T("Playbook.StatsTitle"),
+            Stage.Search => Loc.T("Playbook.Header"),
+            _ => _picked?.Title ?? Loc.T("Playbook.Header"),
+        };
         ProgressText.Visibility = stage == Stage.Quiz ? Visibility.Visible : Visibility.Collapsed;
         UpdateHint();
 
@@ -368,8 +441,10 @@ public partial class PlaybookWindow : Window
         HintText.Text = _stage switch
         {
             Stage.Search => Loc.T("Playbook.HintSearch"),
-            Stage.Setup => Loc.T(_selection.Count == 0 ? "Playbook.HintSetupEmpty" : "Playbook.HintSetup"),
+            Stage.Setup => SetupHint(),
             Stage.Quiz => Loc.T(_revealed ? "Playbook.HintQuizAnswer" : "Playbook.HintQuizQuestion"),
+            Stage.Ficha => Loc.T("Playbook.HintFicha"),
+            Stage.Stats => Loc.T("Playbook.HintStats"),
             _ => Loc.T("Playbook.HintSummary"),
         };
     }
@@ -385,6 +460,8 @@ public partial class PlaybookWindow : Window
             case Stage.Setup: OnSetupKey(e); break;
             case Stage.Quiz: OnQuizKey(e); break;
             case Stage.Summary: OnSummaryKey(e); break;
+            case Stage.Ficha: OnFichaKey(e); break;
+            case Stage.Stats: OnStatsKey(e); break;
         }
     }
 
@@ -399,191 +476,218 @@ public partial class PlaybookWindow : Window
         try { DragMove(); } catch (InvalidOperationException) { }
     }
 
-    // ──────────────────────────── 1 · Búsqueda ────────────────────────────
-
-    private void FocusSearchBox()
-    {
-        SearchBox.Focus();
-        Keyboard.Focus(SearchBox);
-        SearchBox.CaretIndex = SearchBox.Text.Length;
-    }
-
-    /// <summary>
-    /// Buscador vacío = TODO: las bibliotecas como árbol con sangría y, después, las naturalezas.
-    /// Con texto = lista plana de lo que coincide (sin tildes ni mayúsculas, todas las palabras en
-    /// cualquier orden) contra el camino de la biblioteca o el nombre de la naturaleza.
-    /// </summary>
-    private void ApplyFilter()
-    {
-        SearchPlaceholder.Visibility = SearchBox.Text == "" ? Visibility.Visible : Visibility.Collapsed;
-
-        var terms = TextFold.Fold(SearchBox.Text).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        bool filtering = terms.Length > 0;
-        var visible = filtering
-            ? _rows.Where(r => terms.All(t => r.Haystack.Contains(t, StringComparison.Ordinal))).ToList()
-            : _rows;
-        foreach (var row in visible)
-            row.Indent = new Thickness(filtering || row.IsNature ? 0 : row.Depth * IndentPerLevel, 0, 0, 0);
-
-        // Lista nueva cada vez: las filas no notifican cambios, y reasignar el origen es lo que hace
-        // que la plantilla relea la sangría.
-        PickList.ItemsSource = visible.ToList();
-        // La primera queda marcada: Enter desde el buscador elige lo que se ve resaltado.
-        PickList.SelectedIndex = visible.Count > 0 ? 0 : -1;
-
-        if (visible.Count > 0)
-        {
-            EmptyText.Visibility = Visibility.Collapsed;
-        }
-        else
-        {
-            // Dos vacíos distintos: no hay NADA cargado (se arregla creando una biblioteca) vs. el
-            // filtro no encontró (se arregla borrando texto: Esc).
-            EmptyText.Text = _rows.Count == 0
-                ? Loc.T("Playbook.EmptyNoLibraries")
-                : string.Format(Loc.T("Playbook.NoResults"), SearchBox.Text.Trim());
-            EmptyText.Visibility = Visibility.Visible;
-        }
-    }
-
-    private void OnSearchKey(KeyEventArgs e)
-    {
-        bool inList = PickList.IsKeyboardFocusWithin;
-        switch (e.Key)
-        {
-            case Key.Escape:
-                // Esc en dos tiempos: primero limpia el texto, recién con el buscador vacío cierra.
-                e.Handled = true;
-                if (SearchBox.Text != "") { SearchBox.Clear(); FocusSearchBox(); }
-                else Close();
-                break;
-
-            case Key.Enter when !FocusIsOn(CloseBtn):
-                e.Handled = true;
-                PickSelected();
-                break;
-
-            case Key.Down when SearchBox.IsKeyboardFocusWithin && PickList.Items.Count > 0:
-                // Bajar desde el buscador ENTRA a la lista. La primera ya estaba marcada, así que el
-                // primer ↓ pasa a la segunda (si hay): igual que cualquier lanzador.
-                e.Handled = true;
-                FocusRow(Math.Min(Math.Max(PickList.SelectedIndex, -1) + 1, PickList.Items.Count - 1));
-                break;
-
-            case Key.Up when inList && PickList.SelectedIndex <= 0:
-                e.Handled = true; // subir desde la primera fila vuelve al buscador
-                FocusSearchBox();
-                break;
-
-            case Key.Back when inList:
-                // Borrar estando en la lista sigue siendo "editar la búsqueda".
-                e.Handled = true;
-                if (SearchBox.Text.Length > 0) SearchBox.Text = SearchBox.Text[..^1];
-                FocusSearchBox();
-                break;
-        }
-    }
-
-    /// <summary>Tipear con el foco en la lista vuelve al buscador y sigue escribiendo ahí.</summary>
-    private void OnListTextInput(object sender, TextCompositionEventArgs e)
-    {
-        if (string.IsNullOrEmpty(e.Text) || char.IsControl(e.Text[0])) return;
-        e.Handled = true;
-        SearchBox.Text += e.Text;
-        FocusSearchBox();
-    }
-
-    private void OnListMouseUp(object sender, MouseButtonEventArgs e)
-    {
-        // Un click en una fila la ELIGE (no hace falta doble click ni Enter). Un click en la barra de
-        // scroll o en el hueco no cae sobre ninguna fila y no hace nada.
-        if (e.OriginalSource is DependencyObject source
-            && ItemsControl.ContainerFromElement(PickList, source) is ListBoxItem { DataContext: PickRow row })
-        {
-            e.Handled = true;
-            EnterSetup(row);
-        }
-    }
-
-    private void FocusRow(int index)
-    {
-        if (index < 0 || index >= PickList.Items.Count) return;
-        PickList.SelectedIndex = index;
-        PickList.ScrollIntoView(PickList.Items[index]);
-        PickList.UpdateLayout(); // la lista virtualiza: el contenedor existe recién después del scroll
-        if (PickList.ItemContainerGenerator.ContainerFromIndex(index) is ListBoxItem item)
-            item.Focus();
-    }
-
-    private void PickSelected()
-    {
-        // Prioridad: la fila marcada → la única visible. Sin ninguna (lista vacía) Enter no hace
-        // nada, y el estado vacío ya está explicando por qué.
-        var row = PickList.SelectedItem as PickRow
-                  ?? (PickList.Items.Count == 1 ? PickList.Items[0] as PickRow : null);
-        if (row is not null) EnterSetup(row);
-    }
-
-    private void BackToSearch(bool reload)
-    {
-        // Tras una ronda hay repasos nuevos: se relee todo para que las barras muestren los valores
-        // de AHORA. Si sólo se volvió del armado no cambió nada y no se toca la base.
-        if (reload) LoadData();
-        _picked = null;
-        _selection = new List<Entry>();
-        ShowStage(Stage.Search);
-        ApplyFilter();
-        FocusSearchBox();
-    }
-
     // ──────────────────────────── 2 · Armado ────────────────────────────
 
     private void EnterSetup(PickRow row)
     {
+        _setupOrigin = _stage == Stage.Stats ? Stage.Stats : Stage.Search;
         _picked = row;
-        _selection = row.EntryIds.Where(_entries.ContainsKey).Select(id => _entries[id]).ToList();
+        _pickedEntries = row.EntryIds.Where(_entries.ContainsKey).Select(id => _entries[id]).ToList();
 
-        SetupKind.Text = Loc.T(row.IsNature ? "Playbook.NatureChip" : "Playbook.LibraryKind");
+        // Las traducciones de TODA la selección, en una consulta: de ahí sale qué idiomas se pueden
+        // ofrecer como lado, y después son las que muestra la ficha de cada término en el quiz.
+        _translations = _store.GetTranslations(_pickedEntries.Select(e => e.Id));
+
+        SetupKind.Text = row.Kind switch
+        {
+            PickKind.Nature => Loc.T("Playbook.NatureChip"),
+            PickKind.Vocabulary => Loc.T("Playbook.VocabularyChip"),
+            _ => Loc.T("Playbook.LibraryKind"),
+        };
         SetupName.Text = row.FullName;
-        SetupCount.Text = CountLabel(_selection.Count);
 
-        // Sin entradas no hay ronda posible. El botón se apaga Y el motivo queda a la vista.
-        bool empty = _selection.Count == 0;
-        StartBtn.IsEnabled = !empty;
-        StartReason.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+        // El filtro por tipo sólo tiene sentido si hay de los dos; y arranca siempre en "Todo".
+        bool mixed = _pickedEntries.Any(e => e.Kind == EntryKind.Term) && _pickedEntries.Any(e => e.Kind == EntryKind.Card);
+        KindPanel.Visibility = mixed ? Visibility.Visible : Visibility.Collapsed;
+        _kindFilter = KindFilter.All;
+        _buildingSetup = true;
+        KindAllRadio.IsChecked = true;
+        _buildingSetup = false;
 
         ShowStage(Stage.Setup);
-        SetSideMode(_lastSideMode);
+        RebuildSideOptions(_lastSideKey, focus: true);
     }
 
-    private RadioButton RadioFor(SideMode mode) => mode switch
+    private void InitKindRadio(RadioButton radio, KindFilter filter, string key)
     {
-        SideMode.Back => SideBackRadio,
-        SideMode.Mixed => SideMixedRadio,
-        _ => SideFrontRadio,
+        radio.Content = Loc.T(key);
+        AutomationProperties.SetName(radio, Loc.T(key));
+        radio.Checked += (_, _) =>
+        {
+            if (_buildingSetup || _kindFilter == filter) return;
+            _kindFilter = filter;
+            // Se conserva el lado elegido si la selección filtrada todavía lo ofrece. El foco NO se
+            // mueve: quien está recorriendo este grupo con las flechas sigue en este grupo.
+            RebuildSideOptions(CurrentOption()?.Key ?? _lastSideKey, focus: false);
+        };
+    }
+
+    private RadioButton KindRadio(KindFilter filter) => filter switch
+    {
+        KindFilter.Terms => KindTermsRadio,
+        KindFilter.Cards => KindCardsRadio,
+        _ => KindAllRadio,
     };
 
-    private SideMode CurrentSideMode() =>
-        SideBackRadio.IsChecked == true ? SideMode.Back
-        : SideMixedRadio.IsChecked == true ? SideMode.Mixed
-        : SideMode.Front;
-
-    /// <summary>Marca el lado Y le da el foco: en este grupo "elegido" y "enfocado" van juntos.</summary>
-    private void SetSideMode(SideMode mode)
+    private void CycleKind(int delta, bool focus)
     {
-        var radio = RadioFor(mode);
+        if (KindPanel.Visibility != Visibility.Visible) return;
+        var radio = KindRadio((KindFilter)(((int)_kindFilter + delta + 3) % 3));
         radio.IsChecked = true;
+        if (focus) { radio.Focus(); Keyboard.Focus(radio); }
+    }
+
+    /// <summary>
+    /// Arma las opciones de lado para la selección ACTUAL (lo elegido, pasado por el filtro por tipo):
+    /// Frente, Dorso y Mezclado siempre; y, si hay términos con traducciones, una opción por idioma
+    /// ("Inglés → término": se muestra la traducción y hay que dar con la palabra). Un idioma sin
+    /// ninguna traducción en la selección no se ofrece — sería una opción que lleva a una ronda vacía.
+    /// </summary>
+    private void RebuildSideOptions(string preferredKey, bool focus)
+    {
+        _selection = _kindFilter switch
+        {
+            KindFilter.Terms => _pickedEntries.Where(e => e.Kind == EntryKind.Term).ToList(),
+            KindFilter.Cards => _pickedEntries.Where(e => e.Kind == EntryKind.Card).ToList(),
+            _ => _pickedEntries,
+        };
+        SetupCount.Text = _selection.Count == _pickedEntries.Count
+            ? CountLabel(_selection.Count)
+            : string.Format(Loc.T("Playbook.SetupCountFiltered"), CountLabel(_selection.Count), _pickedEntries.Count);
+
+        var options = new List<SideOption>
+        {
+            new(ReviewSide.Front, Loc.T("Playbook.SideFront"), ReviewSide.Front, _selection),
+            new(ReviewSide.Back, Loc.T("Playbook.SideBack"), ReviewSide.Back, _selection),
+            new(MixedKey, Loc.T("Playbook.SideMixed"), null, _selection),
+        };
+        foreach (var (languageId, languageName) in _languageNames.OrderBy(l => l.Value, StringComparer.CurrentCultureIgnoreCase))
+        {
+            var with = _selection.Where(e => e.Kind == EntryKind.Term && TranslationOf(e.Id, languageId) is not null).ToList();
+            if (with.Count == 0) continue;
+            options.Add(new SideOption(ReviewSide.ForLanguage(languageId),
+                string.Format(Loc.T("Playbook.SideLanguage"), languageName), ReviewSide.ForLanguage(languageId), with, languageName));
+        }
+        _sideOptions = options;
+
+        _buildingSetup = true;
+        SideGrid.Children.Clear();
+        _sideRadios.Clear();
+        // Hasta cuatro en un renglón; con más, se reparten parejo en dos (o tres) renglones.
+        SideGrid.Columns = options.Count <= MaxSideColumns
+            ? options.Count
+            : Math.Min(MaxSideColumns, (options.Count + 1) / 2);
+        for (int i = 0; i < options.Count; i++)
+        {
+            var radio = BuildSideRadio(i, options[i]);
+            _sideRadios.Add(radio);
+            SideGrid.Children.Add(radio);
+        }
+        _buildingSetup = false;
+
+        int preferred = options.FindIndex(o => o.Key == preferredKey);
+        SelectSide(preferred < 0 ? 0 : preferred, focus);
+    }
+
+    private RadioButton BuildSideRadio(int index, SideOption option)
+    {
+        // Tecla dibujada + texto, igual que el resto de la ventana. Las teclas son 1..9: una opción
+        // que quedara más allá de la novena no tendría número (se llega con las flechas o el mouse).
+        var content = new StackPanel { Orientation = Orientation.Horizontal };
+        if (index < 9)
+        {
+            var keycap = new Border { Style = (Style)FindResource("Keycap"), Margin = new Thickness(0, 0, 8, 0) };
+            keycap.Child = new TextBlock
+            {
+                Style = (Style)FindResource("KeycapText"),
+                Text = (index + 1).ToString(CultureInfo.InvariantCulture),
+            };
+            content.Children.Add(keycap);
+        }
+        content.Children.Add(new TextBlock { Text = option.Label, VerticalAlignment = VerticalAlignment.Center });
+
+        var radio = new RadioButton
+        {
+            GroupName = "PlaybookSide",
+            Style = (Style)FindResource("Segment"),
+            Content = content,
+        };
+        AutomationProperties.SetName(radio, option.Label);
+        radio.Checked += (_, _) => { if (!_buildingSetup) OnSideChosen(); };
+        return radio;
+    }
+
+    private string? TranslationOf(long entryId, long languageId)
+    {
+        if (!_translations.TryGetValue(entryId, out var list)) return null;
+        string? text = list.FirstOrDefault(t => t.LanguageId == languageId)?.Text;
+        return string.IsNullOrWhiteSpace(text) ? null : text;
+    }
+
+    private int CurrentSideIndex() => _sideRadios.FindIndex(r => r.IsChecked == true);
+
+    private SideOption? CurrentOption() =>
+        CurrentSideIndex() is var index && index >= 0 && index < _sideOptions.Count ? _sideOptions[index] : null;
+
+    /// <summary>Marca el lado y, si se pide, le da el foco: en este grupo "elegido" y "enfocado" van juntos.</summary>
+    private void SelectSide(int index, bool focus)
+    {
+        if (index < 0 || index >= _sideRadios.Count) return;
+        var radio = _sideRadios[index];
+        _buildingSetup = true;
+        radio.IsChecked = true;
+        _buildingSetup = false;
+        OnSideChosen();
+        if (!focus) return;
+        UpdateLayout(); // los botones se acaban de crear: sin layout, Focus() no prende
         radio.Focus();
         Keyboard.Focus(radio);
     }
 
+    /// <summary>
+    /// Deja a la vista lo que cambia con el lado elegido: si se puede empezar y, con un lado de
+    /// idioma, cuántas juegan de verdad (las que no tienen esa traducción quedan fuera de ESA ronda).
+    /// </summary>
+    private void OnSideChosen()
+    {
+        var option = CurrentOption();
+        int playable = option?.Entries.Count ?? 0;
+
+        // Sin entradas no hay ronda posible. El botón se apaga Y el motivo queda a la vista.
+        StartBtn.IsEnabled = playable > 0;
+        StartReason.Visibility = playable > 0 ? Visibility.Collapsed : Visibility.Visible;
+
+        bool partial = option is not null && playable > 0 && playable < _selection.Count;
+        SetupRoundNote.Visibility = partial ? Visibility.Visible : Visibility.Collapsed;
+        if (partial)
+            SetupRoundNote.Text = string.Format(Loc.T("Playbook.SetupLanguageNote"),
+                playable, _selection.Count, option!.LanguageName);
+        UpdateHint();
+    }
+
+    private string SetupHint()
+    {
+        if (_sideOptions.Count == 0 || _selection.Count == 0) return Loc.T("Playbook.HintSetupEmpty");
+        string keys = Math.Min(_sideOptions.Count, 9).ToString(CultureInfo.InvariantCulture);
+        return string.Format(
+            Loc.T(KindPanel.Visibility == Visibility.Visible ? "Playbook.HintSetupKinds" : "Playbook.HintSetup"), keys);
+    }
+
+    /// <summary>Esc / Volver desde el armado: adonde se había venido (la búsqueda o las estadísticas).</summary>
+    private void LeaveSetup()
+    {
+        if (_setupOrigin == Stage.Stats) ShowStats(reload: false);
+        else BackToSearch(reload: false);
+    }
+
     private void OnSetupKey(KeyEventArgs e)
     {
+        bool inKinds = KindPanel.IsKeyboardFocusWithin;
         switch (e.Key)
         {
             case Key.Escape:
                 e.Handled = true;
-                BackToSearch(reload: false);
+                LeaveSetup();
                 break;
 
             case Key.Enter when !FocusIsOn(SetupBackBtn, CloseBtn):
@@ -591,41 +695,59 @@ public partial class PlaybookWindow : Window
                 StartRound(); // con la selección vacía no arranca: el motivo ya está en pantalla
                 break;
 
-            // Flechas: se mueven por el grupo y ELIGEN (por defecto WPF sólo mueve el foco, y habría
-            // que confirmar con Espacio — un paso de más para tres opciones).
-            case Key.Left:
+            // Flechas: se mueven por el grupo que tiene el foco y ELIGEN (por defecto WPF sólo mueve
+            // el foco, y habría que confirmar con Espacio — un paso de más para tan pocas opciones).
+            case Key.Left or Key.Right when inKinds:
                 e.Handled = true;
-                SetSideMode((SideMode)(((int)CurrentSideMode() + 2) % 3));
+                CycleKind(e.Key == Key.Left ? -1 : 1, focus: true);
                 break;
-            case Key.Right:
+            case Key.Left or Key.Right when _sideRadios.Count > 0:
                 e.Handled = true;
-                SetSideMode((SideMode)(((int)CurrentSideMode() + 1) % 3));
+                int step = e.Key == Key.Left ? -1 : 1;
+                SelectSide((Math.Max(CurrentSideIndex(), 0) + step + _sideRadios.Count) % _sideRadios.Count, focus: true);
                 break;
 
-            case Key.D1 or Key.NumPad1: e.Handled = true; SetSideMode(SideMode.Front); break;
-            case Key.D2 or Key.NumPad2: e.Handled = true; SetSideMode(SideMode.Back); break;
-            case Key.D3 or Key.NumPad3: e.Handled = true; SetSideMode(SideMode.Mixed); break;
+            case Key.F when KindPanel.Visibility == Visibility.Visible:
+                e.Handled = true;
+                CycleKind(1, focus: false);
+                break;
+
+            default:
+                // 1..n: una tecla por opción de lado, sean las que sean.
+                if (DigitOf(e.Key) is { } digit && digit <= _sideRadios.Count)
+                {
+                    e.Handled = true;
+                    SelectSide(digit - 1, focus: true);
+                }
+                break;
         }
     }
+
+    /// <summary>Fila superior o numpad, 1..9 (el numpad se acepta aunque esta app lo deja sin NumLock).</summary>
+    private static int? DigitOf(Key key) => key switch
+    {
+        >= Key.D1 and <= Key.D9 => key - Key.D0,
+        >= Key.NumPad1 and <= Key.NumPad9 => key - Key.NumPad0,
+        _ => null,
+    };
 
     // ──────────────────────────── 3 · Quiz ────────────────────────────
 
     /// <summary>
-    /// Arma una ronda con TODA la selección, en orden sorteado con sesgo a lo más flojo. Sirve igual
-    /// para la primera ronda y para "jugar de nuevo": cada vez relee los repasos de la selección, así
-    /// el orden nuevo ya pesa con lo que se acaba de responder.
+    /// Arma una ronda con TODO lo que puede jugar el lado elegido, en orden sorteado con sesgo a lo
+    /// más flojo. Sirve igual para la primera ronda y para "jugar de nuevo": cada vez relee los
+    /// repasos, así el orden nuevo ya pesa con lo que se acaba de responder.
     /// </summary>
     private void StartRound()
     {
-        if (_selection.Count == 0 || _picked is null) return;
+        // En el resumen los botones de lado no están a la vista: ahí vale la opción de la ronda anterior.
+        var option = _stage == Stage.Setup ? CurrentOption() : _roundOption;
+        if (option is null || option.Entries.Count == 0 || _picked is null) return;
+        _roundOption = option;
+        _lastSideKey = option.Key;
 
-        // En el resumen los botones de lado no están a la vista: ahí vale la última elección.
-        var mode = _stage == Stage.Setup ? CurrentSideMode() : _lastSideMode;
-        _lastSideMode = mode;
-
-        var ids = _selection.Select(e => e.Id).ToList();
+        var ids = option.Entries.Select(e => e.Id).ToList();
         _roundStates = Solidity.ComputeAll(_store.GetReviews(ids), DateTime.UtcNow);
-        _translations = _store.GetTranslations(ids);
         _solidityBefore = AverageOf(ids, _roundStates);
 
         // El lado de cada tarjeta se decide ANTES de ordenar, porque el peso depende de la solidez
@@ -636,19 +758,15 @@ public partial class PlaybookWindow : Window
         var weights = new Dictionary<(long, string), SolidityState>();
         foreach (long id in ids)
         {
-            string side = mode switch
-            {
-                SideMode.Front => ReviewSide.Front,
-                SideMode.Back => ReviewSide.Back,
-                _ => Rng.Next(2) == 0 ? ReviewSide.Front : ReviewSide.Back,
-            };
+            string side = option.Side ?? (Rng.Next(2) == 0 ? ReviewSide.Front : ReviewSide.Back);
             sideOf[id] = side;
             var state = Solidity.StateOf(_roundStates, id, side);
             if (state.Played) weights[(id, ReviewSide.Front)] = state;
         }
 
+        var byId = option.Entries.ToDictionary(e => e.Id);
         _round = Solidity.WeightedOrder(ids, ReviewSide.Front, weights, Rng)
-            .Select(id => new QuizCard(_entries[id], sideOf[id]))
+            .Select(id => new QuizCard(byId[id], sideOf[id]))
             .ToList();
 
         Array.Clear(_gradeCounts);
@@ -668,12 +786,16 @@ public partial class PlaybookWindow : Window
         _revealed = false;
 
         ProgressText.Text = string.Format(Loc.T("Playbook.Progress"), _index + 1, _round.Count);
-        ShownSideText.Text = Loc.T(card.Side == ReviewSide.Front ? "Playbook.ShownFront" : "Playbook.ShownBack");
-        CardPathText.Text = string.Join(PathSeparator, LibraryTree.PathOf(card.Entry.LibraryId, _libraries));
+        ShownSideText.Text = card.Side switch
+        {
+            ReviewSide.Front => Loc.T("Playbook.ShownFront"),
+            ReviewSide.Back => Loc.T("Playbook.ShownBack"),
+            _ => string.Format(Loc.T("Playbook.ShownLanguage"), LanguageOf(card.Side)),
+        };
+        CardPathText.Text = PathText(card.Entry.LibraryId);
 
         // La naturaleza EFECTIVA (propia o heredada). Sin ninguna en toda la cadena, no hay chip.
-        string nature = LibraryTree.EffectiveNatureId(card.Entry, _libraries) is { } natureId
-                        && _natureNames.TryGetValue(natureId, out var name) ? name : "";
+        string nature = NatureName(card.Entry);
         CardNatureText.Text = nature;
         CardNatureChip.Visibility = nature == "" ? Visibility.Collapsed : Visibility.Visible;
 
@@ -690,6 +812,10 @@ public partial class PlaybookWindow : Window
         CardScroll.Focus();
         Keyboard.Focus(CardScroll);
     }
+
+    /// <summary>El nombre del idioma de un lado <c>lang:&lt;id&gt;</c> ("" si ya no existe).</summary>
+    private string LanguageOf(string side) =>
+        ReviewSide.TryGetLanguage(side, out long id) && _languageNames.TryGetValue(id, out var name) ? name : "";
 
     private void Reveal()
     {
@@ -834,15 +960,22 @@ public partial class PlaybookWindow : Window
     /// definición; la ficha (traducciones, contexto de uso, origen) aparece SIEMPRE con la respuesta
     /// y nunca con la pregunta, porque cuando se pregunta por la definición las traducciones y el
     /// ejemplo de uso delatan la palabra.
+    ///
+    /// Con un lado de IDIOMA la pregunta es la traducción sola ("Technical debt") y la respuesta es
+    /// la ficha entera del término: la palabra, su definición y el resto.
     /// </summary>
     private void RenderCard(QuizCard card)
     {
         var entry = card.Entry;
         bool term = entry.Kind == EntryKind.Term;
+        bool languageQuestion = ReviewSide.TryGetLanguage(card.Side, out long languageId);
         bool frontIsQuestion = card.Side == ReviewSide.Front;
 
         CardPanel.Children.Clear();
-        AddSide(entry, front: frontIsQuestion, term, question: true);
+        if (languageQuestion)
+            AddBigText(CardPanel, LanguageOf(card.Side), TranslationOf(entry.Id, languageId) ?? "", question: true);
+        else
+            AddSide(CardPanel, entry, front: frontIsQuestion, term, question: true);
         if (!_revealed) return;
 
         CardPanel.Children.Add(new Border
@@ -850,34 +983,67 @@ public partial class PlaybookWindow : Window
             Height = 1, Margin = new Thickness(0, 20, 0, 18),
             Background = (Brush)FindResource("SoftLineBrush"),
         });
-        AddSide(entry, front: !frontIsQuestion, term, question: false);
-
-        if (!term) return;
-        if (_translations.TryGetValue(entry.Id, out var translations) && translations.Count > 0)
+        if (languageQuestion)
         {
-            // Una línea por idioma: "Inglés: Technical debt".
-            var lines = translations.Select(t =>
-                (_languageNames.TryGetValue(t.LanguageId, out var language) ? language + ": " : "") + t.Text);
-            AddField(Loc.T("Playbook.FieldTranslations"), string.Join(Environment.NewLine, lines));
+            AddSide(CardPanel, entry, front: true, term, question: false);
+            AddSide(CardPanel, entry, front: false, term, question: false, topMargin: 18);
         }
-        AddField(Loc.T("Playbook.FieldUsage"), entry.UsageContext);
-        AddField(Loc.T("Playbook.FieldOrigin"), entry.Origin);
+        else
+        {
+            AddSide(CardPanel, entry, front: !frontIsQuestion, term, question: false);
+        }
+
+        // La traducción que se preguntó ya está arriba, en grande: repetirla en la lista de abajo
+        // sólo gasta un renglón de una tarjeta que, con este lado, es la más alta de todas.
+        if (term)
+            AddTermSheet(CardPanel, entry, _translations.TryGetValue(entry.Id, out var list) ? list : null,
+                skipLanguageId: languageQuestion ? languageId : null);
     }
 
-    private void AddSide(Entry entry, bool front, bool term, bool question)
+    /// <summary>
+    /// Lo que un término tiene además de palabra y definición: traducciones, contexto de uso y
+    /// origen. Lo comparten la respuesta del quiz y la ficha de lectura.
+    /// </summary>
+    private void AddTermSheet(Panel panel, Entry entry, IReadOnlyList<Translation>? translations, long? skipLanguageId = null)
+    {
+        if (translations is { Count: > 0 })
+        {
+            // Una línea por idioma: "Inglés: Technical debt". (AddField no pinta nada si queda vacío.)
+            var lines = translations.Where(t => t.LanguageId != skipLanguageId).Select(t =>
+                (_languageNames.TryGetValue(t.LanguageId, out var language) ? language + ": " : "") + t.Text);
+            AddField(panel, Loc.T("Playbook.FieldTranslations"), string.Join(Environment.NewLine, lines));
+        }
+        AddField(panel, Loc.T("Playbook.FieldUsage"), entry.UsageContext);
+        AddField(panel, Loc.T("Playbook.FieldOrigin"), entry.Origin);
+    }
+
+    private void AddSide(Panel panel, Entry entry, bool front, bool term, bool question, double topMargin = 0)
     {
         string label = term
             ? Loc.T(front ? "Playbook.FieldTerm" : "Playbook.FieldDefinition")
             : Loc.T(front ? "Playbook.SideFront" : "Playbook.SideBack");
-        string text = front ? entry.Front : entry.Back;
+        AddBigText(panel, label, front ? entry.Front : entry.Back, question, topMargin);
 
+        // El tipo de palabra acompaña a la PALABRA (frente de un término), no a su definición.
+        if (term && front && entry.WordType != "")
+            panel.Children.Add(new TextBlock
+            {
+                Text = entry.WordType,
+                FontSize = 19, FontStyle = FontStyles.Italic, Margin = new Thickness(0, 4, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)FindResource("MutedBrush"),
+            });
+    }
+
+    private void AddBigText(Panel panel, string label, string text, bool question, double topMargin = 0)
+    {
         // Los tamaños están pensados para leer a la distancia de un monitor en una ventana que
         // ocupa casi toda la pantalla, y con el presupuesto de alto de la tarjeta a la vista: la
         // ficha más cargada del ejemplo (palabra + tipo + definición de tres renglones + dos
         // traducciones + uso + origen) tiene que entrar entera. Si se agrandan, revisar eso.
         bool brief = text.Length <= 80;
-        AddLabel(label);
-        CardPanel.Children.Add(new TextBlock
+        AddLabel(panel, label, topMargin);
+        panel.Children.Add(new TextBlock
         {
             Text = text,
             TextWrapping = TextWrapping.Wrap,
@@ -887,31 +1053,21 @@ public partial class PlaybookWindow : Window
             LineHeight = brief ? double.NaN : 35,
             Foreground = (Brush)FindResource("FgBrush"),
         });
-
-        // El tipo de palabra acompaña a la PALABRA (frente de un término), no a su definición.
-        if (term && front && entry.WordType != "")
-            CardPanel.Children.Add(new TextBlock
-            {
-                Text = entry.WordType,
-                FontSize = 19, FontStyle = FontStyles.Italic, Margin = new Thickness(0, 4, 0, 0),
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = (Brush)FindResource("MutedBrush"),
-            });
     }
 
     /// <summary>Un campo de la ficha con su rótulo. Vacío = no se pinta (ni el rótulo).</summary>
-    private void AddField(string label, string text)
+    private void AddField(Panel panel, string label, string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
-        AddLabel(label, topMargin: 18);
-        CardPanel.Children.Add(new TextBlock
+        AddLabel(panel, label, topMargin: 18);
+        panel.Children.Add(new TextBlock
         {
             Text = text, FontSize = 19, LineHeight = 28, TextWrapping = TextWrapping.Wrap,
             Foreground = (Brush)FindResource("FgBrush"),
         });
     }
 
-    private void AddLabel(string text, double topMargin = 0) => CardPanel.Children.Add(new TextBlock
+    private void AddLabel(Panel panel, string text, double topMargin = 0) => panel.Children.Add(new TextBlock
     {
         Text = text.ToUpper(CultureInfo.CurrentCulture),
         FontSize = 13, FontWeight = FontWeights.Bold, Margin = new Thickness(0, topMargin, 0, 5),
@@ -930,8 +1086,9 @@ public partial class PlaybookWindow : Window
         SummaryGrade4.Text = _gradeCounts[4].ToString(CultureInfo.CurrentCulture);
 
         // "Después" se RECALCULA desde la base, no se estima: si alguna respuesta no se guardó, el
-        // número refleja lo que de verdad quedó anotado.
-        var ids = _selection.Select(e => e.Id).ToList();
+        // número refleja lo que de verdad quedó anotado. Es sobre lo que JUGÓ la ronda (con un lado
+        // de idioma, los términos que tenían esa traducción), igual que el "antes".
+        var ids = (_roundOption?.Entries ?? _selection).Select(e => e.Id).ToList();
         var after = AverageOf(ids, Solidity.ComputeAll(_store.GetReviews(ids), DateTime.UtcNow));
         SummarySolidity.Text = string.Format(Loc.T("Playbook.SummarySolidity"),
             ShortSolidity(_solidityBefore), ShortSolidity(after));
@@ -955,7 +1112,7 @@ public partial class PlaybookWindow : Window
 
             case Key.Enter when !FocusIsOn(SummaryBackBtn, CloseBtn):
                 e.Handled = true;
-                StartRound(); // la misma selección, con un orden nuevo
+                StartRound(); // lo mismo, con un orden nuevo
                 break;
         }
     }
