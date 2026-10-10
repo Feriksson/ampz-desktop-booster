@@ -133,6 +133,7 @@ public partial class ShortcutsHelperWindow : Window
         ("Win + F11",             Loc.T("Helper.Downloads")),
         ("", ""),
         ($"§{Loc.T("Helper.SectionSystem")}", ""),
+        ("Win + Numpad . (Del)",  Loc.T("Helper.OpenConfig")),
         ("Win + D",               Loc.T("Helper.ShowDesktop")),
         ("Win + F3",              Loc.T("Helper.EnvVars")),
         ("Win + F5",              Loc.T("Helper.Docker")),

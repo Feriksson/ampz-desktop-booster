@@ -560,6 +560,7 @@
   "Helper.SectionDesktops": "DESKTOP NAVIGATION",
   "Helper.CycleDeskWithProject": "Cycle through DESK+ with a space",
   "Helper.DeskPicker": "DeskPicker — jump to a session space",
+  "Helper.OpenConfig": "Open settings (or bring them to front)",
   "Helper.SectionMoveWindow": "MOVE WINDOW + FOLLOW IT",
   "Helper.SendAndFollow": "Send the active window to the desktop and follow",
   "Helper.SendPicker": "Picker — choose target desktop",

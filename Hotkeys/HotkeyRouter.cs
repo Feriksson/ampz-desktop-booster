@@ -91,6 +91,12 @@ public sealed class HotkeyRouter
     /// </summary>
     private readonly HashSet<string> _servicesGroupLaunched = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Abre la Config (Win+NumpadDel). Lo inyecta <c>App</c> —mismo patrón que <c>BarWindow.OpenConfig</c>—
+    /// porque la instancia única de la ventana vive allá: el router no la crea ni la conoce.
+    /// </summary>
+    public Action? OpenConfig { get; set; }
+
     // Virtual-keys de las F que ruteamos (F1..F12 = 0x70..0x7B; backtick = 0xC0; barra /? = 0xBF).
     // F7 (Pin Manager) y F8 (Restricciones) SE QUITARON: eran popups de gestión compleja que hoy
     // viven mejor en la Config (pestañas Anclajes y Protecciones). Esas teclas quedan libres.
@@ -288,6 +294,9 @@ public sealed class HotkeyRouter
             // Win+NumpadDot (contexto en el desk actual) SE RETIRÓ con los escritorios dinámicos: el
             // contexto ahora se elige UNA vez, en el paso 2 del launcher, al crear el desk — no hay
             // "el mismo desk, otro contexto" porque cada par espacio+contexto ES su propio desk.
+            // La tecla quedó libre y hoy abre la CONFIG (o la trae al frente si ya está abierta):
+            // era la única superficie grande de la app a la que sólo se llegaba con el mouse (tray).
+            case NumpadKey.Decimal:  OpenConfig?.Invoke();    return; // Win+NumpadDel/Dot
             case NumpadKey.Multiply: ShowProjectPaths();      return;
             case NumpadKey.Divide:   ShowProjectNotes();      return;
             case NumpadKey.Add:      ShowServices();          return; // Win+Numpad+ (servicios del scope)
