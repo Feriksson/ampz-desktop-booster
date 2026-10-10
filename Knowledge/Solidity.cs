@@ -99,11 +99,23 @@ public static class Solidity
 
         double s = InitialSolidity;
         int streak = 0;
+        DateTime? previous = null;
         foreach (var r in ordered)
         {
+            var at = Utc(r.ReviewedAt);
+
+            // Cada repaso parte de lo que REALMENTE quedaba ese día, no de lo que había al terminar
+            // el repaso anterior. Sin esto, algo que no tocaste en dos años retomaba desde su valor
+            // viejo intacto y un solo acierto lo dejaba más alto que nunca: el tiempo sin uso no
+            // habría costado nada. El desgaste del tramo usa la racha que había DURANTE ese tramo
+            // (la de antes de esta respuesta), que es la que decidió cuánto aguantaba.
+            if (previous is { } before)
+                s = Decay(s, streak, Math.Max(0, (at - before).TotalDays));
+
             int grade = Math.Clamp((int)r.Grade, 1, 4);
             s += LearningRate * (GradeTarget[grade] - s);
             streak = grade >= StreakMinGrade ? streak + 1 : 0; // una respuesta floja corta la racha
+            previous = at;
         }
 
         var last = Utc(ordered[^1].ReviewedAt);
@@ -188,7 +200,9 @@ public static class Solidity
     /// <summary>
     /// Desgaste: el valor baja desde <paramref name="fresh"/> HACIA su piso (40%), acercándose cada
     /// vez más despacio, sin cruzarlo nunca. Al principio se nota; después de mucho tiempo ya casi
-    /// no se mueve.
+    /// no se mueve. Se aplica dos veces con la misma regla: entre un repaso y el siguiente (para
+    /// saber desde dónde parte la respuesta nueva) y desde el último repaso hasta hoy (lo que se ve).
+    /// El piso es siempre el 40% de lo que había al terminar el repaso que abre el tramo.
     /// </summary>
     private static double Decay(double fresh, int streak, double days)
     {

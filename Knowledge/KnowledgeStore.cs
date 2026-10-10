@@ -167,7 +167,8 @@ public sealed partial class KnowledgeStore
     public bool DeleteLibrary(long id) => Write(false, (c, tx) =>
         Execute(c, tx, "DELETE FROM libraries WHERE id = $id", ("$id", id)) > 0);
 
-    /// <summary>La naturaleza que heredan sus entradas sin naturaleza propia (null = ninguna).</summary>
+    /// <summary>La naturaleza que heredan sus entradas sin naturaleza propia (null = la que le
+    /// llegue de su biblioteca madre, si alguna de las de arriba tiene una).</summary>
     public bool SetLibraryDefaultNature(long id, long? natureId) => Write(false, (c, tx) =>
         Execute(c, tx, "UPDATE libraries SET default_nature_id = $n WHERE id = $id",
             ("$n", ExistingOrNull(c, tx, "natures", natureId)), ("$id", id)) > 0);
@@ -199,14 +200,26 @@ public sealed partial class KnowledgeStore
                 ReadEntry, ("$id", libraryId)));
 
     /// <summary>
-    /// Entradas cuya naturaleza EFECTIVA es <paramref name="natureId"/>: la propia si la fijó, y si no
-    /// la predeterminada de SU biblioteca. La herencia se resuelve acá, en un solo lugar, para que
-    /// "jugar por naturaleza" y la ficha de una entrada nunca discrepen.
+    /// Entradas cuya naturaleza EFECTIVA es <paramref name="natureId"/>: la propia si la fijó; si no,
+    /// la predeterminada de su biblioteca; y si esa tampoco tiene, la de la primera biblioteca
+    /// ANCESTRO que tenga una. La herencia sube por todo el árbol porque así se arma en la práctica:
+    /// se le pone la naturaleza a la biblioteca madre ("Legal") y las hijas que se van creando abajo
+    /// no deberían obligar a repetirla una por una.
+    ///
+    /// Es la MISMA regla que <see cref="LibraryTree.EffectiveNatureId(Entry, IReadOnlyDictionary{long, Library})"/>,
+    /// que la resuelve en memoria para la UI. Si una cambia, cambia la otra: "jugar por naturaleza"
+    /// y la naturaleza que muestra una tarjeta no pueden discrepar.
     /// </summary>
     public IReadOnlyList<Entry> GetEntriesByNature(long natureId) =>
         Read<IReadOnlyList<Entry>>(Array.Empty<Entry>(), c => Query(c, null,
-            $"SELECT {EntryColumns} FROM entries e JOIN libraries l ON l.id = e.library_id " +
-            "WHERE COALESCE(e.nature_id, l.default_nature_id) = $n ORDER BY e.id",
+            // inherited(id, nature_id): por cada biblioteca, la naturaleza que le llega bajando desde
+            // la raíz — la suya si tiene, si no la que ya traía su madre.
+            "WITH RECURSIVE inherited(id, nature_id) AS (" +
+            "  SELECT id, default_nature_id FROM libraries WHERE parent_id IS NULL UNION ALL " +
+            "  SELECT l.id, COALESCE(l.default_nature_id, p.nature_id) " +
+            "  FROM libraries l JOIN inherited p ON l.parent_id = p.id) " +
+            $"SELECT {EntryColumns} FROM entries e JOIN inherited i ON i.id = e.library_id " +
+            "WHERE COALESCE(e.nature_id, i.nature_id) = $n ORDER BY e.id",
             ReadEntry, ("$n", natureId)));
 
     public Entry? GetEntry(long id) => Read<Entry?>(null, c =>
@@ -326,7 +339,7 @@ public sealed partial class KnowledgeStore
     public KnowledgeOpResult RenameNature(long id, string name) => RenameNamed("natures", id, name);
 
     /// <summary>Borra la naturaleza. Las entradas y bibliotecas que la usaban NO se borran: vuelven
-    /// a null (la entrada pasa a heredar de su biblioteca; la biblioteca queda sin predeterminada).</summary>
+    /// a null (la entrada pasa a heredar de su biblioteca; la biblioteca, de su biblioteca madre).</summary>
     public bool DeleteNature(long id) => Write(false, (c, tx) =>
         Execute(c, tx, "DELETE FROM natures WHERE id = $id", ("$id", id)) > 0);
 

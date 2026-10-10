@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 
@@ -11,9 +12,41 @@ namespace AmpzDesktopBooster.Knowledge;
 /// <summary>
 /// Una biblioteca. Forman un ÁRBOL por <see cref="ParentId"/> (null = raíz); el store las entrega
 /// planas y la UI arma el árbol. <see cref="DefaultNatureId"/> es la naturaleza que HEREDAN sus
-/// entradas mientras no fijen una propia.
+/// entradas mientras no fijen una propia; null = la que le llegue de su biblioteca madre (ver
+/// <see cref="LibraryTree.EffectiveNatureId(long, IReadOnlyDictionary{long, Library})"/>).
 /// </summary>
 public sealed record Library(long Id, long? ParentId, string Name, long? DefaultNatureId, int Sort, DateTime CreatedAt);
+
+/// <summary>
+/// Preguntas sobre el ÁRBOL de bibliotecas que se contestan en memoria, con la lista plana que
+/// entrega el store ya indexada por id. Vive acá y no en el store porque la UI las hace por cada fila
+/// que pinta: una consulta por fila sería un viaje a disco por tarjeta.
+/// </summary>
+public static class LibraryTree
+{
+    /// <summary>
+    /// La naturaleza que una biblioteca les da a sus entradas: la suya, o la de la primera ANCESTRO
+    /// que tenga una (subiendo hacia la raíz). null si ninguna de la cadena la define. Es la misma
+    /// regla que aplica en SQL <c>KnowledgeStore.GetEntriesByNature</c>: mantenerlas iguales.
+    /// </summary>
+    public static long? EffectiveNatureId(long libraryId, IReadOnlyDictionary<long, Library> librariesById)
+    {
+        // El tope de pasos es la cantidad de bibliotecas: un árbol sano nunca lo alcanza, y una base
+        // tocada a mano con un ciclo (A hija de B, B hija de A) corta acá en vez de girar para siempre.
+        long? current = libraryId;
+        for (int steps = 0; current is { } id && steps <= librariesById.Count; steps++)
+        {
+            if (!librariesById.TryGetValue(id, out var library)) return null;
+            if (library.DefaultNatureId is { } nature) return nature;
+            current = library.ParentId;
+        }
+        return null;
+    }
+
+    /// <summary>La naturaleza EFECTIVA de una entrada: la que fijó, o la que hereda del árbol.</summary>
+    public static long? EffectiveNatureId(Entry entry, IReadOnlyDictionary<long, Library> librariesById) =>
+        entry.NatureId ?? EffectiveNatureId(entry.LibraryId, librariesById);
+}
 
 /// <summary>Tarjeta (frente/dorso libres) o término de vocabulario (palabra/definición + ficha).</summary>
 public enum EntryKind { Card, Term }
@@ -22,7 +55,8 @@ public enum EntryKind { Card, Term }
 /// Una entrada de una biblioteca. Tarjetas y términos comparten tabla, quiz y seguimiento: en un
 /// TÉRMINO <see cref="Front"/> es la palabra y <see cref="Back"/> la definición, y además usa
 /// <see cref="WordType"/>, <see cref="UsageContext"/> y <see cref="Origin"/> (vacíos en una tarjeta).
-/// <see cref="NatureId"/> null NO es "sin naturaleza": es "la que diga mi biblioteca".
+/// <see cref="NatureId"/> null NO es "sin naturaleza": es "la que diga mi biblioteca" (o, si ella
+/// tampoco tiene, la primera de sus ancestros que sí).
 /// </summary>
 public sealed record Entry(
     long Id, long LibraryId, EntryKind Kind, string Front, string Back, long? NatureId,

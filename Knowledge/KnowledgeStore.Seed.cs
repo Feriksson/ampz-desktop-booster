@@ -11,7 +11,8 @@ namespace AmpzDesktopBooster.Knowledge;
 //
 // Se siembra UNA sola vez: dentro de la migración 0→1 (ver Initialize). Si el usuario la borra, no
 // vuelve. Muestra a propósito las tres cosas no obvias del modelo: bibliotecas anidadas, naturaleza
-// heredada de la biblioteca vs. fijada en la entrada, y términos con ficha completa.
+// heredada (de la biblioteca, y de la biblioteca madre) vs. fijada en la entrada, y términos con
+// ficha completa.
 public sealed partial class KnowledgeStore
 {
     private static void Seed(SqliteConnection c, SqliteTransaction tx)
@@ -29,7 +30,9 @@ public sealed partial class KnowledgeStore
         long french = Named("languages", "Francés");
 
         long example = InsertLibrary(c, tx, "Ejemplo", null, general);
-        long vocabulary = InsertLibrary(c, tx, "Vocabulario de consultoría", example, general);
+        // La hija NO fija naturaleza: hereda "General" de "Ejemplo". Es el caso que el ejemplo tiene
+        // que mostrar — la naturaleza se pone una vez arriba y baja sola por el árbol.
+        long vocabulary = InsertLibrary(c, tx, "Vocabulario de consultoría", example, null);
         string now = UtcNow();
 
         // ── Tarjetas (frente = pregunta, dorso = respuesta). Sin naturaleza = heredan "General". ──
