@@ -48,6 +48,13 @@ public static class AppPaths
     public static string LooseNotesFile => Path.Combine(DataDir, "notes.json");
 
     /// <summary>
+    /// Biblioteca de conocimiento (tarjetas, vocabulario e historial de repasos) — ver
+    /// <see cref="Knowledge.KnowledgeStore"/>. Es el ÚNICO dato en SQLite: el historial de repasos
+    /// crece sin techo y se consulta por agregados, justo lo que un JSON reescrito entero no banca.
+    /// </summary>
+    public static string KnowledgeDb => Path.Combine(DataDir, "knowledge.db");
+
+    /// <summary>
     /// Borra TODA la config del usuario: todos los archivos de DataDir (espacios, settings.ini,
     /// apps, atajos, desktops, widgets, uso). Operación DESTRUCTIVA — el caller confirma y luego
     /// reinicia la app para arrancar con defaults limpios. No toca nada fuera de DataDir (ni el

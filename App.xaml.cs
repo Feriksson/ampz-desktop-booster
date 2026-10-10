@@ -39,6 +39,9 @@ public partial class App : Application
     private Services.Attention.AttentionPipeServer? _attentionPipe;
     private AttentionArrowWindow? _attentionArrow;
     private BrowserPipeServer? _browserPipe;
+    // Biblioteca de conocimiento (tarjetas + vocabulario + repasos). Campo y no local: las ventanas
+    // que la usan (quiz, pestaña de la config) se abren mucho después del arranque.
+    private Knowledge.KnowledgeStore? _knowledge;
     private DispatcherTimer? _overlayDebounce;
     private bool _overlayNeedsShow; // el snapshot no conocía el desk: mostrar tras el refresco
 
@@ -117,6 +120,10 @@ public partial class App : Application
         var pins = new PinStore();
         var restrictions = new RestrictionStore();
         var taskSession = new TaskSessionStore(); // tarea activa por desk (efímera, igual que la sesión de espacios)
+        // Abre (o crea y siembra con el ejemplo) knowledge.db. El constructor NUNCA tira: si la base
+        // está dañada o tomada, el store queda degradado y el aviso espera en cola hasta que se
+        // conecte el notificador, más abajo, con la UI ya montada.
+        _knowledge = new Knowledge.KnowledgeStore();
         desktops.ProjectLookup = projects.GetDeskProject;     // el espacio activo sale de la sesión
         desktops.ModuleLookup = projects.GetDeskModuleInfo;   // y su contexto (sub-scope) + color, igual
         Apps.Shell.Desktops = desktops; // ventaneo de terminal POR ESCRITORIO (Win+`, "Abrir con")
@@ -438,6 +445,27 @@ public partial class App : Application
             else
                 Services.Toasts.Error(string.Format(Services.Localization.Loc.T("Toast.DataFileLost"), i.FileName), detail);
         }));
+
+        // Lo mismo para la biblioteca de conocimiento: entrega lo que haya pasado al abrir la base en
+        // el arranque y queda escuchando. El store avisa sólo el PRIMER fallo de acceso de la sesión
+        // (con la base caída fallan todas las operaciones; un toast por tecla del quiz sería peor).
+        _knowledge.Notify = i => Dispatcher.BeginInvoke(() =>
+        {
+            switch (i.Kind)
+            {
+                case Knowledge.KnowledgeIncidentKind.CorruptMovedAside:
+                    Services.Toasts.Error(Services.Localization.Loc.T("Toast.KnowledgeCorrupt"),
+                        string.Format(Services.Localization.Loc.T("Toast.DataFileMovedAside"), i.Detail));
+                    break;
+                case Knowledge.KnowledgeIncidentKind.CorruptNotMoved:
+                    Services.Toasts.Error(Services.Localization.Loc.T("Toast.KnowledgeCorruptStuck"),
+                        Services.Localization.Loc.T("Toast.DataFileNotMoved"));
+                    break;
+                default:
+                    Services.Toasts.Error(Services.Localization.Loc.T("Toast.KnowledgeUnavailable"), i.Detail);
+                    break;
+            }
+        });
 
         // Caso "app cerrada + click en link": Windows nos lanzó CON la URL y somos la primaria.
         // Ya está todo montado → la abrimos en el navegador real, en el desk actual.
