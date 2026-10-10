@@ -54,6 +54,8 @@ public partial class App : Application
     private DesktopConfig _desktopConfig = new();
     private Apps.AppsConfig _appsConfig = new();
     private ConfigWindow? _configWindow;
+    // El playbooker abierto (NumpadClear). Instancia única, como la config: ver TogglePlaybook.
+    private PlaybookWindow? _playbookWindow;
 
     // La barra. Se guarda porque la config le avisa cambios (la marca) DESPUÉS del arranque, y
     // ShowConfig no la recibe por parámetro.
@@ -258,6 +260,8 @@ public partial class App : Application
         bar.OnTaskWidgetClicked = () => _router.ShowTaskDetail();
         // Win+NumpadDel abre la MISMA config que el tray (instancia única; si ya está, la trae al frente).
         _router.OpenConfig = () => bar.OpenConfig?.Invoke();
+        // NumpadClear pelado: el playbooker (jugar la biblioteca de conocimiento).
+        _router.TogglePlaybook = TogglePlaybook;
 
         // Widget de atención (dots por desk que reclama). App es el TRADUCTOR: convierte el estado del
         // servicio (Pending: desk→nivel) en lo que la barra pinta (idx + nombre + urgencia + espacio).
@@ -526,6 +530,34 @@ public partial class App : Application
     private static string? TryGetUrlArg(string[] args) =>
         args.FirstOrDefault(a => UrlHelper.IsUrl(a) &&
             a.StartsWith("http", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// NumpadClear pelado. Instancia única con un re-press de DOS caras: en la búsqueda cierra la
+    /// ventana (toggle, como el Shortcuts Helper); en cualquier otro paso —armando, jugando, leyendo
+    /// el resumen— sólo la trae al frente. Un quiz no puede morir por una tecla suelta: la numpad 5
+    /// está justo en el medio del teclado numérico que se usa para navegar.
+    ///
+    /// Corre en el hilo de UI: el router ya difirió al Dispatcher antes de invocar esto.
+    /// </summary>
+    private void TogglePlaybook()
+    {
+        if (_playbookWindow is not null)
+        {
+            if (_playbookWindow.CanCloseOnRepress) _playbookWindow.Close();
+            else _playbookWindow.BringToFront();
+            return;
+        }
+        if (_knowledge is null) return; // sólo antes de terminar de arrancar: no hay hotkeys todavía
+
+        _playbookWindow = new PlaybookWindow(_knowledge);
+        _playbookWindow.Closed += (_, _) => _playbookWindow = null;
+        // NO se cierra al perder el foco: una sesión de estudio tiene que sobrevivir a un Alt+Tab o
+        // a un cambio de escritorio (mismo criterio que la config). Al no estar "armada", tampoco
+        // la cierra el abrir otro modal utilitario encima (ver CloseOtherUtilityWindows). Para la
+        // red anti-foco-huérfano es una utilitaria más: HasFocusedUtilityWindow la cuenta sola
+        // (excluye únicamente barra y overlay), y su Closed pasa por OnUtilityWindowClosed.
+        _playbookWindow.ShowFocused(closeOnDeactivate: false);
+    }
 
     /// <summary>Abre la ventana de configuración (instancia única — si ya está, la trae al frente).</summary>
     private void ShowConfig(DesktopService desktops, ProjectStore projects, RestrictionStore restrictions, PinStore pins, Action onApplied)

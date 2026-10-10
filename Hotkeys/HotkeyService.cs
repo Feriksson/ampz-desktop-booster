@@ -10,7 +10,7 @@ namespace AmpzDesktopBooster.Hotkeys;
 /// Dos familias de atajos:
 ///   - Win + numpad  → <see cref="HotkeyFired"/> (NumpadKey, decodificado por scancode por NumLock).
 ///   - Win + F-key / backtick → <see cref="WinFunctionKey"/> (vkCode, estable, sin lío de NumLock).
-///   - NumpadClear PELADO → también HotkeyFired (DeskPicker).
+///   - NumpadClear PELADO → también HotkeyFired (playbooker).
 ///
 /// Los handlers deben ser NO bloqueantes (Dispatcher.BeginInvoke): corren dentro del callback
 /// del hook, que no se puede demorar.
@@ -189,7 +189,7 @@ public sealed class HotkeyService : IDisposable
                 return;
             }
 
-            // Sin Win: el único atajo pelado es NumpadClear (Numpad5) → DeskPicker.
+            // Sin Win: el único atajo pelado es NumpadClear (Numpad5) → playbooker.
             if (key == NumpadKey.D5 && !_shiftDown)
             {
                 e.Suppress = true;

@@ -46,6 +46,24 @@ public static class LibraryTree
     /// <summary>La naturaleza EFECTIVA de una entrada: la que fijó, o la que hereda del árbol.</summary>
     public static long? EffectiveNatureId(Entry entry, IReadOnlyDictionary<long, Library> librariesById) =>
         entry.NatureId ?? EffectiveNatureId(entry.LibraryId, librariesById);
+
+    /// <summary>
+    /// Los nombres desde la raíz hasta la biblioteca, en ese orden ("Madre", "Hija"). Dos bibliotecas
+    /// pueden llamarse igual bajo madres distintas: el camino entero es lo único que las distingue.
+    /// </summary>
+    public static IReadOnlyList<string> PathOf(long libraryId, IReadOnlyDictionary<long, Library> librariesById)
+    {
+        var names = new List<string>();
+        long? current = libraryId;
+        for (int steps = 0; current is { } id && steps <= librariesById.Count; steps++) // mismo tope anti-ciclo
+        {
+            if (!librariesById.TryGetValue(id, out var library)) break;
+            names.Add(library.Name);
+            current = library.ParentId;
+        }
+        names.Reverse();
+        return names;
+    }
 }
 
 /// <summary>Tarjeta (frente/dorso libres) o término de vocabulario (palabra/definición + ficha).</summary>

@@ -14,7 +14,7 @@ namespace AmpzDesktopBooster.Hotkeys;
 
 /// <summary>
 /// Conecta los hotkeys del hook con sus acciones. Navegación de virtual desktops POR NOMBRE
-/// (Numpad físico con NumLock OFF), espacios por desk, y el DeskPicker.
+/// (Numpad físico con NumLock OFF), espacios por desk, y el playbooker.
 ///
 /// Mapeo (igual que el legacy ampzWinTunner.ahk líneas 1289-1314, 3760, 3905-3906):
 ///   Win+Numpad 1..9  → el desk que TENGA esa tecla asignada, sea del catálogo FIJO (Escritorios) o
@@ -22,7 +22,7 @@ namespace AmpzDesktopBooster.Hotkeys;
 ///                      MAIN / CONSOLES / MISCS · 4..9 quedan libres para los desks dinámicos.
 ///   Win+Shift+(nav)  → mandar ventana activa ahí + seguir
 ///   Win+NumpadEnter  → LAUNCHER: crea/reutiliza el desk de un espacio+contexto (o lo cierra, en re-press)
-///   NumpadClear solo → DeskPicker (saltar a un espacio de la sesión)
+///   NumpadClear solo → Playbooker (jugar una biblioteca de conocimiento; ver PlaybookWindow)
 ///   Win+NumpadMult   → Variables del espacio/global (Paths Manager) — re-press dispara el predeterminado
 ///   Win+NumpadDiv    → Notes
 ///   Win+NumpadSub    → Send-window picker (mandar la ventana activa a un desk elegido)
@@ -96,6 +96,13 @@ public sealed class HotkeyRouter
     /// porque la instancia única de la ventana vive allá: el router no la crea ni la conoce.
     /// </summary>
     public Action? OpenConfig { get; set; }
+
+    /// <summary>
+    /// Abre / cierra / trae al frente el playbooker (NumpadClear pelado). Lo inyecta <c>App</c>, igual
+    /// que <see cref="OpenConfig"/>: la instancia única y la biblioteca de conocimiento viven allá, y
+    /// el router no tiene por qué conocer ese dominio para rutear una tecla.
+    /// </summary>
+    public Action? TogglePlaybook { get; set; }
 
     // Virtual-keys de las F que ruteamos (F1..F12 = 0x70..0x7B; backtick = 0xC0; barra /? = 0xBF).
     // F7 (Pin Manager) y F8 (Restricciones) SE QUITARON: eran popups de gestión compleja que hoy
@@ -282,7 +289,7 @@ public sealed class HotkeyRouter
         if (!e.WinDown)
         {
             if (e.Key == NumpadKey.D5)   // NumpadClear
-                ShowDeskPicker();
+                TogglePlaybook?.Invoke();
             return;
         }
 
@@ -569,6 +576,12 @@ public sealed class HotkeyRouter
         _servicesWindow.ShowFocused();
     }
 
+    /// <summary>
+    /// El DeskPicker (saltar a un espacio de la sesión). PERDIÓ SU ATAJO por decisión del usuario el
+    /// 2026-10-10: NumpadClear pelado pasó al playbooker (<see cref="TogglePlaybook"/>). La ventana y
+    /// este método se conservan enteros a propósito — hoy no los llama ninguna tecla, pero se pueden
+    /// volver a enlazar con una línea en <see cref="Route"/> cuando haya una tecla libre para darle.
+    /// </summary>
     private void ShowDeskPicker()
     {
         var w = new DeskPickerWindow(_desktops, _projects, jumpIdx => _desktops.GoTo(jumpIdx),
@@ -714,6 +727,6 @@ public sealed class HotkeyRouter
     // usuario: MAIN/CONSOLES/MISCS en la fila INFERIOR (1-2-3), la más cómoda al alcance del pulgar;
     // los de espacio ocupan las filas media (4-5-6) y superior (7-8-9). Ver DesktopConfig.DefaultManaged.
     //
-    // OJO: D5 (Numpad5/Clear) con Win es navegación. El Numpad5 PELADO (sin Win) abre el DeskPicker —
+    // OJO: D5 (Numpad5/Clear) con Win es navegación. El Numpad5 PELADO (sin Win) abre el playbooker —
     // no colisionan: lo distingue WinDown en Route().
 }

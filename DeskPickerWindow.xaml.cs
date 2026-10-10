@@ -10,8 +10,12 @@ using AmpzDesktopBooster.Services.Localization;
 namespace AmpzDesktopBooster;
 
 /// <summary>
-/// Diálogo de NumpadClear (pelado): lista los desks que tienen un espacio activo en la sesión,
-/// con filtro en vivo. Enter salta al desk seleccionado; Supr lo CIERRA.
+/// Lista los desks que tienen un espacio activo en la sesión, con filtro en vivo. Enter salta al
+/// desk seleccionado; Supr lo CIERRA.
+///
+/// HOY NO TIENE ATAJO: se abría con NumpadClear pelado, que el 2026-10-10 pasó al playbooker por
+/// decisión del usuario. La ventana queda intacta para volver a enlazarla (ver
+/// <c>HotkeyRouter.ShowDeskPicker</c>).
 ///
 /// Supr y "Limpiar todo" CIERRAN el escritorio (mismo camino que el re-press de Win+NumpadEnter:
 /// sus ventanas pasan al Main). Antes sólo lo quitaban de la sesión — lo que tenía sentido con los

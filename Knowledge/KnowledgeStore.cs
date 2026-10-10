@@ -222,6 +222,14 @@ public sealed partial class KnowledgeStore
             "WHERE COALESCE(e.nature_id, i.nature_id) = $n ORDER BY e.id",
             ReadEntry, ("$n", natureId)));
 
+    /// <summary>
+    /// TODAS las entradas, en una consulta. Es lo que carga el playbooker al abrir: con esto, las
+    /// bibliotecas y el historial arma en memoria los conteos y la solidez de cada fila de su lista,
+    /// en vez de preguntarle a la base una vez por biblioteca y otra por naturaleza.
+    /// </summary>
+    public IReadOnlyList<Entry> GetAllEntries() => Read<IReadOnlyList<Entry>>(Array.Empty<Entry>(), c =>
+        Query(c, null, $"SELECT {EntryColumns} FROM entries e ORDER BY e.id", ReadEntry));
+
     public Entry? GetEntry(long id) => Read<Entry?>(null, c =>
         Query(c, null, $"SELECT {EntryColumns} FROM entries e WHERE e.id = $id", ReadEntry, ("$id", id))
             .FirstOrDefault());
