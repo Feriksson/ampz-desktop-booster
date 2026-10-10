@@ -25,8 +25,9 @@ namespace AmpzDesktopBooster.Knowledge;
 ///   2. Cada escritura es su propia transacción y se confirma antes de volver. No hay "guardar al
 ///      cerrar": al cerrar no hay nadie.
 ///   3. NINGÚN método público tira. Las lecturas degradan a vacío, las escrituras devuelven
-///      false / <see cref="KnowledgeOpResult.Failed"/>, y el primer fallo se avisa UNA vez por
-///      <see cref="Notify"/> — misma promesa que el resto: la persistencia nunca voltea la app.
+///      false / <see cref="KnowledgeOpResult.Failed"/>, y cada RACHA de fallos se avisa una vez por
+///      <see cref="Notify"/> (ver <see cref="ReportFailure"/>) — misma promesa que el resto: la
+///      persistencia nunca voltea la app.
 /// </summary>
 public sealed partial class KnowledgeStore
 {
@@ -38,6 +39,10 @@ public sealed partial class KnowledgeStore
     private const int SqliteCorrupt = 11;
     private const int SqliteNotADb = 26;
 
+    // "Otro tiene la base tomada": no es un daño ni un error nuestro, es esperar. Ver OnOperationFailed.
+    private const int SqliteBusy = 5;
+    private const int SqliteLocked = 6;
+
     private const string EntryColumns =
         "e.id, e.library_id, e.kind, e.front, e.back, e.nature_id, e.word_type, e.usage_context, e.origin, e.created_at, e.updated_at";
 
@@ -45,10 +50,29 @@ public sealed partial class KnowledgeStore
     private readonly string _connectionString;
 
     private readonly object _gate = new();
-    private bool _ready;
-    private long _retryInitAfter;                  // TickCount64 hasta el que NO se reintenta inicializar
+    private volatile bool _ready;
+
+    // TickCount64 hasta el que NO se toca la base: toda operación degrada al instante. Lo arma un
+    // intento de inicialización que falló (pausa larga) o un archivo que otro proceso tiene tomado en
+    // pleno uso (pausa corta). Es UN solo freno para los dos casos porque el motivo es el mismo:
+    // cada intento contra una base tomada le cuesta a SQLite ~2s de reintentos internos (DefaultTimeout)
+    // y esto corre en el thread de UI.
+    private long _backOffUntil;
     private const int InitRetryCooldownMs = 15_000;
-    private bool _failureReported;
+    // Más corta que la de arranque: acá la base ESTÁ sana y el bloqueo suele durar lo que dura la
+    // escritura del otro (un visor de SQLite guardando, un backup). Cinco segundos sin biblioteca se
+    // notan menos que una tecla del quiz que congela la barra dos segundos cada vez.
+    private const int BusyCooldownMs = 5_000;
+
+    // ¿Se puede sembrar el ejemplo? SÓLO en una base que este proceso vio NACER: el archivo no
+    // existía cuando se construyó el store y todavía no se inicializó nunca. Se apaga para siempre
+    // en cuanto una inicialización sale bien o se aparta un archivo dañado. Sin esta llave, toda
+    // re-inicialización posterior (el archivo borrado con la app abierta, o el reintento que sigue a
+    // un "se apartó la base pero no se pudo crear la nueva") encontraría un archivo vacío, lo creería
+    // el primer arranque y sembraría la biblioteca de muestra donde estaban las tarjetas del usuario.
+    private bool _mayCreateWithSample;
+
+    private volatile bool _failureReported;
     private bool _corruptReported;
 
     private readonly List<KnowledgeIncident> _queuedIncidents = new();
@@ -74,6 +98,11 @@ public sealed partial class KnowledgeStore
             // UI: preferimos fallar rápido y degradar antes que congelar la barra medio minuto.
             DefaultTimeout = 2,
         }.ToString();
+
+        // Antes de tocar nada: abrir la conexión CREA el archivo, y después ya no se distingue una
+        // base que nace de una que estaba.
+        try { _mayCreateWithSample = !File.Exists(dbPath); }
+        catch { _mayCreateWithSample = false; } // ante la duda, sin ejemplo: nunca pisa nada
 
         // Se inicializa YA (esquema + ejemplo si es nueva) y no en el primer uso: así un archivo
         // dañado se detecta y se avisa al arrancar, no en medio de un quiz.
@@ -191,7 +220,10 @@ public sealed partial class KnowledgeStore
     public IReadOnlyList<Entry> GetEntries(long libraryId, bool includeDescendants = false) =>
         Read<IReadOnlyList<Entry>>(Array.Empty<Entry>(), c => includeDescendants
             ? Query(c, null,
-                "WITH RECURSIVE sub(id) AS (SELECT $id UNION ALL " +
+                // UNION y no UNION ALL en TODAS las recursivas de esta clase: descarta las filas ya
+                // vistas, y eso es lo que corta un ciclo. Una base tocada a mano (A hija de B, B hija
+                // de A) con UNION ALL gira hasta agotar la memoria con la UI congelada.
+                "WITH RECURSIVE sub(id) AS (SELECT $id UNION " +
                 "  SELECT l.id FROM libraries l JOIN sub s ON l.parent_id = s.id) " +
                 $"SELECT {EntryColumns} FROM entries e WHERE e.library_id IN (SELECT id FROM sub) ORDER BY e.id",
                 ReadEntry, ("$id", libraryId))
@@ -215,7 +247,7 @@ public sealed partial class KnowledgeStore
             // inherited(id, nature_id): por cada biblioteca, la naturaleza que le llega bajando desde
             // la raíz — la suya si tiene, si no la que ya traía su madre.
             "WITH RECURSIVE inherited(id, nature_id) AS (" +
-            "  SELECT id, default_nature_id FROM libraries WHERE parent_id IS NULL UNION ALL " +
+            "  SELECT id, default_nature_id FROM libraries WHERE parent_id IS NULL UNION " +
             "  SELECT l.id, COALESCE(l.default_nature_id, p.nature_id) " +
             "  FROM libraries l JOIN inherited p ON l.parent_id = p.id) " +
             $"SELECT {EntryColumns} FROM entries e JOIN inherited i ON i.id = e.library_id " +
@@ -414,28 +446,32 @@ public sealed partial class KnowledgeStore
     /// <summary>
     /// Deja la base lista (creada, migrada, sembrada si es nueva). Si falla NO queda marcada como
     /// lista: la próxima operación lo reintenta, así un bloqueo pasajero al arrancar se cura solo.
+    /// También es la puerta del freno (<see cref="_backOffUntil"/>): mientras dure, devuelve false
+    /// sin tocar el disco.
     /// </summary>
     private bool EnsureReady()
     {
-        if (_ready) return true;
         lock (_gate)
         {
+            if (Environment.TickCount64 < _backOffUntil) return false;
             if (_ready) return true;
-            // Con el archivo tomado, cada intento de apertura le cuesta a SQLite ~1,5s de reintentos
-            // internos, y esto corre en el thread de UI: sin esta pausa, cada tecla del quiz congelaría
-            // la app. Entre intentos se degrada al instante.
-            if (Environment.TickCount64 < _retryInitAfter) return false;
-            _retryInitAfter = Environment.TickCount64 + InitRetryCooldownMs;
+
+            // Si este intento falla, el próximo espera: sin la pausa, cada tecla del quiz volvería a
+            // pagar el intento entero. Si sale bien, la pausa se levanta en MarkReady.
+            _backOffUntil = Environment.TickCount64 + InitRetryCooldownMs;
             try
             {
-                Initialize(seedIfNew: true);
-                _ready = true;
+                Initialize(seedIfNew: _mayCreateWithSample);
+                MarkReady();
             }
             catch (Exception ex) when (IsCorruption(ex))
             {
                 // Archivo ilegible. Se APARTA (nunca se borra: puede ser la única copia y alguien
                 // podría rescatarla) y se arranca de cero. Sin ejemplo sembrado a propósito: encontrar
                 // la biblioteca de muestra donde estaban tus tarjetas se leería como "me las cambiaron".
+                // La llave se apaga ANTES de intentar nada más: si la base nueva no se puede crear
+                // ahora, el reintento de dentro de un rato tampoco puede sembrar.
+                _mayCreateWithSample = false;
                 string? aside = MoveAside();
                 if (aside is null)
                 {
@@ -447,13 +483,21 @@ public sealed partial class KnowledgeStore
                 try
                 {
                     Initialize(seedIfNew: false);
-                    _ready = true;
+                    MarkReady();
                 }
                 catch (Exception ex2) { ReportFailure(ex2); }
             }
             catch (Exception ex) { ReportFailure(ex); }
             return _ready;
         }
+    }
+
+    /// <summary>La base quedó usable: se levanta el freno y se cierra para siempre la ventana del ejemplo.</summary>
+    private void MarkReady()
+    {
+        _ready = true;
+        _backOffUntil = 0;
+        _mayCreateWithSample = false;
     }
 
     private void Initialize(bool seedIfNew)
@@ -587,18 +631,20 @@ public sealed partial class KnowledgeStore
         }
     }
 
-    /// <summary>Lectura guardada: ante CUALQUIER fallo devuelve <paramref name="fallback"/> y avisa una vez.</summary>
+    /// <summary>Lectura guardada: ante CUALQUIER fallo devuelve <paramref name="fallback"/> (ver <see cref="OnOperationFailed"/>).</summary>
     private T Read<T>(T fallback, Func<SqliteConnection, T> body)
     {
         if (!EnsureReady()) return fallback;
         try
         {
             using var c = OpenConnection();
-            return body(c);
+            T result = body(c);
+            OnOperationSucceeded();
+            return result;
         }
         catch (Exception ex)
         {
-            ReportFailure(ex);
+            OnOperationFailed(ex);
             return fallback;
         }
     }
@@ -614,18 +660,66 @@ public sealed partial class KnowledgeStore
             using var tx = c.BeginTransaction();
             T result = body(c, tx);
             tx.Commit();
+            OnOperationSucceeded();
             return result;
         }
         catch (Exception ex)
         {
-            ReportFailure(ex);
+            OnOperationFailed(ex);
             return fallback;
         }
     }
 
     /// <summary>
-    /// Avisa el PRIMER fallo de la sesión y calla los siguientes: con la base caída fallan todas las
-    /// operaciones, y un toast por cada tecla del quiz sería peor que el problema.
+    /// Qué hacer con una operación que falló, según QUÉ falló:
+    ///   • Base tomada por otro (BUSY / LOCKED): la base está sana, sólo hay que esperar. Se arma el
+    ///     freno corto para que las próximas llamadas degraden al instante en vez de congelar la UI
+    ///     ~2s cada una, y se avisa.
+    ///   • Cualquier otro error de SQLite: la base ya no es la que se inicializó (el caso real: se
+    ///     borró <c>knowledge.db</c> con la app abierta — la conexión siguiente crea un archivo de 0
+    ///     bytes y todo responde "no such table"). Se da por NO lista y sin freno, para que la próxima
+    ///     llamada la vuelva a inicializar: recrea el esquema, o detecta el daño y la aparta.
+    ///     Re-inicializar es seguro porque va por versión, y nunca siembra (ver _mayCreateWithSample).
+    ///   • Lo que NO es de SQLite es un bug de quien llama (un cast, un null): la base no tiene nada.
+    ///     No se invalida ni se le dice al usuario "no se pudo acceder a la biblioteca", que sería
+    ///     mentirle y mandarlo a revisar un disco sano. Queda en la salida de depuración.
+    /// </summary>
+    private void OnOperationFailed(Exception ex)
+    {
+        if (ex is not SqliteException sqlite)
+        {
+            System.Diagnostics.Debug.WriteLine($"[KnowledgeStore] fallo que no es de la base: {ex}");
+            return;
+        }
+
+        lock (_gate)
+        {
+            if (sqlite.SqliteErrorCode is SqliteBusy or SqliteLocked)
+            {
+                _backOffUntil = Environment.TickCount64 + BusyCooldownMs;
+            }
+            else
+            {
+                _ready = false;
+                _backOffUntil = 0;
+            }
+        }
+        ReportFailure(ex);
+    }
+
+    /// <summary>Una operación salió bien: la racha de fallos terminó y el próximo se vuelve a avisar.</summary>
+    private void OnOperationSucceeded()
+    {
+        if (!_failureReported) return; // el camino de siempre: sin tomar el candado
+        lock (_queuedIncidents) _failureReported = false;
+    }
+
+    /// <summary>
+    /// Avisa el PRIMER fallo de una racha y calla los siguientes: con la base caída fallan todas las
+    /// operaciones, y un toast por cada tecla del quiz sería peor que el problema. La racha se cierra
+    /// con la primera operación que sale bien (<see cref="OnOperationSucceeded"/>): si la base vuelve
+    /// y más tarde se cae de nuevo, se avisa de nuevo — callar para el resto de la sesión dejaba al
+    /// usuario jugando rondas que no se guardaban sin enterarse.
     /// </summary>
     private void ReportFailure(Exception ex)
     {
@@ -691,7 +785,7 @@ public sealed partial class KnowledgeStore
         id is { } v && Exists(c, tx, table, v) ? v : null;
 
     private static List<long> DescendantIds(SqliteConnection c, SqliteTransaction? tx, long id) => Query(c, tx,
-        "WITH RECURSIVE sub(id) AS (SELECT id FROM libraries WHERE parent_id = $id UNION ALL " +
+        "WITH RECURSIVE sub(id) AS (SELECT id FROM libraries WHERE parent_id = $id UNION " +
         "  SELECT l.id FROM libraries l JOIN sub s ON l.parent_id = s.id) SELECT id FROM sub",
         r => r.GetInt64(0), ("$id", id));
 

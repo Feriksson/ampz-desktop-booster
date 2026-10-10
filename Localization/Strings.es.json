@@ -284,7 +284,7 @@
   "Scope.SavesIn": "Se guarda en: {0}",
   "Scope.SavedIn": "Guardado en: {0}",
 
-  "Config.ResetAllConfirm": "Esto borra TODA la configuración y NO se puede deshacer:\n\n• Escritorios gestionados\n• Espacios y contextos (historial, paths, notas)\n• Pins (anclajes)\n• Protecciones y whitelists\n• Apps de \"Abrir con\" y sus atajos\n• Widgets de la barra y panel de uso\n\nLa app se reinicia con la configuración por defecto.\n\n¿Continuar?",
+  "Config.ResetAllConfirm": "Esto borra TODA la configuración y NO se puede deshacer:\n\n• Escritorios gestionados\n• Espacios y contextos (historial, paths, notas)\n• Pins (anclajes)\n• Protecciones y whitelists\n• Apps de \"Abrir con\" y sus atajos\n• Widgets de la barra y panel de uso\n• Bibliotecas de conocimiento (tarjetas, términos) y todo su historial de repasos\n\nLa app se reinicia con la configuración por defecto.\n\n¿Continuar?",
   "Config.ResetAllTitle": "Restablecer todo",
 
   "Bar.TaskWidgetTooltip": "Tarea activa — click para ver el detalle",

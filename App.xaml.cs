@@ -451,8 +451,9 @@ public partial class App : Application
         }));
 
         // Lo mismo para la biblioteca de conocimiento: entrega lo que haya pasado al abrir la base en
-        // el arranque y queda escuchando. El store avisa sólo el PRIMER fallo de acceso de la sesión
-        // (con la base caída fallan todas las operaciones; un toast por tecla del quiz sería peor).
+        // el arranque y queda escuchando. El store avisa sólo el PRIMER fallo de cada racha (con la
+        // base caída fallan todas las operaciones; un toast por tecla del quiz sería peor) y vuelve
+        // a avisar si, después de recuperarse, se cae de nuevo.
         _knowledge.Notify = i => Dispatcher.BeginInvoke(() =>
         {
             switch (i.Kind)

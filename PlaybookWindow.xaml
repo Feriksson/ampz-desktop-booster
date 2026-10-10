@@ -4,7 +4,7 @@
         xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
         Title="{loc:Translate Playbook.WindowTitle}"
         WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True"
-        WindowStartupLocation="CenterScreen"
+        WindowStartupLocation="Manual"
         ShowInTaskbar="False" Topmost="True"
         Background="Transparent" UseLayoutRounding="True"
         FontFamily="Segoe UI">
@@ -55,7 +55,7 @@
         </Style>
         <Style x:Key="KeycapText" TargetType="TextBlock">
             <Setter Property="FontFamily" Value="Consolas" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="Foreground" Value="{StaticResource FgBrush}" />
             <Setter Property="HorizontalAlignment" Value="Center" />
             <Setter Property="VerticalAlignment" Value="Center" />
@@ -67,9 +67,9 @@
             <Setter Property="Background" Value="{StaticResource ButtonBrush}" />
             <Setter Property="Foreground" Value="{StaticResource FgBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="Padding" Value="12,0" />
-            <Setter Property="Height" Value="34" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="Height" Value="42" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -105,8 +105,8 @@
              Tag="flash" es el destello de "anotado": lo prende y apaga el code-behind (~120 ms). -->
         <Style x:Key="GradeButton" TargetType="Button">
             <Setter Property="Foreground" Value="{StaticResource FgBrush}" />
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="Height" Value="56" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="Height" Value="76" />
             <Setter Property="Margin" Value="4,0" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
@@ -116,7 +116,7 @@
                             <Grid>
                                 <Border x:Name="Bd" Background="#232323" CornerRadius="7"
                                         BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="0,0,0,4"
-                                        Padding="10,4">
+                                        Padding="14,6">
                                     <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center" />
                                 </Border>
                                 <Border x:Name="Flash" Background="#40FFFFFF" CornerRadius="7"
@@ -145,14 +145,14 @@
              foco de teclado = anillo de acento, que es una señal distinta de "elegido". -->
         <Style x:Key="Segment" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
-            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontSize" Value="16" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
                         <Border x:Name="Bd" Background="Transparent" BorderBrush="Transparent"
-                                BorderThickness="2" CornerRadius="6" Padding="10,9">
+                                BorderThickness="2" CornerRadius="6" Padding="12,12">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
@@ -190,7 +190,7 @@
                                 <Border x:Name="Mark" Width="3" CornerRadius="2" Margin="2,5,0,5"
                                         HorizontalAlignment="Left" Visibility="Hidden"
                                         Background="{StaticResource AccentBrush}" />
-                                <ContentPresenter Margin="12,6,10,6" />
+                                <ContentPresenter Margin="14,9,12,9" />
                             </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -225,22 +225,22 @@
                 <Border Grid.Column="0" Visibility="{Binding ChipVisibility}" Margin="0,0,8,0"
                         BorderBrush="{StaticResource GoldBrush}" BorderThickness="1" CornerRadius="9"
                         Padding="7,1" VerticalAlignment="Center">
-                    <TextBlock Text="{loc:Translate Playbook.NatureChip}" FontSize="11"
+                    <TextBlock Text="{loc:Translate Playbook.NatureChip}" FontSize="12"
                                Foreground="{StaticResource GoldBrush}" />
                 </Border>
-                <TextBlock Grid.Column="1" FontSize="14" VerticalAlignment="Center"
+                <TextBlock Grid.Column="1" FontSize="16" VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis">
                     <Run Text="{Binding PathPrefix, Mode=OneWay}" Foreground="{StaticResource MutedBrush}" /><Run Text="{Binding Name, Mode=OneWay}" />
                 </TextBlock>
-                <TextBlock Grid.Column="2" Text="{Binding CountText}" FontSize="12" Margin="12,0,0,0"
+                <TextBlock Grid.Column="2" Text="{Binding CountText}" FontSize="14" Margin="12,0,0,0"
                            Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
-                <Border Grid.Column="3" Visibility="{Binding BarVisibility}" Width="70" Height="6"
+                <Border Grid.Column="3" Visibility="{Binding BarVisibility}" Width="110" Height="7"
                         Margin="14,0,0,0" CornerRadius="3" Background="{StaticResource SoftLineBrush}"
                         VerticalAlignment="Center">
                     <Border HorizontalAlignment="Left" Width="{Binding BarFillWidth}" CornerRadius="3"
                             Background="{StaticResource AccentBrush}" />
                 </Border>
-                <TextBlock Grid.Column="4" Text="{Binding SolidityText}" FontSize="12" Margin="8,0,0,0"
+                <TextBlock Grid.Column="4" Text="{Binding SolidityText}" FontSize="14" Margin="10,0,0,0"
                            Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
             </Grid>
         </DataTemplate>
@@ -256,8 +256,20 @@
         </Style>
     </Window.Resources>
 
-    <Border CornerRadius="12" Background="{StaticResource BgBrush}" BorderBrush="#2EFFFFFF"
-            BorderThickness="1" Padding="24,18" TextElement.Foreground="{StaticResource FgBrush}">
+    <!-- TODO lo que se ve cuelga de RootBorder, que el code-behind ESCALA entero según el alto de la
+         ventana (ver ApplyScale). Por eso las medidas de este archivo están pensadas para UN alto de
+         referencia (972 = el 90% de una pantalla de 1080) y no hay que adaptarlas a otras pantallas.
+
+         Las vistas no se estiran de punta a punta: cada una tiene un ancho máximo y queda centrada
+         (un elemento con MaxWidth y alineación Stretch se centra solo). La ventana ocupa el 90% de la
+         pantalla para que la tarjeta entre ENTERA sin scroll, no para leer renglones de 1700px. -->
+    <Border x:Name="RootBorder" CornerRadius="12" Background="{StaticResource BgBrush}" BorderBrush="#2EFFFFFF"
+            BorderThickness="1" Padding="32,22" TextElement.Foreground="{StaticResource FgBrush}">
+        <Border.Resources>
+            <!-- Barra de scroll oscura y fina para la lista y para la tarjeta: la clara por defecto
+                 era una franja blanca sobre el panel oscuro. Estilo implícito, compartido. -->
+            <ResourceDictionary Source="/AmpzDesktopBooster;component/Themes/DarkScrollBar.xaml" />
+        </Border.Resources>
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -273,27 +285,27 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock x:Name="TitleText" Grid.Column="0" FontSize="17" FontWeight="Bold"
+                <TextBlock x:Name="TitleText" Grid.Column="0" FontSize="20" FontWeight="Bold"
                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                <TextBlock x:Name="ProgressText" Grid.Column="1" FontSize="15" FontFamily="Consolas"
+                <TextBlock x:Name="ProgressText" Grid.Column="1" FontSize="18" FontFamily="Consolas"
                            Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"
                            Margin="12,0,16,0" Visibility="Collapsed" />
-                <Button x:Name="CloseBtn" Grid.Column="2" Height="28"
+                <Button x:Name="CloseBtn" Grid.Column="2" Height="34"
                         Content="{loc:Translate Playbook.Close}" />
             </Grid>
 
             <!-- ═══ 1 · BÚSQUEDA ═══ -->
-            <Grid x:Name="SearchView" Grid.Row="1">
+            <Grid x:Name="SearchView" Grid.Row="1" MaxWidth="1040">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <Grid Grid.Row="0" Margin="0,0,0,10">
-                    <TextBox x:Name="SearchBox" FontSize="15" Height="38"
+                    <TextBox x:Name="SearchBox" FontSize="17" Height="46"
                              AutomationProperties.Name="{loc:Translate Playbook.SearchLabel}" />
                     <TextBlock x:Name="SearchPlaceholder" IsHitTestVisible="False"
                                Text="{loc:Translate Playbook.SearchPlaceholder}"
-                               Foreground="{StaticResource MutedBrush}" FontSize="15"
+                               Foreground="{StaticResource MutedBrush}" FontSize="17"
                                VerticalAlignment="Center" Margin="11,0,0,0" />
                 </Grid>
                 <ListBox x:Name="PickList" Grid.Row="1" Background="{StaticResource SurfaceBrush}"
@@ -304,7 +316,7 @@
                          AutomationProperties.Name="{loc:Translate Playbook.ListLabel}" />
                 <!-- Estados vacíos (sin bibliotecas / sin coincidencias): encima de la lista, nunca
                      una lista en blanco sin explicación. -->
-                <TextBlock x:Name="EmptyText" Grid.Row="1" Visibility="Collapsed" FontSize="14"
+                <TextBlock x:Name="EmptyText" Grid.Row="1" Visibility="Collapsed" FontSize="16"
                            Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
                            TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center"
                            MaxWidth="520" IsHitTestVisible="False" />
@@ -312,14 +324,14 @@
 
             <!-- ═══ 2 · ARMADO: qué elegiste y qué lado se muestra primero ═══ -->
             <StackPanel x:Name="SetupView" Grid.Row="1" Visibility="Collapsed"
-                        VerticalAlignment="Center" HorizontalAlignment="Center" Width="560">
-                <TextBlock x:Name="SetupKind" FontSize="12" Foreground="{StaticResource MutedBrush}" />
-                <TextBlock x:Name="SetupName" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap"
+                        VerticalAlignment="Center" HorizontalAlignment="Center" Width="700">
+                <TextBlock x:Name="SetupKind" FontSize="14" Foreground="{StaticResource MutedBrush}" />
+                <TextBlock x:Name="SetupName" FontSize="34" FontWeight="SemiBold" TextWrapping="Wrap"
                            Margin="0,2,0,4" />
-                <TextBlock x:Name="SetupCount" FontSize="14" Foreground="{StaticResource MutedBrush}" />
+                <TextBlock x:Name="SetupCount" FontSize="16" Foreground="{StaticResource MutedBrush}" />
 
                 <TextBlock x:Name="SideGroupLabel" Text="{loc:Translate Playbook.SetupQuestion}"
-                           FontSize="14" Margin="0,28,0,8" />
+                           FontSize="16" Margin="0,32,0,10" />
                 <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource LineBrush}"
                         BorderThickness="1" CornerRadius="8" Padding="3">
                     <UniformGrid Columns="3" AutomationProperties.Name="{loc:Translate Playbook.SetupQuestion}">
@@ -358,7 +370,7 @@
                 <Border x:Name="StartReason" Visibility="Collapsed" Margin="0,22,0,0" Padding="12,8"
                         Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource GoldBrush}"
                         BorderThickness="3,0,0,0" CornerRadius="4">
-                    <TextBlock Text="{loc:Translate Playbook.NoEntriesReason}" FontSize="13" TextWrapping="Wrap" />
+                    <TextBlock Text="{loc:Translate Playbook.NoEntriesReason}" FontSize="15" TextWrapping="Wrap" />
                 </Border>
 
                 <StackPanel Orientation="Horizontal" Margin="0,22,0,0">
@@ -382,7 +394,7 @@
             </StackPanel>
 
             <!-- ═══ 3 · QUIZ ═══ -->
-            <Grid x:Name="QuizView" Grid.Row="1" Visibility="Collapsed">
+            <Grid x:Name="QuizView" Grid.Row="1" Visibility="Collapsed" MaxWidth="1320">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
@@ -397,21 +409,25 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="ShownSideText" Grid.Column="0" FontSize="12"
+                    <TextBlock x:Name="ShownSideText" Grid.Column="0" FontSize="14"
                                Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
-                    <TextBlock x:Name="CardPathText" Grid.Column="1" FontSize="12" Margin="16,0,0,0"
+                    <TextBlock x:Name="CardPathText" Grid.Column="1" FontSize="14" Margin="16,0,0,0"
                                Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"
                                HorizontalAlignment="Right" TextTrimming="CharacterEllipsis" />
                     <Border x:Name="CardNatureChip" Grid.Column="2" Margin="10,0,0,0" Padding="7,1"
                             BorderBrush="{StaticResource GoldBrush}" BorderThickness="1" CornerRadius="9"
                             VerticalAlignment="Center">
-                        <TextBlock x:Name="CardNatureText" FontSize="11" Foreground="{StaticResource GoldBrush}" />
+                        <TextBlock x:Name="CardNatureText" FontSize="13" Foreground="{StaticResource GoldBrush}" />
                     </Border>
                 </Grid>
 
-                <!-- La tarjeta. El texto largo ENVUELVE y scrollea acá adentro: nunca se recorta y
-                     nunca cambia el tamaño de la ventana. El scroller es enfocable a propósito —
-                     durante el quiz el foco vive acá, así ↑ ↓ / RePág AvPág mueven el texto largo. -->
+                <!-- La tarjeta. Una tarjeta o un término con su ficha completa tiene que ENTRAR ENTERO,
+                     sin scroll: para eso la ventana es grande y el texto va en una columna de ancho de
+                     lectura (CardPanel), centrada a lo ancho y a lo alto, en vez de correr de borde a
+                     borde. El ScrollViewer queda sólo de RED para un texto desmesurado: ahí envuelve y
+                     scrollea acá adentro (con la barra oscura), así nunca se recorta nada. Es enfocable
+                     a propósito — durante el quiz el foco vive acá, y si hiciera falta ↑ ↓ / RePág AvPág
+                     mueven el texto. -->
                 <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}" CornerRadius="10" BorderThickness="2">
                     <Border.Style>
                         <Style TargetType="Border">
@@ -425,34 +441,34 @@
                     </Border.Style>
                     <ScrollViewer x:Name="CardScroll" Focusable="True" FocusVisualStyle="{x:Null}"
                                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                                  Padding="24,18">
-                        <StackPanel x:Name="CardPanel" />
+                                  Padding="44,26">
+                        <StackPanel x:Name="CardPanel" MaxWidth="940" VerticalAlignment="Center" />
                     </ScrollViewer>
                 </Border>
 
                 <!-- Bajo la tarjeta: solidez de este lado (recién tras revelar) y el aviso de guardado.
                      Alto fijo: aparecer o desaparecer no hace saltar los botones de abajo. -->
-                <Grid Grid.Row="2" Height="34" Margin="0,8,0,6">
+                <Grid Grid.Row="2" Height="36" Margin="0,8,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="CardSolidityText" Grid.Column="0" FontSize="13"
+                    <TextBlock x:Name="CardSolidityText" Grid.Column="0" FontSize="15"
                                Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
                     <Border x:Name="SaveNotice" Grid.Column="1" Visibility="Collapsed" HorizontalAlignment="Right"
                             Padding="10,4" Background="{StaticResource SurfaceBrush}" CornerRadius="4"
                             BorderBrush="{StaticResource DangerBrush}" BorderThickness="3,0,0,0">
-                        <TextBlock Text="{loc:Translate Playbook.SaveFailed}" FontSize="12" />
+                        <TextBlock Text="{loc:Translate Playbook.SaveFailed}" FontSize="14" />
                     </Border>
                 </Grid>
 
                 <!-- Acciones. Antes de revelar: un solo botón. Después: las cuatro respuestas, todas
                      del mismo tamaño, más "siguiente sin responder". Mismo alto en los dos estados. -->
-                <Grid Grid.Row="3" Height="56">
-                    <Button x:Name="RevealBtn" Height="44" HorizontalAlignment="Center" Padding="22,0">
+                <Grid Grid.Row="3" Height="76">
+                    <Button x:Name="RevealBtn" Height="56" HorizontalAlignment="Center" Padding="30,0">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="{loc:Translate Playbook.Reveal}" VerticalAlignment="Center"
-                                       FontSize="14" Margin="0,0,10,0" />
+                                       FontSize="17" Margin="0,0,12,0" />
                             <Border Style="{StaticResource Keycap}">
                                 <TextBlock Style="{StaticResource KeycapText}" Text="{loc:Translate Playbook.KeySpace}" />
                             </Border>
@@ -471,7 +487,7 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <Border Width="24" Height="24" CornerRadius="4" Margin="0,0,8,0"
+                                    <Border Width="30" Height="30" CornerRadius="5" Margin="0,0,10,0"
                                             Background="{StaticResource Grade1Brush}" VerticalAlignment="Center">
                                         <TextBlock Style="{StaticResource KeycapText}" Text="1" FontWeight="Bold"
                                                    Foreground="{StaticResource InkBrush}" />
@@ -487,7 +503,7 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <Border Width="24" Height="24" CornerRadius="4" Margin="0,0,8,0"
+                                    <Border Width="30" Height="30" CornerRadius="5" Margin="0,0,10,0"
                                             Background="{StaticResource Grade2Brush}" VerticalAlignment="Center">
                                         <TextBlock Style="{StaticResource KeycapText}" Text="2" FontWeight="Bold"
                                                    Foreground="{StaticResource InkBrush}" />
@@ -503,7 +519,7 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <Border Width="24" Height="24" CornerRadius="4" Margin="0,0,8,0"
+                                    <Border Width="30" Height="30" CornerRadius="5" Margin="0,0,10,0"
                                             Background="{StaticResource Grade3Brush}" VerticalAlignment="Center">
                                         <TextBlock Style="{StaticResource KeycapText}" Text="3" FontWeight="Bold"
                                                    Foreground="{StaticResource InkBrush}" />
@@ -519,7 +535,7 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <Border Width="24" Height="24" CornerRadius="4" Margin="0,0,8,0"
+                                    <Border Width="30" Height="30" CornerRadius="5" Margin="0,0,10,0"
                                             Background="{StaticResource Grade4Brush}" VerticalAlignment="Center">
                                         <TextBlock Style="{StaticResource KeycapText}" Text="4" FontWeight="Bold"
                                                    Foreground="{StaticResource InkBrush}" />
@@ -529,7 +545,7 @@
                                 </Grid>
                             </Button>
                         </UniformGrid>
-                        <Button x:Name="SkipBtn" Grid.Column="1" Height="44" Margin="8,0,0,0"
+                        <Button x:Name="SkipBtn" Grid.Column="1" Height="56" Margin="10,0,0,0"
                                 AutomationProperties.Name="{loc:Translate Playbook.SkipAccessible}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="{loc:Translate Playbook.Skip}" VerticalAlignment="Center" Margin="0,0,8,0" />
@@ -544,59 +560,59 @@
 
             <!-- ═══ 4 · RESUMEN de la ronda ═══ -->
             <StackPanel x:Name="SummaryView" Grid.Row="1" Visibility="Collapsed"
-                        VerticalAlignment="Center" HorizontalAlignment="Center" Width="640">
-                <TextBlock Text="{loc:Translate Playbook.SummaryTitle}" FontSize="24" FontWeight="SemiBold" />
-                <TextBlock x:Name="SummaryCounts" FontSize="14" Margin="0,6,0,18"
+                        VerticalAlignment="Center" HorizontalAlignment="Center" Width="860">
+                <TextBlock Text="{loc:Translate Playbook.SummaryTitle}" FontSize="34" FontWeight="SemiBold" />
+                <TextBlock x:Name="SummaryCounts" FontSize="16" Margin="0,8,0,22"
                            Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
 
                 <!-- Una casilla por respuesta, con el MISMO número, texto y color que su botón del quiz. -->
                 <UniformGrid Columns="4" Margin="-4,0">
-                    <Border Margin="4,0" Padding="10,10" Background="{StaticResource SurfaceBrush}" CornerRadius="7"
+                    <Border Margin="4,0" Padding="16,14" Background="{StaticResource SurfaceBrush}" CornerRadius="7"
                             BorderBrush="{StaticResource Grade1Brush}" BorderThickness="0,0,0,4">
                         <StackPanel>
-                            <TextBlock x:Name="SummaryGrade1" FontSize="26" FontWeight="SemiBold" />
-                            <TextBlock FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}">
+                            <TextBlock x:Name="SummaryGrade1" FontSize="38" FontWeight="SemiBold" />
+                            <TextBlock FontSize="14" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}">
                                 <Run Text="1 ·" /> <Run Text="{loc:Translate Playbook.Grade1}" />
                             </TextBlock>
                         </StackPanel>
                     </Border>
-                    <Border Margin="4,0" Padding="10,10" Background="{StaticResource SurfaceBrush}" CornerRadius="7"
+                    <Border Margin="4,0" Padding="16,14" Background="{StaticResource SurfaceBrush}" CornerRadius="7"
                             BorderBrush="{StaticResource Grade2Brush}" BorderThickness="0,0,0,4">
                         <StackPanel>
-                            <TextBlock x:Name="SummaryGrade2" FontSize="26" FontWeight="SemiBold" />
-                            <TextBlock FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}">
+                            <TextBlock x:Name="SummaryGrade2" FontSize="38" FontWeight="SemiBold" />
+                            <TextBlock FontSize="14" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}">
                                 <Run Text="2 ·" /> <Run Text="{loc:Translate Playbook.Grade2}" />
                             </TextBlock>
                         </StackPanel>
                     </Border>
-                    <Border Margin="4,0" Padding="10,10" Background="{StaticResource SurfaceBrush}" CornerRadius="7"
+                    <Border Margin="4,0" Padding="16,14" Background="{StaticResource SurfaceBrush}" CornerRadius="7"
                             BorderBrush="{StaticResource Grade3Brush}" BorderThickness="0,0,0,4">
                         <StackPanel>
-                            <TextBlock x:Name="SummaryGrade3" FontSize="26" FontWeight="SemiBold" />
-                            <TextBlock FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}">
+                            <TextBlock x:Name="SummaryGrade3" FontSize="38" FontWeight="SemiBold" />
+                            <TextBlock FontSize="14" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}">
                                 <Run Text="3 ·" /> <Run Text="{loc:Translate Playbook.Grade3}" />
                             </TextBlock>
                         </StackPanel>
                     </Border>
-                    <Border Margin="4,0" Padding="10,10" Background="{StaticResource SurfaceBrush}" CornerRadius="7"
+                    <Border Margin="4,0" Padding="16,14" Background="{StaticResource SurfaceBrush}" CornerRadius="7"
                             BorderBrush="{StaticResource Grade4Brush}" BorderThickness="0,0,0,4">
                         <StackPanel>
-                            <TextBlock x:Name="SummaryGrade4" FontSize="26" FontWeight="SemiBold" />
-                            <TextBlock FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}">
+                            <TextBlock x:Name="SummaryGrade4" FontSize="38" FontWeight="SemiBold" />
+                            <TextBlock FontSize="14" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}">
                                 <Run Text="4 ·" /> <Run Text="{loc:Translate Playbook.Grade4}" />
                             </TextBlock>
                         </StackPanel>
                     </Border>
                 </UniformGrid>
 
-                <TextBlock x:Name="SummarySolidity" FontSize="16" Margin="0,22,0,0" TextWrapping="Wrap" />
+                <TextBlock x:Name="SummarySolidity" FontSize="20" Margin="0,26,0,0" TextWrapping="Wrap" />
                 <Border x:Name="SummaryUnsaved" Visibility="Collapsed" Margin="0,12,0,0" Padding="12,8"
                         Background="{StaticResource SurfaceBrush}" CornerRadius="4"
                         BorderBrush="{StaticResource DangerBrush}" BorderThickness="3,0,0,0">
-                    <TextBlock x:Name="SummaryUnsavedText" FontSize="13" TextWrapping="Wrap" />
+                    <TextBlock x:Name="SummaryUnsavedText" FontSize="15" TextWrapping="Wrap" />
                 </Border>
 
-                <StackPanel Orientation="Horizontal" Margin="0,24,0,0">
+                <StackPanel Orientation="Horizontal" Margin="0,28,0,0">
                     <Button x:Name="PlayAgainBtn" Margin="0,0,10,0">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="{loc:Translate Playbook.PlayAgain}" VerticalAlignment="Center" Margin="0,0,8,0" />
@@ -617,7 +633,7 @@
             </StackPanel>
 
             <!-- Pista: SIEMPRE dice qué teclas valen en el paso actual (la cambia el code-behind). -->
-            <TextBlock x:Name="HintText" Grid.Row="2" Margin="0,12,0,0" FontSize="12"
+            <TextBlock x:Name="HintText" Grid.Row="2" Margin="0,12,0,0" FontSize="14"
                        Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
                        HorizontalAlignment="Center" TextAlignment="Center" />
         </Grid>

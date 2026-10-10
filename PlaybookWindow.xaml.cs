@@ -51,8 +51,24 @@ public partial class PlaybookWindow : Window
     // "anotado", no una animación — más que esto y el quiz se siente con freno de mano.
     private static readonly TimeSpan GradeFlash = TimeSpan.FromMilliseconds(120);
 
-    private const double BarTrackWidth = 70; // el mismo ancho que la pista de la barra en el XAML
-    private const double IndentPerLevel = 18;
+    private const double BarTrackWidth = 110; // el mismo ancho que la pista de la barra en el XAML
+    private const double IndentPerLevel = 22;
+
+    // ── Tamaño y escala ──
+    // La ventana ocupa el 90% del área de trabajo, a lo ancho y a lo alto: pedido del usuario después
+    // de probarla — tener que scrollear una tarjeta para leerla es inaceptable, y una ventana chica
+    // obligaba a eso con cualquier término que tuviera la ficha completa.
+    private const double WorkAreaRatio = 0.90;
+    // El XAML está diseñado para ESTE alto (el 90% de una pantalla de 1080). En cualquier otra
+    // pantalla se escala todo el contenido parejo en vez de re-acomodarlo: así "la ficha del ejemplo
+    // entra sin scroll" vale igual en 1080p, 1440p o 4K — si entra en la referencia, entra en todas —
+    // y en un monitor grande la letra crece con él en vez de quedar perdida en el medio.
+    private const double ReferenceHeight = 972;
+    // Topes de la escala. Abajo: en una notebook de 768 de alto, achicar más que esto deja las pistas
+    // por debajo de lo legible; ahí una ficha muy cargada puede necesitar el scroll de red. Arriba:
+    // más que esto ya no mejora la lectura, sólo agranda.
+    private const double MinScale = 0.82;
+    private const double MaxScale = 1.6;
     private const string PathSeparator = " › ";
 
     private readonly KnowledgeStore _store;
@@ -117,11 +133,11 @@ public partial class PlaybookWindow : Window
         InitializeComponent();
         _store = store;
 
-        // Tamaño FIJO y cómodo, recortado al área de trabajo (que ya descuenta la barra): el texto
-        // largo scrollea DENTRO de la tarjeta, la ventana no crece ni se achica con el contenido.
-        var workArea = SystemParameters.WorkArea;
-        Width = Math.Min(820, workArea.Width * 0.92);
-        Height = Math.Min(600, workArea.Height * 0.92);
+        // 90% del área de trabajo (que ya descuenta la barra), centrada, con la implementación
+        // compartida de las utilitarias — que usa el monitor PRIMARIO, la convención de la app. El
+        // tamaño es fijo: la ventana no crece ni se achica con el contenido.
+        this.SizeToWorkArea(WorkAreaRatio, WorkAreaRatio);
+        ApplyScale();
 
         PreviewKeyDown += OnPreviewKeyDown;
         HeaderBar.MouseLeftButtonDown += OnHeaderMouseDown;
@@ -158,6 +174,18 @@ public partial class PlaybookWindow : Window
         // ShowFocused machaca el foreground con reintentos; el foco de TECLADO al buscador se fuerza
         // acá, cuando el árbol ya está armado (mismo motivo que en el Shortcuts Helper).
         Loaded += (_, _) => FocusSearchBox();
+    }
+
+    /// <summary>
+    /// Escala TODO el contenido según el alto de la ventana (ver <see cref="ReferenceHeight"/>). Es un
+    /// LayoutTransform y no un zoom de render: el layout se calcula ya con la escala, así que el texto
+    /// envuelve bien y se dibuja nítido (es vectorial), y las medidas son DIPs — WPF las lleva solo a
+    /// los píxeles del monitor, sea cual sea su DPI.
+    /// </summary>
+    private void ApplyScale()
+    {
+        double scale = Math.Clamp(Height / ReferenceHeight, MinScale, MaxScale);
+        RootBorder.LayoutTransform = new ScaleTransform(scale, scale);
     }
 
     /// <summary>
@@ -834,7 +862,7 @@ public partial class PlaybookWindow : Window
 
         CardPanel.Children.Add(new Border
         {
-            Height = 1, Margin = new Thickness(0, 18, 0, 16),
+            Height = 1, Margin = new Thickness(0, 20, 0, 18),
             Background = (Brush)FindResource("SoftLineBrush"),
         });
         AddSide(entry, front: !frontIsQuestion, term, question: false);
@@ -858,15 +886,20 @@ public partial class PlaybookWindow : Window
             : Loc.T(front ? "Playbook.SideFront" : "Playbook.SideBack");
         string text = front ? entry.Front : entry.Back;
 
+        // Los tamaños están pensados para leer a la distancia de un monitor en una ventana que
+        // ocupa casi toda la pantalla, y con el presupuesto de alto de la tarjeta a la vista: la
+        // ficha más cargada del ejemplo (palabra + tipo + definición de tres renglones + dos
+        // traducciones + uso + origen) tiene que entrar entera. Si se agrandan, revisar eso.
+        bool brief = text.Length <= 80;
         AddLabel(label);
         CardPanel.Children.Add(new TextBlock
         {
             Text = text,
             TextWrapping = TextWrapping.Wrap,
             // Una palabra o una pregunta corta se leen grandes; un párrafo, a tamaño de lectura.
-            FontSize = text.Length <= 80 ? (question ? 26 : 22) : 17,
-            FontWeight = text.Length <= 80 ? FontWeights.SemiBold : FontWeights.Normal,
-            LineHeight = text.Length <= 80 ? double.NaN : 25,
+            FontSize = brief ? (question ? 44 : 34) : 24,
+            FontWeight = brief ? FontWeights.SemiBold : FontWeights.Normal,
+            LineHeight = brief ? double.NaN : 35,
             Foreground = (Brush)FindResource("FgBrush"),
         });
 
@@ -875,7 +908,7 @@ public partial class PlaybookWindow : Window
             CardPanel.Children.Add(new TextBlock
             {
                 Text = entry.WordType,
-                FontSize = 14, FontStyle = FontStyles.Italic, Margin = new Thickness(0, 4, 0, 0),
+                FontSize = 19, FontStyle = FontStyles.Italic, Margin = new Thickness(0, 4, 0, 0),
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = (Brush)FindResource("MutedBrush"),
             });
@@ -885,10 +918,10 @@ public partial class PlaybookWindow : Window
     private void AddField(string label, string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
-        AddLabel(label, topMargin: 16);
+        AddLabel(label, topMargin: 18);
         CardPanel.Children.Add(new TextBlock
         {
-            Text = text, FontSize = 15, LineHeight = 22, TextWrapping = TextWrapping.Wrap,
+            Text = text, FontSize = 19, LineHeight = 28, TextWrapping = TextWrapping.Wrap,
             Foreground = (Brush)FindResource("FgBrush"),
         });
     }
@@ -896,7 +929,7 @@ public partial class PlaybookWindow : Window
     private void AddLabel(string text, double topMargin = 0) => CardPanel.Children.Add(new TextBlock
     {
         Text = text.ToUpper(CultureInfo.CurrentCulture),
-        FontSize = 11, FontWeight = FontWeights.Bold, Margin = new Thickness(0, topMargin, 0, 4),
+        FontSize = 13, FontWeight = FontWeights.Bold, Margin = new Thickness(0, topMargin, 0, 5),
         Foreground = (Brush)FindResource("MutedBrush"),
     });
 

@@ -284,7 +284,7 @@
   "Config.ClipCut": "✂ {0} cut from \"{1}\" — Ctrl+V to paste here",
   "Config.ClipStale": "What you had on the clipboard no longer matches its source scope: something was edited, deleted or moved since you copied it.\n\nNothing was pasted — pasting the wrong entry would be worse. Go back to the source scope and copy again.",
 
-  "Config.ResetAllConfirm": "This deletes ALL settings and CANNOT be undone:\n\n• Managed desktops\n• Spaces and contexts (history, paths, notes)\n• Pins\n• Protections and whitelists\n• \"Open with\" apps and their shortcuts\n• Bar widgets and usage panel\n\nThe app will restart with default settings.\n\nContinue?",
+  "Config.ResetAllConfirm": "This deletes ALL settings and CANNOT be undone:\n\n• Managed desktops\n• Spaces and contexts (history, paths, notes)\n• Pins\n• Protections and whitelists\n• \"Open with\" apps and their shortcuts\n• Bar widgets and usage panel\n• Knowledge libraries (cards, terms) and their whole review history\n\nThe app will restart with default settings.\n\nContinue?",
   "Config.ResetAllTitle": "Reset everything",
 
   "Bar.TaskWidgetTooltip": "Active task — click to see details",
