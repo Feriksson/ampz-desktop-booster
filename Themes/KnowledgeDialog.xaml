@@ -1,0 +1,157 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Lo que COMPARTEN los diálogos de la biblioteca de conocimiento (la entrada y la importación):
+         la paleta, el botón, la acción principal y el combo oscuro de sólo-elegir con sus ítems.
+
+         Nació de un copy-paste: el diálogo de importar se escribió mirando el de entrada y se llevó
+         sus estilos enteros. Dos copias de un botón o de un combo divergen en la primera corrección
+         (se arregla el foco en uno y el otro queda viejo), así que viven acá UNA vez — mismo criterio
+         que DarkScrollBar.xaml. Quien lo use hace merge de este archivo en sus Resources.
+
+         Qué NO está acá, a propósito: los rótulos y textos (cada diálogo tiene sus márgenes), el
+         combo EDITABLE (sólo lo usa el de entrada) y las tarjetas de opción (sólo el de importar).
+         El playbooker tampoco lo usa: su botón y su paleta están pensados para otra escala (una
+         ventana de pantalla casi completa que se lee de lejos), no para un formulario. -->
+
+    <!-- Paleta de facto de las ventanas utilitarias. El rojo de error es más claro que el "Danger"
+         de los botones (#E5534B): ése, como LETRA sobre este fondo, queda justo en el límite de
+         4,5:1; éste da ~6:1. -->
+    <SolidColorBrush x:Key="Fg" Color="#F2F2F2" />
+    <SolidColorBrush x:Key="FgMuted" Color="#9A9A9A" />
+    <SolidColorBrush x:Key="Input" Color="#2A2A2A" />
+    <SolidColorBrush x:Key="Panel" Color="#161616" />
+    <SolidColorBrush x:Key="Line" Color="#555555" />
+    <SolidColorBrush x:Key="Accent" Color="#4FC3F7" />
+    <SolidColorBrush x:Key="ErrorText" Color="#FF7B72" />
+
+    <Style TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource Input}" />
+        <Setter Property="Foreground" Value="{StaticResource Fg}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="MinWidth" Value="96" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <!-- El borde mide SIEMPRE 2px: el anillo de foco no corre el contenido. -->
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="2"
+                            CornerRadius="5" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="#8A8A8A" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="#FFFFFF" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <!-- La acción principal: relleno de acento con letra oscura (mismo par que el "Guardar" de la
+         config). El foco de teclado es un borde BLANCO: sobre el relleno celeste, un anillo celeste
+         no se vería. -->
+    <Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background" Value="{StaticResource Accent}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+        <Setter Property="Foreground" Value="#10222A" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- Combo de SÓLO-ELEGIR oscuro. El template por defecto pinta la caja Y la lista desplegable con
+         el blanco del sistema; éste es el mismo que usa la config, más el borde de acento con foco
+         de teclado para que se vea dónde estás parado. Lleva key (no es implícito) porque el diálogo
+         de entrada tiene además combos EDITABLES, con otro template: cada combo dice cuál es. -->
+    <Style x:Key="SelectCombo" TargetType="ComboBox">
+        <Setter Property="Foreground" Value="{StaticResource Fg}" />
+        <Setter Property="Background" Value="{StaticResource Input}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid>
+                        <ToggleButton Focusable="False"
+                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="Bd" Background="{StaticResource Input}"
+                                            BorderBrush="{Binding BorderBrush, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                            BorderThickness="1" CornerRadius="3">
+                                        <Path Fill="{StaticResource Fg}" HorizontalAlignment="Right"
+                                              VerticalAlignment="Center" Margin="0,0,10,0"
+                                              Data="M 0 0 L 8 0 L 4 5 Z" />
+                                    </Border>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+                        <ContentPresenter IsHitTestVisible="False" Margin="9,0,30,0" VerticalAlignment="Center"
+                                          Content="{TemplateBinding SelectionBoxItem}"
+                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                          ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
+                                          TextElement.Foreground="{TemplateBinding Foreground}" />
+                        <Popup x:Name="PART_Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}"
+                               AllowsTransparency="True" Focusable="False" PopupAnimation="None">
+                            <Border Background="{StaticResource Input}" BorderBrush="{StaticResource Line}"
+                                    BorderThickness="1" CornerRadius="3"
+                                    MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ScrollViewer MaxHeight="260">
+                                    <ItemsPresenter />
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Ítem de la lista desplegable (de los combos de sólo-elegir y de los editables): sin esto el
+         ítem resaltado sale con el gris claro del sistema sobre la lista oscura.
+
+         Va con KEY, y el implícito de abajo sólo lo hereda, por una trampa de WPF que ya mordió acá:
+         un diálogo que quiera retocar el ítem (otro Padding) escribe un estilo implícito propio
+         «BasedOn {x:Type ComboBoxItem}», y esa búsqueda, hecha desde el diccionario que está
+         definiendo esa MISMA key, se saltea los diccionarios mergeados y cae en el estilo del
+         SISTEMA — el ítem elegido volvía a salir claro, sin error ni aviso. Heredando de «ComboItem»
+         la búsqueda es por otra key y encuentra ésta. -->
+    <Style x:Key="ComboItem" TargetType="ComboBoxItem">
+        <Setter Property="Foreground" Value="{StaticResource Fg}" />
+        <Setter Property="Padding" Value="8,5" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBoxItem">
+                    <Border x:Name="bd" Background="Transparent" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="#3C3C3C" />
+                        </Trigger>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="#2D4A57" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style TargetType="ComboBoxItem" BasedOn="{StaticResource ComboItem}" />
+</ResourceDictionary>

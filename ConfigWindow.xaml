@@ -1366,6 +1366,610 @@
             </Grid>
         </TabItem>
 
+        <!-- ===== Pestaña CONOCIMIENTO =====
+             Todo lo que juega el playbooker (NumpadClear) se administra acá: las bibliotecas (un
+             árbol), sus entradas (tarjetas y términos) y las dos listas personales que las cruzan,
+             naturalezas e idiomas. Es un dominio aparte del de Espacios/Contextos: no comparten nada.
+
+             Los cambios se guardan AL HACERLOS (cada botón es una operación contra la base): no hay
+             "Guardar" al pie, y cerrar la ventana no deja nada sin guardar.
+
+             El árbol de bibliotecas es una lista PLANA con sangría y no un TreeView, por lo mismo que
+             el de Espacios: el TreeView trae su template claro y habría que rehacerle el piso entero.
+
+             Los estilos de este tramo viven en los Resources de ESTA pestaña, no en los de la ventana:
+             así la barra de scroll oscura y la fila con anillo de foco no le cambian la cara a las
+             otras nueve pestañas. -->
+        <TabItem x:Name="KnowledgeTab" Tag="📚" Header="{loc:Translate Config.KnowledgeTab}">
+            <Grid Margin="14">
+                <Grid.Resources>
+                    <ResourceDictionary>
+                        <ResourceDictionary.MergedDictionaries>
+                            <ResourceDictionary Source="/AmpzDesktopBooster;component/Themes/DarkScrollBar.xaml" />
+                        </ResourceDictionary.MergedDictionaries>
+
+                        <SolidColorBrush x:Key="KnGold" Color="#FFD700" />
+                        <!-- Rojo de los botones que borran. Más claro que el "Danger" de la ventana (#E5534B):
+                             ése, como LETRA sobre el gris del botón, da 3,7:1; éste pasa de 5:1. -->
+                        <SolidColorBrush x:Key="KnDanger" Color="#FF7B72" />
+
+                        <!-- Fila de las listas de esta pestaña. Tres señales DISTINTAS, porque son tres
+                             cosas distintas: elegida = relleno + marca de acento a la izquierda (no
+                             depende de notar un cambio de tono); foco de teclado = anillo de acento;
+                             hover = gris. El relleno es más oscuro que el de las otras pestañas
+                             (#1A3A4A) porque acá las filas llevan texto secundario gris, y sobre aquél
+                             no llega a 4,5:1. -->
+                        <Style x:Key="KnRow" TargetType="ListBoxItem">
+                            <Setter Property="Foreground" Value="{StaticResource Fg}" />
+                            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border x:Name="bd" Background="Transparent" BorderBrush="Transparent"
+                                                BorderThickness="1" CornerRadius="3" Margin="2,1">
+                                            <Grid>
+                                                <Border x:Name="mark" Width="3" CornerRadius="2" Margin="2,4,0,4"
+                                                        HorizontalAlignment="Left" Visibility="Hidden"
+                                                        Background="{StaticResource Accent}" />
+                                                <ContentPresenter Margin="9,5" />
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bd" Property="Background" Value="#282828" />
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="bd" Property="Background" Value="#1E333D" />
+                                                <Setter TargetName="mark" Property="Visibility" Value="Visible" />
+                                            </Trigger>
+                                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                        <!-- La de entradas suma el nombre accesible que arma cada fila (tipo, frente,
+                             naturaleza y solidez): sin él un lector de pantalla leería el nombre de la clase. -->
+                        <Style x:Key="KnEntryRowContainer" TargetType="ListBoxItem" BasedOn="{StaticResource KnRow}">
+                            <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}" />
+                        </Style>
+
+                        <!-- Campo de texto con foco de teclado en acento (el de WPF es un azul del sistema). -->
+                        <Style x:Key="KnInput" TargetType="TextBox">
+                            <Setter Property="Background" Value="#2A2A2A" />
+                            <Setter Property="Foreground" Value="{StaticResource Fg}" />
+                            <Setter Property="BorderBrush" Value="#555" />
+                            <Setter Property="CaretBrush" Value="{StaticResource Fg}" />
+                            <Setter Property="Padding" Value="5,3" />
+                            <Setter Property="FontSize" Value="12" />
+                            <Setter Property="VerticalContentAlignment" Value="Center" />
+                            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="TextBox">
+                                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                                CornerRadius="3">
+                                            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
+                                                          Focusable="False" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+
+                        <!-- El combo de la ventana, más el borde de acento con foco de teclado: sin él no
+                             se ve en cuál de los combos de destino estás parado. -->
+                        <Style x:Key="KnCombo" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+                            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                            <Style.Triggers>
+                                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                    <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+
+                        <!-- Segmento del filtro por tipo (Todas / Cards / Términos): tres opciones
+                             excluyentes son un grupo segmentado, no un combo. Elegido = relleno + letra
+                             clara en negrita; foco de teclado = anillo de acento. Las flechas se mueven
+                             dentro del grupo (comportamiento de los RadioButton de un mismo GroupName). -->
+                        <Style x:Key="KnSegment" TargetType="RadioButton">
+                            <Setter Property="Foreground" Value="{StaticResource FgMuted}" />
+                            <Setter Property="FontSize" Value="12" />
+                            <Setter Property="Cursor" Value="Hand" />
+                            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="RadioButton">
+                                        <Border x:Name="bd" Background="Transparent" BorderBrush="Transparent"
+                                                BorderThickness="1" CornerRadius="3" Padding="12,4">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bd" Property="Background" Value="#282828" />
+                                            </Trigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="bd" Property="Background" Value="#26404C" />
+                                                <Setter Property="Foreground" Value="{StaticResource Fg}" />
+                                                <Setter Property="FontWeight" Value="SemiBold" />
+                                            </Trigger>
+                                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+
+                        <!-- Encabezado de columna que ORDENA. Es un botón de verdad (Tab + Enter), con la
+                             flecha del sentido escrita en su propio texto por el code-behind. -->
+                        <Style x:Key="KnSortHeader" TargetType="Button">
+                            <Setter Property="Foreground" Value="{StaticResource FgMuted}" />
+                            <Setter Property="FontSize" Value="11" />
+                            <Setter Property="Cursor" Value="Hand" />
+                            <Setter Property="HorizontalAlignment" Value="Left" />
+                            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="bd" Background="Transparent" BorderBrush="Transparent"
+                                                BorderThickness="1" CornerRadius="3" Padding="3,1" Margin="-4,0,0,0">
+                                            <ContentPresenter />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Foreground" Value="{StaticResource Fg}" />
+                                            </Trigger>
+                                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                                <Setter Property="Foreground" Value="{StaticResource Fg}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+
+                        <!-- Por qué un botón está apagado: texto A LA VISTA al lado, nunca un tooltip
+                             (WPF ni siquiera muestra el tooltip de un control deshabilitado). -->
+                        <Style x:Key="KnReason" TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource FgMuted}" />
+                            <Setter Property="FontSize" Value="11" />
+                            <Setter Property="TextWrapping" Value="Wrap" />
+                            <Setter Property="VerticalAlignment" Value="Center" />
+                        </Style>
+
+                        <!-- Fila de una entrada. Mismas columnas que el encabezado de arriba de la lista
+                             (si se cambia un ancho acá, cambia allá). Todo viene resuelto desde la fila
+                             (KnEntryRow): la lista virtualiza y recicla contenedores, así que acá no
+                             puede haber nada que se calcule por fila ni que toque la base. -->
+                        <DataTemplate x:Key="KnEntryRowTemplate">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="76" />
+                                    <ColumnDefinition Width="2*" />
+                                    <ColumnDefinition Width="3*" />
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="96" />
+                                </Grid.ColumnDefinitions>
+                                <!-- El tipo va ESCRITO (Card / Término), en una cajita: no es un ícono ni un color. -->
+                                <Border Grid.Column="0" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                        BorderBrush="#6A6A6A" BorderThickness="1" CornerRadius="3" Padding="5,1">
+                                    <TextBlock Text="{Binding KindText}" FontSize="11" />
+                                </Border>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                                    <TextBlock Text="{Binding Front}" FontSize="13" TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding FrontTip}" />
+                                    <!-- De qué biblioteca es: sólo cuando la lista incluye las sub-bibliotecas. -->
+                                    <TextBlock Text="{Binding LibraryText}" Visibility="{Binding LibraryVisibility}"
+                                               FontSize="11" Foreground="{StaticResource FgMuted}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" Text="{Binding BackPreview}" FontSize="12"
+                                           Foreground="{StaticResource FgMuted}" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" Margin="0,0,12,0"
+                                           ToolTip="{Binding BackTip}" />
+                                <!-- Naturaleza. Propia = borde y letra dorados; heredada = gris y en CURSIVA
+                                     (la cursiva es la señal que no depende del color). -->
+                                <Border Grid.Column="3" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                        Visibility="{Binding NatureVisibility}" Margin="0,0,10,0"
+                                        BorderBrush="{Binding NatureBrush}" BorderThickness="1" CornerRadius="9"
+                                        Padding="7,1" ToolTip="{Binding NatureTip}">
+                                    <TextBlock Text="{Binding NatureText}" FontSize="11" TextTrimming="CharacterEllipsis"
+                                               Foreground="{Binding NatureBrush}" FontStyle="{Binding NatureFontStyle}" />
+                                </Border>
+                                <TextBlock Grid.Column="4" Text="{Binding SolidityText}" FontSize="12"
+                                           Foreground="{StaticResource FgMuted}" VerticalAlignment="Center" />
+                            </Grid>
+                        </DataTemplate>
+                    </ResourceDictionary>
+                </Grid.Resources>
+
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Título + importar / exportar. Van en el ENCABEZADO de la pestaña y no debajo del
+                     árbol por dos motivos: ahí abajo ya viven cuatro botones y dos combos de la
+                     biblioteca elegida, y «Importar…» tiene que estar a mano justo cuando el árbol
+                     está vacío (restaurar un respaldo), que es cuando esos botones se ocultan. -->
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Text="{loc:Translate Config.KnowledgeTitle}" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,0,0"
+                                AutomationProperties.Name="{loc:Translate Config.KnowledgeExchangeGroup}">
+                        <Button x:Name="KnImportBtn" Content="{loc:Translate Config.KnowledgeImport}" MinWidth="96" />
+                        <Button x:Name="KnExportBtn" Content="{loc:Translate Config.KnowledgeExport}" MinWidth="96" />
+                        <Button x:Name="KnExportAllBtn" Content="{loc:Translate Config.KnowledgeExportAll}" MinWidth="96"
+                                Margin="0" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid Grid.Row="1" Margin="0,4,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Foreground="{StaticResource FgMuted}" FontSize="11"
+                               TextWrapping="Wrap" VerticalAlignment="Top"
+                               Text="{loc:Translate Config.KnowledgeHint}" />
+                    <!-- QUÉ se lleva cada exportación (con sus números) o, si están apagadas, por qué.
+                         A la vista, pegado a los botones: un «Exportar…» que no dice de cuál biblioteca
+                         ni cuánto incluye obliga a exportar para enterarse. -->
+                    <TextBlock x:Name="KnExchangeScope" Grid.Column="1" Style="{StaticResource KnReason}"
+                               MaxWidth="460" Margin="24,0,0,0" TextAlignment="Right" VerticalAlignment="Top" />
+                </Grid>
+
+                <!-- Resultado de la última importación / exportación (o por qué no se pudo). Es texto
+                     en la pestaña y no un toast porque lleva una RUTA que hay que poder leer con
+                     calma, y el botón para abrir esa carpeta. Se queda hasta que se cierra o hasta
+                     la próxima operación. -->
+                <Border x:Name="KnExchangeNotice" Grid.Row="2" Visibility="Collapsed" Margin="0,0,0,10"
+                        Padding="10,7" Background="{StaticResource Panel}" CornerRadius="4"
+                        BorderThickness="3,0,0,0" BorderBrush="{StaticResource Accent}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="KnExchangeNoticeText" Grid.Column="0" FontSize="12" TextWrapping="Wrap"
+                                   VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Margin="12,0,0,0">
+                            <Button x:Name="KnExchangeOpenFolderBtn" Visibility="Collapsed"
+                                    Content="{loc:Translate Config.KnowledgeExchangeOpenFolder}" />
+                            <Button x:Name="KnExchangeDismissBtn" Margin="0"
+                                    Content="{loc:Translate Config.KnowledgeExchangeDismiss}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Sub-pestañas con el estilo propio: los implícitos de la ventana son los del sidebar. -->
+                <TabControl x:Name="KnTabs" Grid.Row="3" Style="{StaticResource SubTabControl}">
+
+                    <!-- ── Sub-pestaña BIBLIOTECAS: el árbol a la izquierda, sus entradas a la derecha ── -->
+                    <TabItem Style="{StaticResource SubTabItem}" Header="{loc:Translate Config.KnowledgeLibrariesTab}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="370" />
+                                <ColumnDefinition Width="14" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- ── Izquierda: el árbol + lo que se le puede hacer a la biblioteca elegida ── -->
+                            <Grid Grid.Column="0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Text="{loc:Translate Config.KnowledgeLibrariesHeader}"
+                                           Foreground="{StaticResource FgMuted}" FontSize="11" Margin="2,0,0,5" />
+
+                                <Border Grid.Row="1" Background="{StaticResource Panel}" CornerRadius="4" Padding="2">
+                                    <Grid>
+                                        <ListBox x:Name="KnLibList" Background="Transparent" BorderThickness="0"
+                                                 Foreground="{StaticResource Fg}" FontSize="13"
+                                                 ItemContainerStyle="{StaticResource KnRow}"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                 AutomationProperties.Name="{loc:Translate Config.KnowledgeLibrariesHeader}" />
+                                        <!-- Sin ninguna biblioteca: qué ES una y el botón para crear la
+                                             primera. Mientras se ve esto, los botones de abajo no están
+                                             (la misma acción nunca aparece dos veces a la vez). -->
+                                        <StackPanel x:Name="KnLibEmpty" Visibility="Collapsed" Margin="18,0"
+                                                    VerticalAlignment="Center">
+                                            <TextBlock Foreground="{StaticResource FgMuted}" FontSize="12"
+                                                       TextWrapping="Wrap" TextAlignment="Center"
+                                                       Text="{loc:Translate Config.KnowledgeLibrariesEmpty}" />
+                                            <Button x:Name="KnLibEmptyNewBtn" Margin="0,12,0,0" HorizontalAlignment="Center"
+                                                    MinWidth="150" Content="{loc:Translate Config.KnowledgeLibNewFirst}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <StackPanel x:Name="KnLibActions" Grid.Row="2">
+                                    <WrapPanel Margin="0,8,0,0">
+                                        <Button x:Name="KnLibNewBtn"      Content="{loc:Translate Config.KnowledgeLibNew}"      Margin="0,0,6,6" />
+                                        <Button x:Name="KnLibNewChildBtn" Content="{loc:Translate Config.KnowledgeLibNewChild}" Margin="0,0,6,6" />
+                                        <Button x:Name="KnLibRenameBtn"   Content="{loc:Translate Config.KnowledgeLibRename}"   Margin="0,0,6,6" />
+                                        <Button x:Name="KnLibDeleteBtn"   Content="{loc:Translate Config.KnowledgeLibDelete}"   Margin="0,0,6,6"
+                                                Foreground="{StaticResource KnDanger}" />
+                                    </WrapPanel>
+                                    <TextBlock x:Name="KnLibReason" Style="{StaticResource KnReason}" Margin="0,0,0,6" />
+
+                                    <!-- Mover: el destino se elige y se confirma con su botón (cambiar un
+                                         combo con las flechas no puede ir moviendo la biblioteca por el árbol). -->
+                                    <TextBlock x:Name="KnLibMoveLabel" Text="{loc:Translate Config.KnowledgeLibMoveLabel}"
+                                               Foreground="{StaticResource FgMuted}" FontSize="12" Margin="0,4,0,4" />
+                                    <ComboBox x:Name="KnLibMoveCombo" Style="{StaticResource KnCombo}" Margin="0,0,0,6"
+                                              AutomationProperties.Name="{loc:Translate Config.KnowledgeLibMoveLabel}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                        <Button x:Name="KnLibMoveBtn" Content="{loc:Translate Config.KnowledgeLibMove}" />
+                                        <TextBlock x:Name="KnLibMoveReason" Style="{StaticResource KnReason}" MaxWidth="250" />
+                                    </StackPanel>
+
+                                    <TextBlock Text="{loc:Translate Config.KnowledgeLibNatureLabel}"
+                                               Foreground="{StaticResource FgMuted}" FontSize="12" Margin="0,4,0,4" />
+                                    <ComboBox x:Name="KnLibNatureCombo" Style="{StaticResource KnCombo}" Margin="0,0,0,6"
+                                              AutomationProperties.Name="{loc:Translate Config.KnowledgeLibNatureLabel}" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="KnLibNatureBtn" Content="{loc:Translate Config.KnowledgeLibNatureApply}" />
+                                        <TextBlock x:Name="KnLibNatureReason" Style="{StaticResource KnReason}" MaxWidth="250" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- ── Derecha: las entradas de la biblioteca elegida ── -->
+                            <Grid Grid.Column="2">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <!-- De qué biblioteca son + si se suman las de abajo. -->
+                                <Grid Grid.Row="0" Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="KnEntryHeader" Grid.Column="0" FontSize="13" FontWeight="SemiBold"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                    <CheckBox x:Name="KnIncludeSubChk" Grid.Column="1" FontSize="12" Margin="12,0,0,0"
+                                              Content="{loc:Translate Config.KnowledgeIncludeSub}" />
+                                </Grid>
+
+                                <!-- Filtros, ARRIBA de la lista: texto + tipo, y un solo botón que los limpia. -->
+                                <Grid Grid.Row="1" Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{loc:Translate Config.KnowledgeSearchLabel}"
+                                               VerticalAlignment="Center" Foreground="{StaticResource FgMuted}"
+                                               FontSize="12" Margin="0,0,8,0" />
+                                    <TextBox x:Name="KnEntrySearchBox" Grid.Column="1" Style="{StaticResource KnInput}"
+                                             MaxWidth="420" HorizontalAlignment="Left" MinWidth="220"
+                                             AutomationProperties.Name="{loc:Translate Config.KnowledgeSearchAccessible}" />
+                                    <TextBlock Grid.Column="2" Text="{loc:Translate Config.KnowledgeKindLabel}"
+                                               VerticalAlignment="Center" Foreground="{StaticResource FgMuted}"
+                                               FontSize="12" Margin="14,0,8,0" />
+                                    <Border Grid.Column="3" Background="{StaticResource Panel}" BorderBrush="#444"
+                                            BorderThickness="1" CornerRadius="4" Padding="2">
+                                        <StackPanel Orientation="Horizontal"
+                                                    AutomationProperties.Name="{loc:Translate Config.KnowledgeKindLabel}">
+                                            <RadioButton x:Name="KnKindAllRadio" GroupName="KnEntryKind" IsChecked="True"
+                                                         Style="{StaticResource KnSegment}"
+                                                         Content="{loc:Translate Config.KnowledgeKindAll}" />
+                                            <RadioButton x:Name="KnKindCardsRadio" GroupName="KnEntryKind"
+                                                         Style="{StaticResource KnSegment}"
+                                                         Content="{loc:Translate Config.KnowledgeKindCards}" />
+                                            <RadioButton x:Name="KnKindTermsRadio" GroupName="KnEntryKind"
+                                                         Style="{StaticResource KnSegment}"
+                                                         Content="{loc:Translate Config.KnowledgeKindTerms}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <!-- Sólo aparece con algún filtro puesto, y siempre en este lugar. -->
+                                    <Button x:Name="KnEntryClearBtn" Grid.Column="4" Margin="10,0,0,0" Visibility="Collapsed"
+                                            Content="{loc:Translate Config.KnowledgeClearFilters}" />
+                                </Grid>
+
+                                <!-- Encabezado de columnas (los que ordenan son botones). El margen replica
+                                     lo que se come cada fila a los costados: borde + relleno a la izquierda,
+                                     y además la barra de scroll a la derecha. -->
+                                <Grid Grid.Row="2" Margin="15,0,25,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="2*" />
+                                        <ColumnDefinition Width="3*" />
+                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="96" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button x:Name="KnSortKindBtn" Grid.Column="0" Style="{StaticResource KnSortHeader}" />
+                                    <Button x:Name="KnSortFrontBtn" Grid.Column="1" Style="{StaticResource KnSortHeader}" />
+                                    <TextBlock Grid.Column="2" Text="{loc:Translate Config.KnowledgeColBack}"
+                                               FontSize="11" Foreground="{StaticResource FgMuted}" VerticalAlignment="Center" />
+                                    <Button x:Name="KnSortNatureBtn" Grid.Column="3" Style="{StaticResource KnSortHeader}" />
+                                    <Button x:Name="KnSortSolidityBtn" Grid.Column="4" Style="{StaticResource KnSortHeader}" />
+                                </Grid>
+
+                                <!-- La lista. VIRTUALIZADA y con reciclado: una biblioteca de miles de
+                                     entradas arma sólo las filas que se ven. La barra vertical queda siempre
+                                     visible para que las columnas no bailen (y el encabezado no se desalinee)
+                                     cuando un filtro deja pocas filas. -->
+                                <Border Grid.Row="3" Background="{StaticResource Panel}" CornerRadius="4" Padding="2">
+                                    <Grid>
+                                        <ListBox x:Name="KnEntryList" Background="Transparent" BorderThickness="0"
+                                                 SelectionMode="Extended"
+                                                 Foreground="{StaticResource Fg}"
+                                                 HorizontalContentAlignment="Stretch"
+                                                 ItemTemplate="{StaticResource KnEntryRowTemplate}"
+                                                 ItemContainerStyle="{StaticResource KnEntryRowContainer}"
+                                                 VirtualizingPanel.IsVirtualizing="True"
+                                                 VirtualizingPanel.VirtualizationMode="Recycling"
+                                                 VirtualizingPanel.ScrollUnit="Pixel"
+                                                 ScrollViewer.CanContentScroll="True"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                 ScrollViewer.VerticalScrollBarVisibility="Visible"
+                                                 AutomationProperties.Name="{loc:Translate Config.KnowledgeEntriesAccessible}" />
+                                        <!-- Tres vacíos distintos (sin biblioteca / biblioteca sin entradas /
+                                             filtro sin coincidencias): el texto lo pone el code-behind. -->
+                                        <TextBlock x:Name="KnEntryEmpty" Visibility="Collapsed"
+                                                   Foreground="{StaticResource FgMuted}" FontSize="12"
+                                                   TextWrapping="Wrap" MaxWidth="460" IsHitTestVisible="False"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   TextAlignment="Center" />
+                                    </Grid>
+                                </Border>
+
+                                <!-- Cuántas se ven de cuántas hay (nunca esconder el total) + la leyenda de la cursiva. -->
+                                <Grid Grid.Row="4" Margin="2,5,2,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="KnEntryCountText" Grid.Column="0" FontSize="11"
+                                               Foreground="{StaticResource FgMuted}" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="1" FontSize="11" Foreground="{StaticResource FgMuted}"
+                                               Text="{loc:Translate Config.KnowledgeNatureLegend}" />
+                                </Grid>
+
+                                <WrapPanel Grid.Row="5" Margin="0,8,0,0">
+                                    <Button x:Name="KnEntryNewCardBtn" Content="{loc:Translate Config.KnowledgeEntryNewCard}" MinWidth="110" Margin="0,0,6,6" />
+                                    <Button x:Name="KnEntryNewTermBtn" Content="{loc:Translate Config.KnowledgeEntryNewTerm}" MinWidth="110" Margin="0,0,6,6" />
+                                    <Button x:Name="KnEntryEditBtn"    Content="{loc:Translate Config.KnowledgeEntryEdit}"    MinWidth="110" Margin="0,0,6,6" />
+                                    <Button x:Name="KnEntryDeleteBtn"  Content="{loc:Translate Config.KnowledgeEntryDelete}"  MinWidth="110" Margin="0,0,6,6"
+                                            Foreground="{StaticResource KnDanger}" />
+                                </WrapPanel>
+
+                                <WrapPanel Grid.Row="6" Margin="0,4,0,0">
+                                    <TextBlock Text="{loc:Translate Config.KnowledgeEntryMoveLabel}" VerticalAlignment="Center"
+                                               Foreground="{StaticResource FgMuted}" FontSize="12" Margin="0,0,8,6" />
+                                    <ComboBox x:Name="KnEntryMoveCombo" Style="{StaticResource KnCombo}" Width="300" Margin="0,0,10,6"
+                                              AutomationProperties.Name="{loc:Translate Config.KnowledgeEntryMoveLabel}" />
+                                    <Button x:Name="KnEntryMoveBtn" Content="{loc:Translate Config.KnowledgeEntryMove}" MinWidth="110" Margin="0,0,6,6" />
+                                </WrapPanel>
+
+                                <!-- Por qué los botones de arriba están apagados, y las teclas que valen en la lista. -->
+                                <TextBlock x:Name="KnEntryReason" Grid.Row="7" Style="{StaticResource KnReason}" Margin="0,2,0,0" />
+                            </Grid>
+                        </Grid>
+                    </TabItem>
+
+                    <!-- ── Sub-pestaña NATURALEZAS E IDIOMAS: las dos listas personales, lado a lado ── -->
+                    <TabItem Style="{StaticResource SubTabItem}" Header="{loc:Translate Config.KnowledgeListsTab}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <Grid Grid.Column="0" MaxWidth="620" HorizontalAlignment="Left">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" FontSize="13" FontWeight="SemiBold"
+                                           Text="{loc:Translate Config.KnowledgeNaturesTitle}" />
+                                <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
+                                           TextWrapping="Wrap" Margin="0,3,0,8"
+                                           Text="{loc:Translate Config.KnowledgeNaturesHint}" />
+                                <Border Grid.Row="2" Background="{StaticResource Panel}" CornerRadius="4" Padding="2">
+                                    <Grid>
+                                        <ListBox x:Name="KnNatureList" Background="Transparent" BorderThickness="0"
+                                                 Foreground="{StaticResource Fg}" FontSize="13"
+                                                 ItemContainerStyle="{StaticResource KnRow}"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                 AutomationProperties.Name="{loc:Translate Config.KnowledgeNaturesTitle}" />
+                                        <TextBlock x:Name="KnNatureEmpty" Visibility="Collapsed"
+                                                   Foreground="{StaticResource FgMuted}" FontSize="12"
+                                                   TextWrapping="Wrap" MaxWidth="380" IsHitTestVisible="False"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   TextAlignment="Center"
+                                                   Text="{loc:Translate Config.KnowledgeNaturesEmpty}" />
+                                    </Grid>
+                                </Border>
+                                <WrapPanel Grid.Row="3" Margin="0,8,0,0">
+                                    <Button x:Name="KnNatureAddBtn"    Content="{loc:Translate Config.KnowledgeListAdd}"    Margin="0,0,6,6" />
+                                    <Button x:Name="KnNatureRenameBtn" Content="{loc:Translate Config.KnowledgeListRename}" Margin="0,0,6,6" />
+                                    <Button x:Name="KnNatureDeleteBtn" Content="{loc:Translate Config.KnowledgeListDelete}" Margin="0,0,6,6"
+                                            Foreground="{StaticResource KnDanger}" />
+                                </WrapPanel>
+                                <TextBlock x:Name="KnNatureReason" Grid.Row="4" Style="{StaticResource KnReason}" />
+                            </Grid>
+
+                            <Grid Grid.Column="2" MaxWidth="620" HorizontalAlignment="Left">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" FontSize="13" FontWeight="SemiBold"
+                                           Text="{loc:Translate Config.KnowledgeLanguagesTitle}" />
+                                <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
+                                           TextWrapping="Wrap" Margin="0,3,0,8"
+                                           Text="{loc:Translate Config.KnowledgeLanguagesHint}" />
+                                <Border Grid.Row="2" Background="{StaticResource Panel}" CornerRadius="4" Padding="2">
+                                    <Grid>
+                                        <ListBox x:Name="KnLanguageList" Background="Transparent" BorderThickness="0"
+                                                 Foreground="{StaticResource Fg}" FontSize="13"
+                                                 ItemContainerStyle="{StaticResource KnRow}"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                 AutomationProperties.Name="{loc:Translate Config.KnowledgeLanguagesTitle}" />
+                                        <TextBlock x:Name="KnLanguageEmpty" Visibility="Collapsed"
+                                                   Foreground="{StaticResource FgMuted}" FontSize="12"
+                                                   TextWrapping="Wrap" MaxWidth="380" IsHitTestVisible="False"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   TextAlignment="Center"
+                                                   Text="{loc:Translate Config.KnowledgeLanguagesEmpty}" />
+                                    </Grid>
+                                </Border>
+                                <WrapPanel Grid.Row="3" Margin="0,8,0,0">
+                                    <Button x:Name="KnLanguageAddBtn"    Content="{loc:Translate Config.KnowledgeListAdd}"    Margin="0,0,6,6" />
+                                    <Button x:Name="KnLanguageRenameBtn" Content="{loc:Translate Config.KnowledgeListRename}" Margin="0,0,6,6" />
+                                    <Button x:Name="KnLanguageDeleteBtn" Content="{loc:Translate Config.KnowledgeListDelete}" Margin="0,0,6,6"
+                                            Foreground="{StaticResource KnDanger}" />
+                                </WrapPanel>
+                                <TextBlock x:Name="KnLanguageReason" Grid.Row="4" Style="{StaticResource KnReason}" />
+                            </Grid>
+                        </Grid>
+                    </TabItem>
+                </TabControl>
+            </Grid>
+        </TabItem>
+
         <!-- ===== Pestaña GENERAL ===== -->
         <TabItem Tag="⚙️" Header="{loc:Translate General.Title}">
             <Grid Margin="14">

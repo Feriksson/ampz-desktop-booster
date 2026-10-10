@@ -1,0 +1,262 @@
+<Window x:Class="AmpzDesktopBooster.KnowledgeImportWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
+        Title="{loc:Translate KnowledgeImport.WindowTitle}"
+        Width="760" SizeToContent="Height"
+        WindowStyle="None" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False" Topmost="True"
+        Background="#1E1E1E" UseLayoutRounding="True"
+        FontFamily="Segoe UI">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- La lista de bibliotecas del archivo scrollea con la barra oscura compartida. -->
+                <ResourceDictionary Source="/AmpzDesktopBooster;component/Themes/DarkScrollBar.xaml" />
+                <!-- Paleta, botones y combo de sólo-elegir: los comparte con el otro diálogo de
+                     la biblioteca de conocimiento (ver el encabezado de ese archivo). -->
+                <ResourceDictionary Source="/AmpzDesktopBooster;component/Themes/KnowledgeDialog.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- Rótulo de sección: siempre visible arriba de lo que nombra. -->
+            <Style x:Key="Lbl" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{StaticResource FgMuted}" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Margin" Value="0,0,0,4" />
+            </Style>
+            <Style x:Key="Body" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{StaticResource Fg}" />
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+            <Style x:Key="Note" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{StaticResource FgMuted}" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+
+            <!-- El único combo de este diálogo (el destino) es de sólo-elegir: toma el compartido
+                 como estilo IMPLÍCITO. Sus ítems llevan un píxel más de sangría que los del diálogo
+                 de entrada, para quedar alineados con el texto de la caja (que acá arranca en 9). -->
+            <Style TargetType="ComboBox" BasedOn="{StaticResource SelectCombo}" />
+            <Style TargetType="ComboBoxItem" BasedOn="{StaticResource ComboItem}">
+                <Setter Property="Padding" Value="9,5" />
+            </Style>
+
+            <!-- Una de las dos salidas ante un choque de nombres. Es un RadioButton de verdad (las
+                 flechas pasan de una a otra) dibujado como una tarjeta: el título Y su consecuencia
+                 van adentro, porque elegir entre «copia» y «combinar» sin leer qué hace cada una es
+                 tirar una moneda. Elegida = punto + borde de acento; foco de teclado = borde blanco;
+                 apagada = atenuada (el motivo está escrito arriba del grupo). -->
+            <Style x:Key="Choice" TargetType="RadioButton">
+                <Setter Property="Foreground" Value="{StaticResource Fg}" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="RadioButton">
+                            <Border x:Name="Bd" Background="{StaticResource Panel}" BorderBrush="#3A3A3A"
+                                    BorderThickness="2" CornerRadius="5" Padding="10,8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,10,0">
+                                        <Ellipse x:Name="Ring" Stroke="#8A8A8A" StrokeThickness="1.5" />
+                                        <Ellipse x:Name="Dot" Width="8" Height="8" Fill="{StaticResource Accent}"
+                                                 Visibility="Collapsed" />
+                                    </Grid>
+                                    <ContentPresenter Grid.Column="1" />
+                                </Grid>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#1C1C1C" />
+                                </Trigger>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="Dot" Property="Visibility" Value="Visible" />
+                                    <Setter TargetName="Ring" Property="Stroke" Value="{StaticResource Accent}" />
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#FFFFFF" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="Bd" Property="Opacity" Value="0.45" />
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#3A3A3A" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Fila de la lista de bibliotecas del archivo. Es de sólo-lectura, pero se recorre con
+                 el teclado (para scrollear y para que un lector de pantalla la lea fila por fila). -->
+            <Style x:Key="TreeRow" TargetType="ListBoxItem">
+                <Setter Property="Foreground" Value="{StaticResource Fg}" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ListBoxItem">
+                            <Border x:Name="bd" Background="Transparent" BorderBrush="Transparent"
+                                    BorderThickness="1" CornerRadius="3" Margin="2,1" Padding="8,4">
+                                <ContentPresenter />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter TargetName="bd" Property="Background" Value="#222222" />
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <DataTemplate x:Key="TreeRowTemplate">
+                <DockPanel Margin="{Binding Indent}">
+                    <!-- Los números van PRIMERO en el DockPanel (pegados a la derecha): si no entra
+                         todo, lo que se recorta con "…" es el nombre. -->
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding CountsText}" FontSize="12"
+                               Foreground="{StaticResource FgMuted}" VerticalAlignment="Center" Margin="12,0,0,0" />
+                    <!-- Qué le pasa a la biblioteca, ESCRITO (nueva / copia / se combina): el color del
+                         borde acompaña, no es lo que lo dice. -->
+                    <Border DockPanel.Dock="Right" BorderBrush="{Binding StateBrush}" BorderThickness="1"
+                            CornerRadius="9" Padding="7,1" VerticalAlignment="Center" Margin="10,0,0,0">
+                        <TextBlock Text="{Binding StateText}" FontSize="11" Foreground="{Binding StateBrush}" />
+                    </Border>
+                    <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="{Binding NameWeight}"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
+                </DockPanel>
+            </DataTemplate>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Border BorderBrush="#33FFFFFF" BorderThickness="1" Padding="18,16"
+            TextElement.Foreground="{StaticResource Fg}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Qué se está por importar y de dónde salió. -->
+            <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                <TextBlock FontSize="16" FontWeight="SemiBold" Text="{loc:Translate KnowledgeImport.Header}" />
+                <TextBlock x:Name="FileText" Style="{StaticResource Lbl}" Margin="0,3,0,0"
+                           TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+
+            <!-- 1 · Dónde caen. Cambiar el destino recalcula todo lo de abajo. -->
+            <StackPanel Grid.Row="1" Margin="0,0,0,12">
+                <TextBlock Style="{StaticResource Lbl}" Text="{loc:Translate KnowledgeImport.DestLabel}" />
+                <ComboBox x:Name="DestCombo"
+                          AutomationProperties.Name="{loc:Translate KnowledgeImport.DestLabel}" />
+            </StackPanel>
+
+            <!-- 2 · Qué hacer si ahí ya hay una con el mismo nombre. Siempre a la vista: sin choque
+                 queda apagado y el renglón de arriba dice por qué (así el diálogo no cambia de forma
+                 al pasar de un destino a otro). -->
+            <StackPanel Grid.Row="2" Margin="0,0,0,12">
+                <TextBlock x:Name="CollisionText" Style="{StaticResource Body}" Margin="0,0,0,6" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="10" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <RadioButton x:Name="CopyRadio" Grid.Column="0" GroupName="ImportCollision"
+                                 IsChecked="True" Style="{StaticResource Choice}">
+                        <StackPanel>
+                            <TextBlock FontSize="13" FontWeight="SemiBold"
+                                       Text="{loc:Translate KnowledgeImport.CopyTitle}" />
+                            <TextBlock x:Name="CopyDesc" Style="{StaticResource Note}" Margin="0,3,0,0" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="MergeRadio" Grid.Column="2" GroupName="ImportCollision"
+                                 Style="{StaticResource Choice}">
+                        <StackPanel>
+                            <TextBlock FontSize="13" FontWeight="SemiBold"
+                                       Text="{loc:Translate KnowledgeImport.MergeTitle}" />
+                            <TextBlock x:Name="MergeDesc" Style="{StaticResource Note}" Margin="0,3,0,0" />
+                        </StackPanel>
+                    </RadioButton>
+                </Grid>
+            </StackPanel>
+
+            <!-- 3 · Qué va a pasar, en números, según lo elegido arriba. -->
+            <StackPanel Grid.Row="3" Margin="0,0,0,6">
+                <TextBlock Style="{StaticResource Lbl}" Text="{loc:Translate KnowledgeImport.SummaryLabel}" />
+                <TextBlock x:Name="SummaryText" Style="{StaticResource Body}" FontWeight="SemiBold"
+                           AutomationProperties.LiveSetting="Polite" />
+                <TextBlock x:Name="MergeSummaryText" Style="{StaticResource Body}" Margin="0,2,0,0"
+                           Visibility="Collapsed" />
+            </StackPanel>
+
+            <!-- El árbol del archivo, con lo que le pasa a cada biblioteca. Es la única parte que
+                 crece con el archivo: scrollea ADENTRO (virtualizada), y el pie queda siempre a la vista. -->
+            <Border Grid.Row="4" Background="{StaticResource Panel}" CornerRadius="4" Padding="2"
+                    Margin="0,0,0,10" MinHeight="64">
+                <ListBox x:Name="TreeList" Background="Transparent" BorderThickness="0" MaxHeight="210"
+                         ItemTemplate="{StaticResource TreeRowTemplate}"
+                         ItemContainerStyle="{StaticResource TreeRow}"
+                         VirtualizingPanel.IsVirtualizing="True"
+                         VirtualizingPanel.VirtualizationMode="Recycling"
+                         VirtualizingPanel.ScrollUnit="Pixel"
+                         ScrollViewer.CanContentScroll="True"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         AutomationProperties.Name="{loc:Translate KnowledgeImport.TreeLabel}" />
+            </Border>
+
+            <!-- Naturalezas e idiomas: cuáles se crean y cuáles ya estaban. Y lo que NO viaja. -->
+            <StackPanel Grid.Row="5" Margin="0,0,0,12">
+                <TextBlock x:Name="NaturesText" Style="{StaticResource Note}" />
+                <TextBlock x:Name="LanguagesText" Style="{StaticResource Note}" Margin="0,2,0,0" />
+                <TextBlock Style="{StaticResource Note}" Margin="0,6,0,0"
+                           Text="{loc:Translate KnowledgeImport.NoProgress}" />
+            </StackPanel>
+
+            <!-- Pie: avisos + acciones. -->
+            <StackPanel Grid.Row="6">
+                <!-- "No se pudo importar": acá, pegado al botón que lo causó, y con el diálogo abierto
+                     para reintentar o elegir otra cosa. -->
+                <Border x:Name="NoticeBox" Visibility="Collapsed" Margin="0,0,0,10" Padding="10,6"
+                        Background="{StaticResource Panel}" CornerRadius="4" BorderThickness="3,0,0,0"
+                        BorderBrush="{StaticResource ErrorText}">
+                    <TextBlock x:Name="NoticeText" FontSize="13" TextWrapping="Wrap"
+                               AutomationProperties.LiveSetting="Assertive" />
+                </Border>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <!-- Por qué Importar está apagado: A LA VISTA, al lado del botón. -->
+                    <TextBlock x:Name="ReasonText" Grid.Column="0" Style="{StaticResource Note}"
+                               VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button x:Name="ImportBtn" Style="{StaticResource Primary}" Margin="0,0,8,0"
+                                IsDefault="True" Content="{loc:Translate KnowledgeImport.Import}" />
+                        <Button x:Name="CancelBtn" IsCancel="True"
+                                Content="{loc:Translate KnowledgeImport.Cancel}" />
+                    </StackPanel>
+                </Grid>
+
+                <TextBlock Style="{StaticResource Note}" FontSize="11" Margin="0,8,0,0" HorizontalAlignment="Right"
+                           Text="{loc:Translate KnowledgeImport.Keys}" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

@@ -39,6 +39,9 @@ public partial class App : Application
     private Services.Attention.AttentionPipeServer? _attentionPipe;
     private AttentionArrowWindow? _attentionArrow;
     private BrowserPipeServer? _browserPipe;
+    // Biblioteca de conocimiento (tarjetas + vocabulario + repasos). Campo y no local: las ventanas
+    // que la usan (quiz, pestaña de la config) se abren mucho después del arranque.
+    private Knowledge.KnowledgeStore? _knowledge;
     private DispatcherTimer? _overlayDebounce;
     private bool _overlayNeedsShow; // el snapshot no conocía el desk: mostrar tras el refresco
 
@@ -51,6 +54,8 @@ public partial class App : Application
     private DesktopConfig _desktopConfig = new();
     private Apps.AppsConfig _appsConfig = new();
     private ConfigWindow? _configWindow;
+    // El playbooker abierto (NumpadClear). Instancia única, como la config: ver TogglePlaybook.
+    private PlaybookWindow? _playbookWindow;
 
     // La barra. Se guarda porque la config le avisa cambios (la marca) DESPUÉS del arranque, y
     // ShowConfig no la recibe por parámetro.
@@ -117,6 +122,10 @@ public partial class App : Application
         var pins = new PinStore();
         var restrictions = new RestrictionStore();
         var taskSession = new TaskSessionStore(); // tarea activa por desk (efímera, igual que la sesión de espacios)
+        // Abre (o crea y siembra con el ejemplo) knowledge.db. El constructor NUNCA tira: si la base
+        // está dañada o tomada, el store queda degradado y el aviso espera en cola hasta que se
+        // conecte el notificador, más abajo, con la UI ya montada.
+        _knowledge = new Knowledge.KnowledgeStore();
         desktops.ProjectLookup = projects.GetDeskProject;     // el espacio activo sale de la sesión
         desktops.ModuleLookup = projects.GetDeskModuleInfo;   // y su contexto (sub-scope) + color, igual
         Apps.Shell.Desktops = desktops; // ventaneo de terminal POR ESCRITORIO (Win+`, "Abrir con")
@@ -251,6 +260,8 @@ public partial class App : Application
         bar.OnTaskWidgetClicked = () => _router.ShowTaskDetail();
         // Win+NumpadDel abre la MISMA config que el tray (instancia única; si ya está, la trae al frente).
         _router.OpenConfig = () => bar.OpenConfig?.Invoke();
+        // NumpadClear pelado: el playbooker (jugar la biblioteca de conocimiento).
+        _router.TogglePlaybook = TogglePlaybook;
 
         // Widget de atención (dots por desk que reclama). App es el TRADUCTOR: convierte el estado del
         // servicio (Pending: desk→nivel) en lo que la barra pinta (idx + nombre + urgencia + espacio).
@@ -439,6 +450,28 @@ public partial class App : Application
                 Services.Toasts.Error(string.Format(Services.Localization.Loc.T("Toast.DataFileLost"), i.FileName), detail);
         }));
 
+        // Lo mismo para la biblioteca de conocimiento: entrega lo que haya pasado al abrir la base en
+        // el arranque y queda escuchando. El store avisa sólo el PRIMER fallo de cada racha (con la
+        // base caída fallan todas las operaciones; un toast por tecla del quiz sería peor) y vuelve
+        // a avisar si, después de recuperarse, se cae de nuevo.
+        _knowledge.Notify = i => Dispatcher.BeginInvoke(() =>
+        {
+            switch (i.Kind)
+            {
+                case Knowledge.KnowledgeIncidentKind.CorruptMovedAside:
+                    Services.Toasts.Error(Services.Localization.Loc.T("Toast.KnowledgeCorrupt"),
+                        string.Format(Services.Localization.Loc.T("Toast.DataFileMovedAside"), i.Detail));
+                    break;
+                case Knowledge.KnowledgeIncidentKind.CorruptNotMoved:
+                    Services.Toasts.Error(Services.Localization.Loc.T("Toast.KnowledgeCorruptStuck"),
+                        Services.Localization.Loc.T("Toast.DataFileNotMoved"));
+                    break;
+                default:
+                    Services.Toasts.Error(Services.Localization.Loc.T("Toast.KnowledgeUnavailable"), i.Detail);
+                    break;
+            }
+        });
+
         // Caso "app cerrada + click en link": Windows nos lanzó CON la URL y somos la primaria.
         // Ya está todo montado → la abrimos en el navegador real, en el desk actual.
         if (urlArg is not null)
@@ -499,6 +532,34 @@ public partial class App : Application
         args.FirstOrDefault(a => UrlHelper.IsUrl(a) &&
             a.StartsWith("http", StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// NumpadClear pelado. Instancia única con un re-press de DOS caras: en la búsqueda cierra la
+    /// ventana (toggle, como el Shortcuts Helper); en cualquier otro paso —armando, jugando, leyendo
+    /// el resumen— sólo la trae al frente. Un quiz no puede morir por una tecla suelta: la numpad 5
+    /// está justo en el medio del teclado numérico que se usa para navegar.
+    ///
+    /// Corre en el hilo de UI: el router ya difirió al Dispatcher antes de invocar esto.
+    /// </summary>
+    private void TogglePlaybook()
+    {
+        if (_playbookWindow is not null)
+        {
+            if (_playbookWindow.CanCloseOnRepress) _playbookWindow.Close();
+            else _playbookWindow.BringToFront();
+            return;
+        }
+        if (_knowledge is null) return; // sólo antes de terminar de arrancar: no hay hotkeys todavía
+
+        _playbookWindow = new PlaybookWindow(_knowledge);
+        _playbookWindow.Closed += (_, _) => _playbookWindow = null;
+        // NO se cierra al perder el foco: una sesión de estudio tiene que sobrevivir a un Alt+Tab o
+        // a un cambio de escritorio (mismo criterio que la config). Al no estar "armada", tampoco
+        // la cierra el abrir otro modal utilitario encima (ver CloseOtherUtilityWindows). Para la
+        // red anti-foco-huérfano es una utilitaria más: HasFocusedUtilityWindow la cuenta sola
+        // (excluye únicamente barra y overlay), y su Closed pasa por OnUtilityWindowClosed.
+        _playbookWindow.ShowFocused(closeOnDeactivate: false);
+    }
+
     /// <summary>Abre la ventana de configuración (instancia única — si ya está, la trae al frente).</summary>
     private void ShowConfig(DesktopService desktops, ProjectStore projects, RestrictionStore restrictions, PinStore pins, Action onApplied)
     {
@@ -508,7 +569,12 @@ public partial class App : Application
             return;
         }
 
-        _configWindow = new ConfigWindow(_desktopConfig, _appsConfig, desktops, projects, restrictions, pins, onApplied);
+        // La pestaña Conocimiento administra la MISMA base que juega el playbooker. El store se crea
+        // en OnStartup, antes de que exista cualquier forma de llegar acá; el ??= es sólo para que
+        // el compilador (y un orden de arranque futuro) no dependan de eso.
+        _knowledge ??= new Knowledge.KnowledgeStore();
+        _configWindow = new ConfigWindow(_desktopConfig, _appsConfig, desktops, projects, restrictions, pins,
+            _knowledge, onApplied);
         // La marca (PNG + rótulo del extremo izquierdo) se guarda sola desde su pestaña, así que no
         // pasa por onApplied —que es el "Guardar" de Escritorios—: la barra la recarga cuando avisa.
         _configWindow.OnBrandChanged = () => _bar?.ReloadBrand();

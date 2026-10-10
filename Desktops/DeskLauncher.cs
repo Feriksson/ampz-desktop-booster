@@ -39,7 +39,8 @@ public static class DeskLauncher
     /// catálogo de FIJOS (Main/Fixed) y las que ya tiene otro desk dinámico vivo — nunca se pisan dos
     /// destinos con la misma tecla (mismo principio que <see cref="DesktopConfig.ClaimKey"/>).
     /// Sin tecla libre, NO se crea nada (se devuelve <see cref="LauncherOpenResult.NoFreeKey"/>): un
-    /// desk sin atajo de navegación sería un callejón sin salida hasta el DeskPicker.
+    /// desk sin atajo de navegación sería un callejón sin salida (el DeskPicker, que podía
+    /// alcanzarlo igual, hoy no tiene tecla).
     ///
     /// Tras crear, asienta la sesión (espacio+contexto del desk YA es éste, no el de origen) y salta
     /// ahí. NADA MÁS: antes además auto-lanzaba los servicios "levantar todo" del scope, y se RETIRÓ

@@ -1,0 +1,288 @@
+<Window x:Class="AmpzDesktopBooster.KnowledgeEntryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
+        Title="{loc:Translate KnowledgeEntry.WindowTitle}"
+        Width="760" SizeToContent="Height"
+        WindowStyle="None" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False" Topmost="True"
+        Background="#1E1E1E" UseLayoutRounding="True"
+        FontFamily="Segoe UI">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- La ficha de un término puede pasar el alto de la pantalla (un campo por idioma):
+                     el formulario scrollea, con la barra oscura compartida. -->
+                <ResourceDictionary Source="/AmpzDesktopBooster;component/Themes/DarkScrollBar.xaml" />
+                <!-- Paleta, botones y combo de sólo-elegir: los comparte con el otro diálogo de
+                     la biblioteca de conocimiento (ver el encabezado de ese archivo). -->
+                <ResourceDictionary Source="/AmpzDesktopBooster;component/Themes/KnowledgeDialog.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- Rótulo de campo: SIEMPRE visible arriba del control (nunca un placeholder que se
+                 evapora al tipear). -->
+            <Style x:Key="Lbl" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{StaticResource FgMuted}" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Margin" Value="0,0,0,3" />
+            </Style>
+            <!-- Pista accionable de un campo: una línea, abajo del control. -->
+            <Style x:Key="Hint" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{StaticResource FgMuted}" />
+                <Setter Property="FontSize" Value="11" />
+                <Setter Property="Margin" Value="0,3,0,0" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+            <!-- Error de validación: texto al lado del campo, no sólo un borde rojo. -->
+            <Style x:Key="Err" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{StaticResource ErrorText}" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Margin" Value="0,3,0,0" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="Visibility" Value="Collapsed" />
+            </Style>
+
+            <!-- Campo de texto. Retemplateado para que el foco de teclado sea un borde de acento
+                 (el de WPF por defecto es un azul del sistema que no pertenece a esta paleta) y para
+                 que Tag="invalid" lo marque — siempre ACOMPAÑADO del texto de error de abajo. -->
+            <Style x:Key="Field" TargetType="TextBox">
+                <Setter Property="Background" Value="{StaticResource Input}" />
+                <Setter Property="Foreground" Value="{StaticResource Fg}" />
+                <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+                <Setter Property="CaretBrush" Value="{StaticResource Fg}" />
+                <Setter Property="SelectionBrush" Value="{StaticResource Accent}" />
+                <Setter Property="Padding" Value="6,5" />
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TextBox">
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                    CornerRadius="3">
+                                <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
+                                              Focusable="False" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="Tag" Value="invalid">
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource ErrorText}" />
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <!-- Campo de varias líneas: Enter hace salto de línea (guardar es Ctrl+Enter), el texto
+                 envuelve, y pasado su alto máximo scrollea adentro en vez de estirar el diálogo. -->
+            <Style x:Key="MultiField" TargetType="TextBox" BasedOn="{StaticResource Field}">
+                <Setter Property="AcceptsReturn" Value="True" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+                <Setter Property="VerticalContentAlignment" Value="Top" />
+                <Setter Property="MinHeight" Value="58" />
+                <Setter Property="MaxHeight" Value="150" />
+            </Style>
+
+            <!-- ComboBox EDITABLE oscuro. El template por defecto pinta la caja con el blanco del
+                 sistema, y el retemplateado que usa el resto de la app no trae PART_EditableTextBox
+                 (ahí todos los combos son de sólo-elegir). Acá hace falta ESCRIBIR: una naturaleza o
+                 un tipo de palabra nuevos se crean tipeándolos, sin salir del diálogo. -->
+            <Style x:Key="EditableCombo" TargetType="ComboBox">
+                <Setter Property="IsEditable" Value="True" />
+                <Setter Property="Foreground" Value="{StaticResource Fg}" />
+                <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="MinHeight" Value="32" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ComboBox">
+                            <Grid>
+                                <Border x:Name="Bd" Background="{StaticResource Input}"
+                                        BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                        CornerRadius="3" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="28" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="PART_EditableTextBox" Grid.Column="0"
+                                             Background="Transparent" BorderThickness="0"
+                                             Foreground="{TemplateBinding Foreground}"
+                                             CaretBrush="{StaticResource Fg}"
+                                             SelectionBrush="{StaticResource Accent}"
+                                             Padding="5,4" VerticalContentAlignment="Center"
+                                             FocusVisualStyle="{x:Null}">
+                                        <TextBox.Template>
+                                            <ControlTemplate TargetType="TextBox">
+                                                <ScrollViewer x:Name="PART_ContentHost"
+                                                              Margin="{TemplateBinding Padding}" Focusable="False" />
+                                            </ControlTemplate>
+                                        </TextBox.Template>
+                                    </TextBox>
+                                    <ToggleButton Grid.Column="1" Focusable="False" ClickMode="Press"
+                                                  IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                        <ToggleButton.Template>
+                                            <ControlTemplate TargetType="ToggleButton">
+                                                <Border Background="Transparent">
+                                                    <Path Fill="{StaticResource Fg}" HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center" Data="M 0 0 L 8 0 L 4 5 Z" />
+                                                </Border>
+                                            </ControlTemplate>
+                                        </ToggleButton.Template>
+                                    </ToggleButton>
+                                </Grid>
+                                <Popup x:Name="PART_Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}"
+                                       AllowsTransparency="True" Focusable="False" PopupAnimation="None">
+                                    <Border Background="{StaticResource Input}" BorderBrush="{StaticResource Line}"
+                                            BorderThickness="1" CornerRadius="3"
+                                            MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
+                                        <ScrollViewer MaxHeight="240">
+                                            <ItemsPresenter />
+                                        </ScrollViewer>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Border BorderBrush="#33FFFFFF" BorderThickness="1" Padding="18,16"
+            TextElement.Foreground="{StaticResource Fg}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Encabezado: qué se está cargando y DÓNDE queda. La biblioteca siempre a la vista: en
+                 la config se salta de una a otra, y sin este renglón se guarda en la equivocada sin
+                 enterarse. -->
+            <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                <TextBlock x:Name="HeaderText" FontSize="16" FontWeight="SemiBold" />
+                <TextBlock x:Name="LibraryText" Style="{StaticResource Lbl}" FontSize="12"
+                           Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
+                <!-- Sólo en la captura rápida del playbooker y con más de una biblioteca: dónde se
+                     guarda. Reemplaza al renglón de arriba (dirían lo mismo). Las opciones son el
+                     camino entero de cada biblioteca, en orden de árbol; tipear salta a la que
+                     empieza así. El margen derecho es el mismo carril que deja el formulario para
+                     su barra de scroll: el selector termina donde terminan los campos. -->
+                <StackPanel x:Name="LibraryPanel" Visibility="Collapsed" Margin="0,8,14,0">
+                    <TextBlock Style="{StaticResource Lbl}" Text="{loc:Translate KnowledgeEntry.FldLibrary}" />
+                    <ComboBox x:Name="LibraryCombo" Style="{StaticResource SelectCombo}"
+                              AutomationProperties.Name="{loc:Translate KnowledgeEntry.FldLibrary}" />
+                </StackPanel>
+            </StackPanel>
+
+            <!-- El formulario. UN solo scroller: los campos largos no scrollean la ventana, scrollean
+                 adentro de sí mismos pasado su alto máximo. Los botones quedan AFUERA, siempre a la
+                 vista. El margen derecho es el carril de la barra: nada pega contra ella. -->
+            <ScrollViewer x:Name="FormScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                <StackPanel Margin="0,0,14,0">
+                    <!-- Frente (tarjeta) / Término (palabra). El rótulo lo pone el code-behind. -->
+                    <TextBlock x:Name="FrontLabel" Style="{StaticResource Lbl}" />
+                    <TextBox x:Name="FrontBox" Style="{StaticResource MultiField}" />
+                    <TextBlock x:Name="FrontError" Style="{StaticResource Err}" />
+
+                    <!-- Tipo de palabra: sólo en un término, pegado a la palabra que describe. -->
+                    <StackPanel x:Name="WordTypePanel" Margin="0,12,0,0" Visibility="Collapsed">
+                        <TextBlock Style="{StaticResource Lbl}" Text="{loc:Translate KnowledgeEntry.FldWordType}" />
+                        <ComboBox x:Name="WordTypeCombo" Style="{StaticResource EditableCombo}"
+                                  AutomationProperties.Name="{loc:Translate KnowledgeEntry.FldWordType}" />
+                        <TextBlock Style="{StaticResource Hint}" Text="{loc:Translate KnowledgeEntry.WordTypeHint}" />
+                    </StackPanel>
+
+                    <!-- Dorso (tarjeta) / Definición (término). -->
+                    <TextBlock x:Name="BackLabel" Style="{StaticResource Lbl}" Margin="0,12,0,3" />
+                    <TextBox x:Name="BackBox" Style="{StaticResource MultiField}" MinHeight="96" MaxHeight="220" />
+                    <TextBlock x:Name="BackError" Style="{StaticResource Err}" />
+
+                    <!-- El resto de la ficha de un término. -->
+                    <StackPanel x:Name="TermPanel" Visibility="Collapsed">
+                        <TextBlock Style="{StaticResource Lbl}" Margin="0,14,0,5" FontWeight="SemiBold"
+                                   Text="{loc:Translate KnowledgeEntry.FldTranslations}" />
+                        <!-- Un campo por idioma de la lista. Las filas las arma el code-behind: la
+                             lista de idiomas es del usuario y crece. -->
+                        <StackPanel x:Name="TranslationsPanel" />
+                        <TextBlock x:Name="NoLanguagesText" Style="{StaticResource Hint}" Margin="0,0,0,6"
+                                   Text="{loc:Translate KnowledgeEntry.NoLanguages}" Visibility="Collapsed" />
+                        <Button x:Name="AddLanguageBtn" HorizontalAlignment="Left" Padding="10,4"
+                                Content="{loc:Translate KnowledgeEntry.AddLanguage}" />
+
+                        <TextBlock Style="{StaticResource Lbl}" Margin="0,14,0,3"
+                                   Text="{loc:Translate KnowledgeEntry.FldUsage}" />
+                        <TextBox x:Name="UsageBox" Style="{StaticResource MultiField}"
+                                 AutomationProperties.Name="{loc:Translate KnowledgeEntry.FldUsage}" />
+
+                        <TextBlock Style="{StaticResource Lbl}" Margin="0,12,0,3"
+                                   Text="{loc:Translate KnowledgeEntry.FldOrigin}" />
+                        <TextBox x:Name="OriginBox" Style="{StaticResource MultiField}"
+                                 AutomationProperties.Name="{loc:Translate KnowledgeEntry.FldOrigin}" />
+                    </StackPanel>
+
+                    <!-- Naturaleza: la primera opción es "heredar", con el valor que REALMENTE hereda. -->
+                    <TextBlock Style="{StaticResource Lbl}" Margin="0,12,0,3"
+                               Text="{loc:Translate KnowledgeEntry.FldNature}" />
+                    <ComboBox x:Name="NatureCombo" Style="{StaticResource EditableCombo}"
+                              AutomationProperties.Name="{loc:Translate KnowledgeEntry.FldNature}" />
+                    <TextBlock Style="{StaticResource Hint}" Text="{loc:Translate KnowledgeEntry.NatureHint}" />
+
+                    <TextBlock Style="{StaticResource Hint}" Margin="0,12,0,2"
+                               Text="{loc:Translate KnowledgeEntry.RequiredLegend}" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Pie: avisos + acciones. Fuera del scroll, siempre visible. -->
+            <!-- Mismo margen derecho que el formulario: los botones terminan donde terminan los campos. -->
+            <StackPanel Grid.Row="2" Margin="0,12,14,0">
+                <!-- "Guardada, cargá la siguiente" / "no se pudo guardar". Vive acá, pegado a los
+                     botones que lo causaron. -->
+                <Border x:Name="NoticeBox" Visibility="Collapsed" Margin="0,0,0,10" Padding="10,6"
+                        Background="#161616" CornerRadius="4" BorderThickness="3,0,0,0"
+                        BorderBrush="{StaticResource Accent}">
+                    <TextBlock x:Name="NoticeText" FontSize="13" TextWrapping="Wrap" />
+                </Border>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <!-- Por qué Guardar está apagado: A LA VISTA, al lado del botón. Un botón gris sin
+                         explicación se lee igual que uno roto. -->
+                    <TextBlock x:Name="ReasonText" Grid.Column="0" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{StaticResource FgMuted}" VerticalAlignment="Center"
+                               Margin="0,0,12,0" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button x:Name="SaveBtn" Style="{StaticResource Primary}" Margin="0,0,8,0"
+                                Content="{loc:Translate KnowledgeEntry.Save}" />
+                        <Button x:Name="SaveNewBtn" Margin="0,0,8,0"
+                                Content="{loc:Translate KnowledgeEntry.SaveAndNew}" />
+                        <Button x:Name="CancelBtn" Content="{loc:Translate KnowledgeEntry.Cancel}" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- Las teclas, siempre dichas: ningún atajo es un secreto. -->
+                <TextBlock x:Name="KeysText" Style="{StaticResource Hint}" Margin="0,8,0,0"
+                           HorizontalAlignment="Right" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>
