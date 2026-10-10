@@ -342,10 +342,6 @@ public partial class App : Application
 
         // Una sola fuente de verdad para el feedback: el cambio de desktop (venga de donde venga)
         // actualiza el widget de la barra (inmediato) y dispara el overlay (debounced).
-        // Semilla del historial de navegación: sin esto, el PRIMER cambio de desk hecho por fuera
-        // de la app (Win+Ctrl+Flechas apenas arrancás) no tendría de dónde venir y el toggle de
-        // vuelta quedaría mudo hasta el segundo salto.
-        desktops.NoteCurrent(desktops.Current);
 
         // Watchdog en caliente: self-heal de fijos cerrados por fuera + poda de dinámicos cerrados
         // por fuera. Ver Desktops/DeskWatchdog.cs para el porqué de los dos caminos de detección.
@@ -358,12 +354,6 @@ public partial class App : Application
         _vdListener = new DesktopChangeListener();
         _vdListener.DesktopChanged += idx =>
         {
-            // PRIMERO el historial: este listener es la única vía que ve los cambios que NO pasan
-            // por nosotros (Win+Ctrl+Flechas, taskbar, vista de tareas), y es lo que alimenta el
-            // "volver al anterior" del re-press. NoteCurrent es idempotente, así que cuando el
-            // cambio SÍ salió de un GoTo nuestro (ya registrado, sincrónico) esto es no-op.
-            desktops.NoteCurrent(idx);
-
             bar.EnsurePinned(); // insurance: re-pin por si el del arranque no prendió
             bar.UpdateDesk(desktops.GetName(idx), desktops.GetProject(idx), desktops.GetModule(idx), idx);
             bar.UpdateDeskTask(taskSession.GetDeskTask(idx)); // tarea activa de ESTE desk (o se oculta)

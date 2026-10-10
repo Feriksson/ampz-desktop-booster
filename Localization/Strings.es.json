@@ -586,8 +586,6 @@
   "Helper.AliasDialogTitle": "Alias · ",
   "Helper.AliasDialogLabel": "Alias para mostrar (vacío = process name original):",
   "Helper.GoDeskKey": "Ir al escritorio con esa tecla (fijos: Config → Escritorios · dinámicos: la reparte el launcher)",
-  "Helper.KeyCurrentDesk": "Win + Numpad (desk actual)",
-  "Helper.GoPrevious": "Volver al escritorio anterior (ida y vuelta)",
   "Helper.Services": "Servicios del espacio o global · re-press: levantar lo que falte",
   "Helper.Tasks": "Elegir una tarea para este escritorio",
   "Helper.ShowDesktop": "Mostrar escritorio (minimiza todo menos la barra)",

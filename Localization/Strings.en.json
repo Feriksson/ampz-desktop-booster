@@ -586,8 +586,6 @@
   "Helper.AliasDialogTitle": "Alias · ",
   "Helper.AliasDialogLabel": "Display alias (empty = original process name):",
   "Helper.GoDeskKey": "Go to the desktop with that key (fixed: Config → Desktops · dynamic: assigned by the launcher)",
-  "Helper.KeyCurrentDesk": "Win + Numpad (current desk)",
-  "Helper.GoPrevious": "Back to the previous desktop (toggle)",
   "Helper.Services": "Space or global services · re-press: start what's missing",
   "Helper.Tasks": "Pick a task for this desktop",
   "Helper.ShowDesktop": "Show desktop (minimizes everything but the bar)",

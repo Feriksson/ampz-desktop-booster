@@ -95,48 +95,17 @@ public sealed class DesktopService
         VirtualDesktopAccessor.SetDesktopName(index, buf);
     }
 
-    // ── Historial de UN paso: "el desk de donde vengo" ────────────────────────────────────────
-    // Alimenta el TOGGLE de vuelta (re-press del atajo del desk activo → volvés al anterior).
-    // Es UNO solo y GLOBAL, no uno por desk: el modelo mental es el del Alt+Tab (ir y volver entre
-    // DOS lugares), no un stack de navegación. Un "anterior" por desk suena más completo y en la
-    // práctica confunde — te llevaría a un desk donde estuviste hace media hora, no al que acabás
-    // de dejar, que es el ÚNICO que tenés en la cabeza cuando apretás para volver.
-    private int _previous = -1;
-    private int _lastKnown = -1; // dónde creemos estar; permite detectar el cambio y correr el previo
-
-    /// <summary>Desktop del que venimos (-1 si todavía no hubo ningún cambio en esta sesión).</summary>
-    public int Previous => _previous;
-
-    /// <summary>
-    /// Registra que AHORA estamos en <paramref name="index"/>, corriendo el anterior. Idempotente
-    /// a propósito: lo llaman DOS caminos que se solapan — el <see cref="GoTo"/> (sincrónico, lo que
-    /// hace que el re-press rafagueado lea un historial ya actualizado) y el DesktopChangeListener
-    /// (asincrónico, la DLL postea el mensaje) que cubre TODO lo que no pasa por nosotros:
-    /// Win+Ctrl+Flechas, la taskbar, la vista de tareas. Sin el segundo camino el "volver" te
-    /// mandaría a un desk fantasma; sin el primero, una ráfaga leería el historial viejo.
-    /// </summary>
-    public void NoteCurrent(int index)
-    {
-        if (index < 0 || index == _lastKnown) return;
-        if (_lastKnown >= 0) _previous = _lastKnown;
-        _lastKnown = index;
-    }
+    // Acá vivió un historial de UN paso ("el desk de donde vengo") que alimentaba el re-press →
+    // volver al anterior. Se retiró junto con ese atajo (ver HotkeyRouter): sin consumidor era
+    // estado muerto que había que mantener sincronizado desde cinco lugares.
 
     /// <summary>Navega al desktop por índice (no-op si ya estamos ahí). false si el índice no existe.</summary>
     public bool GoTo(int index)
     {
         if (index < 0 || index >= Count) return false;
 
-        int from = Current;
-        if (from != index)
-        {
-            // Re-sincronizamos con la REALIDAD antes de saltar: si nos perdimos un cambio (por una
-            // notificación de la DLL que todavía no llegó), _lastKnown estaría desfasado y el
-            // "anterior" quedaría apuntando a un desk que ya no es de donde venimos.
-            NoteCurrent(from);
+        if (Current != index)
             VirtualDesktopAccessor.GoToDesktopNumber(index);
-            NoteCurrent(index);
-        }
         return true;
     }
 
@@ -162,11 +131,7 @@ public sealed class DesktopService
 
         VirtualDesktopAccessor.MoveWindowToDesktopNumber(hwnd, idx);
         if (follow)
-        {
-            NoteCurrent(Current); // el "enviar y seguir" TAMBIÉN es un cambio de desk: entra al historial
             VirtualDesktopAccessor.GoToDesktopNumber(idx);
-            NoteCurrent(idx);
-        }
         return true;
     }
 
@@ -182,11 +147,7 @@ public sealed class DesktopService
         if (hwnd == IntPtr.Zero || index < 0 || index >= Count) return false;
         VirtualDesktopAccessor.MoveWindowToDesktopNumber(hwnd, index);
         if (follow)
-        {
-            NoteCurrent(Current); // idem: seguir a la ventana deja el desk de origen como "anterior"
             VirtualDesktopAccessor.GoToDesktopNumber(index);
-            NoteCurrent(index);
-        }
         return true;
     }
 
@@ -246,7 +207,6 @@ public sealed class DesktopService
         if (index < 0 || index >= Count || fallbackIndex < 0 || fallbackIndex >= Count || index == fallbackIndex)
             return;
         VirtualDesktopAccessor.RemoveDesktop(index, fallbackIndex);
-        DesktopRemoved?.Invoke(index); // re-alinea la sesión ANTES de tocar el historial de navegación
-        NoteCurrent(Current); // el borrado cambia el desk activo por debajo; resincronizamos el historial
+        DesktopRemoved?.Invoke(index); // re-alinea la sesión índice-keyed (ver el evento)
     }
 }
