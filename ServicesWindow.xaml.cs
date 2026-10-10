@@ -43,8 +43,8 @@ namespace AmpzDesktopBooster;
 /// COLUMNAS Y BÚSQUEDA: el mismo rediseño que Variables. Cada fila dice su Espacio ("GLOBAL" o el
 /// nombre) y su Contexto (con su color), así que los viejos rótulos "Heredados de X" se fueron: la
 /// columna ya dice de quién es cada fila. Queda UN solo divisor, el de "otros espacios", que aparece
-/// con el toggle Ctrl+P o SOLO al tipear un filtro parado en la GLOBAL (desde ahí "¿dónde tenía el
-/// comando del worker?" no tiene un scope propio donde buscar). Las filas de otros espacios son de
+/// con el toggle Ctrl+P o SOLO al tipear un filtro. Parado en la GLOBAL el toggle ya arranca ON (desde
+/// ahí "¿dónde tenía el comando del worker?" no tiene un scope propio donde buscar). Las filas de otros espacios son de
 /// solo-lectura con la MISMA regla que las heredadas: se lanzan/visitan/copian, no se editan.
 ///
 /// URLs: una entrada puede declarar además una URL (<c>ServiceEntry.Url</c>) que se abre cuando el
@@ -173,7 +173,10 @@ public partial class ServicesWindow : Window
     private readonly ServicePool? _globalPool;
     private readonly IReadOnlyList<ServicePool> _otherPools; // los demás espacios/contextos (Ctrl+P), read-only
     private readonly ProjectStore? _store;                   // color del contexto + scope a elegir en el alta
-    /// <summary>Toggle "otros espacios". OFF por default: arrancás en TU scope y te abrís al resto a pedido.</summary>
+    /// <summary>
+    /// Toggle "otros espacios". OFF por default en un espacio/contexto (arrancás en TU scope y te abrís
+    /// al resto a pedido); ON de entrada parado en la GLOBAL — ver el constructor.
+    /// </summary>
     private bool _showAllProjects;
     private readonly ObservableCollection<Row> _rows = new();
     private readonly DispatcherTimer _statusTimer;
@@ -225,6 +228,12 @@ public partial class ServicesWindow : Window
         SubHeaderText.Text = _networkIp is null
             ? $"{deskName}    ·    {Loc.T("Services.NoNetwork")}"
             : $"{deskName}    ·    {string.Format(Loc.T("Services.NetworkIp"), _networkIp)}";
+
+        // Parado en la GLOBAL arrancás con "otros espacios" ya ON: ahí no hay un scope propio que
+        // proteger del ruido, y lo que venís a buscar ("¿dónde tenía el comando del worker?") casi
+        // siempre vive en algún espacio. _globalPool null = la pool primaria ES la global (misma
+        // convención que LaunchMissing). En un espacio/contexto sigue OFF: arrancás en lo tuyo.
+        _showAllProjects = _globalPool is null && _otherPools.Count > 0;
 
         // Sin otros espacios con servicios no hay nada que togglear → ocultamos el botón (como Variables).
         AllProjectsBtn.Visibility = _otherPools.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
