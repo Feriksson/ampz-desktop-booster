@@ -245,6 +245,8 @@ public partial class App : Application
 
         // Click en el widget de tarea → el detalle (lo orquesta el router, que tiene la sesión).
         bar.OnTaskWidgetClicked = () => _router.ShowTaskDetail();
+        // Win+NumpadDel abre la MISMA config que el tray (instancia única; si ya está, la trae al frente).
+        _router.OpenConfig = () => bar.OpenConfig?.Invoke();
 
         // Widget de atención (dots por desk que reclama). App es el TRADUCTOR: convierte el estado del
         // servicio (Pending: desk→nivel) en lo que la barra pinta (idx + nombre + urgencia + espacio).
