@@ -143,7 +143,11 @@ public sealed partial class KnowledgeStore
             "ORDER BY parent_id IS NOT NULL, parent_id, sort, id",
             ReadLibrary));
 
-    /// <summary>Alta al FINAL de sus hermanas. <paramref name="parentId"/> null = biblioteca raíz.</summary>
+    /// <summary>
+    /// Alta al FINAL de sus hermanas. <paramref name="parentId"/> null = biblioteca raíz. Dos hermanas
+    /// no pueden llamarse igual (<see cref="KnowledgeOpResult.NameTaken"/>): en la lista serían
+    /// indistinguibles, y combinar una importación "por nombre" no sabría a cuál de las dos sumarle.
+    /// </summary>
     public KnowledgeOpResult CreateLibrary(string name, long? parentId, long? defaultNatureId, out long id)
     {
         name = (name ?? "").Trim();
@@ -153,6 +157,7 @@ public sealed partial class KnowledgeStore
         var (result, newId) = Write((KnowledgeOpResult.Failed, 0L), (c, tx) =>
         {
             if (parentId is { } p && !Exists(c, tx, "libraries", p)) return (KnowledgeOpResult.NotFound, 0L);
+            if (SiblingNameTaken(c, tx, parentId, name, exceptId: null)) return (KnowledgeOpResult.NameTaken, 0L);
             long created = InsertLibrary(c, tx, name, parentId, ExistingOrNull(c, tx, "natures", defaultNatureId));
             return (KnowledgeOpResult.Ok, created);
         });
@@ -165,28 +170,44 @@ public sealed partial class KnowledgeStore
         name = (name ?? "").Trim();
         if (name == "") return KnowledgeOpResult.EmptyName;
         return Write(KnowledgeOpResult.Failed, (c, tx) =>
-            Execute(c, tx, "UPDATE libraries SET name = $n WHERE id = $id", ("$n", name), ("$id", id)) > 0
-                ? KnowledgeOpResult.Ok
-                : KnowledgeOpResult.NotFound);
+        {
+            var current = Query(c, tx, "SELECT parent_id, name FROM libraries WHERE id = $id",
+                r => (Parent: NullableLong(r, 0), Name: r.GetString(1)), ("$id", id));
+            if (current.Count == 0) return KnowledgeOpResult.NotFound;
+
+            // Quedarse con el nombre que ya tenía (o corregirle sólo la mayúscula) no es un choque,
+            // AUNQUE una hermana se llame igual: una base anterior a esta regla puede traer homónimas,
+            // y a ésas no se las castiga por algo que entonces estaba permitido. La regla corta sólo
+            // el paso a un nombre NUEVO que ya usa otra hermana.
+            if (!LibraryTree.SameSiblingName(current[0].Name, name)
+                && SiblingNameTaken(c, tx, current[0].Parent, name, exceptId: id))
+                return KnowledgeOpResult.NameTaken;
+
+            Execute(c, tx, "UPDATE libraries SET name = $n WHERE id = $id", ("$n", name), ("$id", id));
+            return KnowledgeOpResult.Ok;
+        });
     }
 
     /// <summary>
     /// Mueve una biblioteca (con todo su subárbol) bajo otra, o a la raíz con null. Meterla dentro de
     /// sí misma o de una descendiente se RECHAZA (<see cref="KnowledgeOpResult.WouldCycle"/>): el
     /// subárbol quedaría colgando de sí mismo, inalcanzable desde la raíz e imposible de borrar.
+    /// Y si en el destino ya hay una con su nombre, también (<see cref="KnowledgeOpResult.NameTaken"/>):
+    /// se renombra una de las dos y recién ahí se mueve — elegir cuál no le toca al store.
     /// </summary>
     public KnowledgeOpResult MoveLibrary(long id, long? newParentId) => Write(KnowledgeOpResult.Failed, (c, tx) =>
     {
-        var current = Query(c, tx, "SELECT parent_id FROM libraries WHERE id = $id",
-            r => r.IsDBNull(0) ? (long?)null : r.GetInt64(0), ("$id", id));
+        var current = Query(c, tx, "SELECT parent_id, name FROM libraries WHERE id = $id",
+            r => (Parent: NullableLong(r, 0), Name: r.GetString(1)), ("$id", id));
         if (current.Count == 0) return KnowledgeOpResult.NotFound;
         if (newParentId == id) return KnowledgeOpResult.WouldCycle;
-        if (current[0] == newParentId) return KnowledgeOpResult.SameTarget;
+        if (current[0].Parent == newParentId) return KnowledgeOpResult.SameTarget;
         if (newParentId is { } p)
         {
             if (!Exists(c, tx, "libraries", p)) return KnowledgeOpResult.NotFound;
             if (DescendantIds(c, tx, id).Contains(p)) return KnowledgeOpResult.WouldCycle;
         }
+        if (SiblingNameTaken(c, tx, newParentId, current[0].Name, exceptId: id)) return KnowledgeOpResult.NameTaken;
         Execute(c, tx, "UPDATE libraries SET parent_id = $p, sort = $s WHERE id = $id",
             ("$p", newParentId), ("$s", NextSort(c, tx, newParentId)), ("$id", id));
         return KnowledgeOpResult.Ok;
@@ -911,6 +932,16 @@ public sealed partial class KnowledgeStore
     private static long NextSort(SqliteConnection c, SqliteTransaction? tx, long? parentId) =>
         Convert.ToInt64(Scalar(c, tx, "SELECT COALESCE(MAX(sort), -1) + 1 FROM libraries WHERE parent_id IS $p",
             ("$p", parentId)), CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// ¿Ya hay, bajo <paramref name="parentId"/> (null = raíz), OTRA biblioteca que se llame así? Se
+    /// consulta DENTRO de la transacción que después escribe: entre la pregunta y la escritura no
+    /// puede colarse nadie. Compara en C# con la regla compartida (<see cref="LibraryTree.SiblingNames"/>)
+    /// y no en SQL, por lo mismo que <see cref="FindNamed"/>: el NOCASE de SQLite sólo pliega ASCII.
+    /// </summary>
+    private static bool SiblingNameTaken(SqliteConnection c, SqliteTransaction? tx, long? parentId, string name, long? exceptId) =>
+        Query(c, tx, "SELECT id, name FROM libraries WHERE parent_id IS $p", r => (Id: r.GetInt64(0), Name: r.GetString(1)), ("$p", parentId))
+            .Any(row => row.Id != exceptId && LibraryTree.SameSiblingName(row.Name, name));
 
     private static long LastId(SqliteConnection c, SqliteTransaction? tx) =>
         Convert.ToInt64(Scalar(c, tx, "SELECT last_insert_rowid()"), CultureInfo.InvariantCulture);

@@ -16,17 +16,10 @@
                 <!-- La ficha de un término puede pasar el alto de la pantalla (un campo por idioma):
                      el formulario scrollea, con la barra oscura compartida. -->
                 <ResourceDictionary Source="/AmpzDesktopBooster;component/Themes/DarkScrollBar.xaml" />
+                <!-- Paleta, botones y combo de sólo-elegir: los comparte con el otro diálogo de
+                     la biblioteca de conocimiento (ver el encabezado de ese archivo). -->
+                <ResourceDictionary Source="/AmpzDesktopBooster;component/Themes/KnowledgeDialog.xaml" />
             </ResourceDictionary.MergedDictionaries>
-
-            <!-- Misma paleta de facto que el diálogo de variables y el playbooker. El rojo de error es
-                 más claro que el "Danger" de los botones (#E5534B): ése, como LETRA sobre este fondo,
-                 queda justo en el límite de 4,5:1; éste da ~6:1. -->
-            <SolidColorBrush x:Key="Fg" Color="#F2F2F2" />
-            <SolidColorBrush x:Key="FgMuted" Color="#9A9A9A" />
-            <SolidColorBrush x:Key="Input" Color="#2A2A2A" />
-            <SolidColorBrush x:Key="Line" Color="#555555" />
-            <SolidColorBrush x:Key="Accent" Color="#4FC3F7" />
-            <SolidColorBrush x:Key="ErrorText" Color="#FF7B72" />
 
             <!-- Rótulo de campo: SIEMPRE visible arriba del control (nunca un placeholder que se
                  evapora al tipear). -->
@@ -93,48 +86,6 @@
                 <Setter Property="VerticalContentAlignment" Value="Top" />
                 <Setter Property="MinHeight" Value="58" />
                 <Setter Property="MaxHeight" Value="150" />
-            </Style>
-
-            <Style TargetType="Button">
-                <Setter Property="Background" Value="{StaticResource Input}" />
-                <Setter Property="Foreground" Value="{StaticResource Fg}" />
-                <Setter Property="BorderBrush" Value="{StaticResource Line}" />
-                <Setter Property="FontSize" Value="13" />
-                <Setter Property="Padding" Value="12,6" />
-                <Setter Property="MinWidth" Value="96" />
-                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="Button">
-                            <!-- El borde mide SIEMPRE 2px: el anillo de foco no corre el contenido. -->
-                            <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="2"
-                                    CornerRadius="5" Padding="{TemplateBinding Padding}">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Border>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#8A8A8A" />
-                                </Trigger>
-                                <Trigger Property="IsKeyboardFocused" Value="True">
-                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#FFFFFF" />
-                                </Trigger>
-                                <Trigger Property="IsEnabled" Value="False">
-                                    <Setter TargetName="Bd" Property="Opacity" Value="0.4" />
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
-            <!-- La acción principal: relleno de acento con letra oscura (mismo par que el "Guardar" de
-                 la config). El foco de teclado es un borde BLANCO: sobre el relleno celeste, un anillo
-                 celeste no se vería. -->
-            <Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                <Setter Property="Background" Value="{StaticResource Accent}" />
-                <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
-                <Setter Property="Foreground" Value="#10222A" />
-                <Setter Property="FontWeight" Value="SemiBold" />
             </Style>
 
             <!-- ComboBox EDITABLE oscuro. El template por defecto pinta la caja con el blanco del
@@ -208,28 +159,6 @@
                 </Setter>
             </Style>
 
-            <Style TargetType="ComboBoxItem">
-                <Setter Property="Foreground" Value="{StaticResource Fg}" />
-                <Setter Property="Padding" Value="8,5" />
-                <Setter Property="FontSize" Value="13" />
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="ComboBoxItem">
-                            <Border x:Name="bd" Background="Transparent" Padding="{TemplateBinding Padding}">
-                                <ContentPresenter />
-                            </Border>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="bd" Property="Background" Value="#3C3C3C" />
-                                </Trigger>
-                                <Trigger Property="IsHighlighted" Value="True">
-                                    <Setter TargetName="bd" Property="Background" Value="#2D4A57" />
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
         </ResourceDictionary>
     </Window.Resources>
 

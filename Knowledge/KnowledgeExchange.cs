@@ -85,6 +85,8 @@ public enum ExchangeErrorKind
     EmptyLanguageName,
     /// <summary>Más niveles de sub-bibliotecas que <see cref="KnowledgeExchange.MaxDepth"/>.</summary>
     TooDeep,
+    /// <summary>Más entradas, sumando todas las bibliotecas, que <see cref="KnowledgeExchange.MaxEntries"/>.</summary>
+    TooManyEntries,
 }
 
 /// <summary>
@@ -109,12 +111,17 @@ public static class KnowledgeExchange
     /// propio mensaje: leerlo "como se pueda" importaría la mitad sin avisar.</summary>
     public const int FormatVersion = 1;
 
-    // Los dos topes existen porque el archivo es ENTRADA NO CONFIABLE (lo mandó otra persona, o lo
+    // Los tres topes existen porque el archivo es ENTRADA NO CONFIABLE (lo mandó otra persona, o lo
     // editó alguien a mano): se lee entero en memoria y el árbol se recorre con recursión, y ambas
     // cosas corren en el thread de UI. Veinte megas son varios cientos de miles de entradas — muy por
     // encima de cualquier biblioteca real — y treinta y dos niveles no los arma nadie a propósito.
     public const long MaxFileBytes = 20L * 1024 * 1024;
     public const int MaxDepth = 32;
+    // El de entradas no lo cubre el de tamaño: una entrada mínima («{"kind":"card","front":"a"}»)
+    // pesa menos de treinta bytes, así que en veinte megas entran más de medio millón — y cada una
+    // es después una fila insertada y una fila pintada. Doscientas mil ya es diez veces más que
+    // cualquier biblioteca que alguien haya escrito a mano; lo que pase de ahí es un archivo generado.
+    public const int MaxEntries = 200_000;
 
     /// <summary>Separador del camino de una biblioteca en los mensajes (el mismo que usa la config).</summary>
     public const string PathSeparator = " › ";
@@ -230,6 +237,40 @@ public static class KnowledgeExchange
         return clean + "-" + localDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + ".json";
     }
 
+    /// <summary>
+    /// Escribe el archivo exportado de forma ATÓMICA — o queda el de antes entero, o el nuevo entero,
+    /// nunca uno a medias — y SIN dejar nada más en la carpeta: se escribe a un temporal de nombre
+    /// único al lado y se lo mueve encima. Puede tirar (disco lleno, carpeta de sólo lectura): quien
+    /// llama lo atrapa y lo cuenta.
+    ///
+    /// Es propia, y no <c>SafeFile.WriteAllText</c>, a propósito: aquél guarda la versión anterior
+    /// como <c>.bak</c>, que es justo lo que hace falta junto a los datos de la app y justo lo que
+    /// sobra junto a un archivo que el usuario eligió dónde poner (además de pisarle, sin avisar, un
+    /// <c>.bak</c> suyo que ya estuviera ahí).
+    /// </summary>
+    public static void WriteFile(string path, string json)
+    {
+        string? folder = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(folder)) Directory.CreateDirectory(folder);
+
+        string temp = path + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp";
+        try
+        {
+            using (var fs = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                fs.Write(Utf8NoBom.GetBytes(json));
+                fs.Flush(flushToDisk: true); // sin esto el reemplazo puede ganarle a los datos en caché
+            }
+            File.Move(temp, path, overwrite: true);
+        }
+        catch
+        {
+            // Lo único que pudo quedar de este intento es el temporal: se va, y el error sigue viaje.
+            try { File.Delete(temp); } catch { /* si ni eso se puede, no hay más que hacer acá */ }
+            throw;
+        }
+    }
+
     // ── Lectura y validación ─────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -326,21 +367,24 @@ public static class KnowledgeExchange
             : null;
 
         // Las dos formas: `library` (una) y `libraries` (varias). Se aceptan las dos a la vez.
+        // Cuántas entradas van leídas en TODO el archivo: el tope corta en cuanto se pasa, sin
+        // terminar de armar en memoria un árbol que igual se va a rechazar.
+        int entryCount = 0;
         var libraries = new List<ExchangeLibrary>();
         if (root.TryGetProperty("library", out var single) && single.ValueKind != JsonValueKind.Null)
-            libraries.Add(ReadLibrary(single, "", 1, 1));
+            libraries.Add(ReadLibrary(single, "", 1, 1, ref entryCount));
         if (root.TryGetProperty("libraries", out var many) && many.ValueKind != JsonValueKind.Null)
         {
             if (many.ValueKind != JsonValueKind.Array) throw Invalid(new ExchangeError(ExchangeErrorKind.WrongType, Field: "libraries"));
             int position = libraries.Count;
-            foreach (var item in many.EnumerateArray()) libraries.Add(ReadLibrary(item, "", ++position, 1));
+            foreach (var item in many.EnumerateArray()) libraries.Add(ReadLibrary(item, "", ++position, 1, ref entryCount));
         }
         if (libraries.Count == 0) throw Invalid(new ExchangeError(ExchangeErrorKind.NoLibraries));
 
         return new ExchangeDocument(libraries, exportedAt);
     }
 
-    private static ExchangeLibrary ReadLibrary(JsonElement element, string parentPath, int position, int depth)
+    private static ExchangeLibrary ReadLibrary(JsonElement element, string parentPath, int position, int depth, ref int entryCount)
     {
         // Mientras no se sepa el nombre, la biblioteca se señala por su posición entre las hermanas.
         string placeholder = Join(parentPath, "#" + position.ToString(CultureInfo.InvariantCulture));
@@ -358,14 +402,18 @@ public static class KnowledgeExchange
         if (TryGetArray(element, "entries", path, out var entryItems))
         {
             int index = 0;
-            foreach (var item in entryItems.EnumerateArray()) entries.Add(ReadEntry(item, path, ++index));
+            foreach (var item in entryItems.EnumerateArray())
+            {
+                if (++entryCount > MaxEntries) throw Invalid(new ExchangeError(ExchangeErrorKind.TooManyEntries));
+                entries.Add(ReadEntry(item, path, ++index));
+            }
         }
 
         var children = new List<ExchangeLibrary>();
         if (TryGetArray(element, "libraries", path, out var childItems))
         {
             int index = 0;
-            foreach (var item in childItems.EnumerateArray()) children.Add(ReadLibrary(item, path, ++index, depth + 1));
+            foreach (var item in childItems.EnumerateArray()) children.Add(ReadLibrary(item, path, ++index, depth + 1, ref entryCount));
         }
 
         return new ExchangeLibrary(name, defaultNature, entries, children);

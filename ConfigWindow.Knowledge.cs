@@ -463,14 +463,18 @@ public partial class ConfigWindow
     /// Traduce el motivo del store a un mensaje que ORIENTA (mismo contrato que
     /// <see cref="ReportScopeResult"/>): una operación que no puede avanzar nunca se queda muda.
     /// </summary>
-    private bool ReportKnowledgeResult(KnowledgeOpResult result, string subject)
+    private bool ReportKnowledgeResult(KnowledgeOpResult result, string subject, bool library = false)
     {
         if (result == KnowledgeOpResult.Ok) return true;
 
         string message = result switch
         {
             KnowledgeOpResult.EmptyName => Loc.T("Config.KnowledgeErrEmptyName"),
-            KnowledgeOpResult.NameTaken => string.Format(Loc.T("Config.KnowledgeErrNameTaken"), subject),
+            // En una biblioteca el choque es CON SUS HERMANAS, no con toda la lista (como en una
+            // naturaleza o un idioma): el mismo nombre un nivel más arriba o más abajo sí vale, y el
+            // mensaje genérico "ya existe" mandaría a buscar un duplicado que no es el problema.
+            KnowledgeOpResult.NameTaken => string.Format(
+                Loc.T(library ? "Config.KnowledgeErrLibraryNameTaken" : "Config.KnowledgeErrNameTaken"), subject),
             KnowledgeOpResult.SameTarget => Loc.T("Config.KnowledgeErrSameTarget"),
             KnowledgeOpResult.WouldCycle => string.Format(Loc.T("Config.KnowledgeErrWouldCycle"), subject),
             KnowledgeOpResult.NotFound => Loc.T("Config.KnowledgeErrNotFound"),
@@ -496,7 +500,7 @@ public partial class ConfigWindow
             Loc.T("Config.KnowledgeNameLabel"));
         if (name is null) return;
 
-        if (!ReportKnowledgeResult(_knowledge.CreateLibrary(name, parent?.Id, null, out long id), name)) return;
+        if (!ReportKnowledgeResult(_knowledge.CreateLibrary(name, parent?.Id, null, out long id), name.Trim(), library: true)) return;
         RefreshKnowledge(selectLibraryId: id);
         KnLibList.Focus();
     }
@@ -510,7 +514,7 @@ public partial class ConfigWindow
             Loc.T("Config.KnowledgeNameLabel"), library.Name);
         if (name is null || name.Trim() == library.Name) return;
 
-        if (!ReportKnowledgeResult(_knowledge.RenameLibrary(library.Id, name), name)) return;
+        if (!ReportKnowledgeResult(_knowledge.RenameLibrary(library.Id, name), name.Trim(), library: true)) return;
         RefreshKnowledge(selectLibraryId: library.Id);
     }
 
@@ -519,7 +523,7 @@ public partial class ConfigWindow
         var library = SelectedKnLibrary;
         if (library is null || KnLibMoveCombo.SelectedItem is not KnLibraryChoice target) return;
 
-        if (!ReportKnowledgeResult(_knowledge.MoveLibrary(library.Id, target.Id), library.Name)) return;
+        if (!ReportKnowledgeResult(_knowledge.MoveLibrary(library.Id, target.Id), library.Name, library: true)) return;
         RefreshKnowledge(selectLibraryId: library.Id);
     }
 

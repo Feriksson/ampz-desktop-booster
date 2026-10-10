@@ -6,7 +6,6 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 using AmpzDesktopBooster.Knowledge;
-using AmpzDesktopBooster.Persistence;
 using AmpzDesktopBooster.Services.Localization;
 
 namespace AmpzDesktopBooster;
@@ -126,7 +125,10 @@ public partial class ConfigWindow
     {
         try
         {
-            SafeFile.WriteAllText(path, KnowledgeExchange.Serialize(document, asList));
+            // No por SafeFile: ése deja la versión anterior como «archivo.json.bak», que tiene sentido
+            // junto a los datos de la app (es la red de un archivo que se reescribe solo) pero acá
+            // es basura en una carpeta del USUARIO — pisó su exportación porque quiso.
+            KnowledgeExchange.WriteFile(path, KnowledgeExchange.Serialize(document, asList));
         }
         catch (Exception ex)
         {
@@ -230,6 +232,8 @@ public partial class ConfigWindow
             ExchangeErrorKind.UnknownKind => string.Format(Loc.T("Config.KnowledgeImportErrUnknownKind"), error.Detail, where),
             ExchangeErrorKind.EmptyLanguageName => string.Format(Loc.T("Config.KnowledgeImportErrEmptyLanguage"), where),
             ExchangeErrorKind.TooDeep => string.Format(Loc.T("Config.KnowledgeImportErrTooDeep"), max, where),
+            ExchangeErrorKind.TooManyEntries => string.Format(Loc.T("Config.KnowledgeImportErrTooManyEntries"),
+                KnowledgeExchange.MaxEntries.ToString("N0", CultureInfo.CurrentCulture)),
             _ => Loc.T("Config.KnowledgeImportErrNotAnObject"),
         };
 

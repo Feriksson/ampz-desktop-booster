@@ -160,7 +160,7 @@ public sealed partial class KnowledgeStore
     private static List<ExchangeLibrary> MergeSameNamedSiblings(IReadOnlyList<ExchangeLibrary> siblings)
     {
         var merged = new List<ExchangeLibrary>();
-        var indexByName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var indexByName = new Dictionary<string, int>(LibraryTree.SiblingNames);
         foreach (var library in siblings)
         {
             if (indexByName.TryGetValue(library.Name, out int at))
@@ -249,32 +249,32 @@ public sealed partial class KnowledgeStore
                 bool merge = options.Mode == ImportCollisionMode.Merge;
                 var roots = merge ? MergeSameNamedSiblings(document.Libraries) : document.Libraries;
                 var siblings = ChildrenOf(options.DestinationId);
-                // Los nombres tomados en el destino, para elegir el sufijo de una copia. Se le suman
-                // los sufijos que se van dando: dos raíces del archivo que choquen con la misma
-                // biblioteca no pueden recibir las dos "Nombre (2)".
-                var taken = new HashSet<string>(siblings.Select(s => s.Name.Trim()), StringComparer.OrdinalIgnoreCase);
+                // Los nombres tomados en el destino, con la regla de hermanas. Se le suma CADA nombre
+                // que se va dando: dos raíces del archivo que choquen con la misma biblioteca no
+                // pueden recibir las dos "Nombre (2)", y dos raíces del archivo que se llamen igual
+                // ENTRE SÍ tampoco pueden entrar las dos con ese nombre.
+                var taken = new HashSet<string>(siblings.Select(s => s.Name), LibraryTree.SiblingNames);
 
                 foreach (var root in roots)
                 {
                     var existing = FindByName(siblings, root.Name);
-                    if (existing is null)
-                    {
-                        _rootIds.Add(Create(root, options.DestinationId, root.Name, ImportLibraryState.Created, 0));
-                        continue;
-                    }
+                    if (existing is not null) _collisions++; // choque con lo que YA había en el destino
 
-                    _collisions++;
-                    if (merge)
+                    if (existing is not null && merge)
                     {
                         MergeInto(existing.Value.Id, existing.Value.Name, root, 0);
                         _rootIds.Add(existing.Value.Id);
+                        continue;
                     }
-                    else
-                    {
-                        string name = UniqueName(root.Name, taken);
-                        taken.Add(name);
-                        _rootIds.Add(Create(root, options.DestinationId, name, ImportLibraryState.CreatedAsCopy, 0));
-                    }
+
+                    // Libre: entra con su nombre. Tomado (por una del destino o por una hermana del
+                    // mismo archivo que entró antes): entra como copia, con sufijo.
+                    string name = LibraryTree.UniqueSiblingName(root.Name, taken);
+                    taken.Add(name);
+                    var state = LibraryTree.SameSiblingName(name, root.Name)
+                        ? ImportLibraryState.Created
+                        : ImportLibraryState.CreatedAsCopy;
+                    _rootIds.Add(Create(root, options.DestinationId, name, state, 0));
                 }
 
                 return new ImportOutcome(ImportStatus.Ok, "", _lines, _created, _merged, _cards, _terms, _skipped,
@@ -301,8 +301,21 @@ public sealed partial class KnowledgeStore
             }
             _lines[line] = _lines[line] with { Cards = cards, Terms = terms };
 
+            // Debajo de una biblioteca nueva no hay nada en la base contra qué chocar, pero las hijas
+            // del ARCHIVO pueden llamarse igual entre sí (lo exportó una base anterior a la regla, o
+            // se editó a mano). Como copia no se pliega nada — plegar es lo que hace «combinar» —: la
+            // segunda entra con sufijo, igual que una raíz que choca. Así ningún camino de la
+            // importación deja dos hermanas con el mismo nombre.
+            var taken = new HashSet<string>(LibraryTree.SiblingNames);
             foreach (var child in node.Libraries)
-                Create(child, _apply ? id : null, child.Name, ImportLibraryState.Created, depth + 1);
+            {
+                string childName = LibraryTree.UniqueSiblingName(child.Name, taken);
+                taken.Add(childName);
+                var childState = LibraryTree.SameSiblingName(childName, child.Name)
+                    ? ImportLibraryState.Created
+                    : ImportLibraryState.CreatedAsCopy;
+                Create(child, _apply ? id : null, childName, childState, depth + 1);
+            }
             return id;
         }
 
@@ -392,21 +405,13 @@ public sealed partial class KnowledgeStore
         private List<(long Id, string Name)> ChildrenOf(long? parentId) =>
             _children.TryGetValue(parentId ?? 0, out var list) ? list : new List<(long, string)>();
 
-        // Si hay dos hermanas con el mismo nombre (la app lo permite), gana la primera en su orden.
+        // Si hay dos hermanas con el mismo nombre (una base anterior a la regla de nombres únicos
+        // puede traerlas), gana la primera en su orden.
         private static (long Id, string Name)? FindByName(List<(long Id, string Name)> siblings, string name)
         {
             foreach (var sibling in siblings)
-                if (string.Equals(sibling.Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase)) return sibling;
+                if (LibraryTree.SameSiblingName(sibling.Name, name)) return sibling;
             return null;
-        }
-
-        private static string UniqueName(string name, HashSet<string> taken)
-        {
-            for (int n = 2; ; n++)
-            {
-                string candidate = $"{name.Trim()} ({n})";
-                if (!taken.Contains(candidate)) return candidate;
-            }
         }
 
         private static List<string> Sorted(IEnumerable<string> names) =>

@@ -25,6 +25,43 @@ public sealed record Library(long Id, long? ParentId, string Name, long? Default
 public static class LibraryTree
 {
     /// <summary>
+    /// LA regla de "se llaman igual" entre bibliotecas HERMANAS (mismo padre, o las dos raíz): sin los
+    /// espacios de las puntas y sin distinguir mayúsculas. Vive acá, sola, porque la usan cuatro
+    /// caminos que no pueden opinar distinto — crear, renombrar, mover e importar —: si uno comparara
+    /// con otra regla, lo que uno rechaza el otro lo dejaría pasar y volverían las hermanas homónimas.
+    /// Las tildes SÍ cuentan ("Tecnica" y "Técnica" son dos nombres): ante la duda no se le niega un
+    /// nombre a nadie. Es la regla de .NET y no el NOCASE de SQLite, que sólo pliega ASCII.
+    /// </summary>
+    public static readonly IEqualityComparer<string> SiblingNames = new SiblingNameComparer();
+
+    /// <summary>¿Dos hermanas con estos nombres chocarían? (ver <see cref="SiblingNames"/>).</summary>
+    public static bool SameSiblingName(string? a, string? b) => SiblingNames.Equals(a ?? "", b ?? "");
+
+    /// <summary>
+    /// Un nombre que no choque con ninguno de <paramref name="taken"/> (que tiene que comparar con
+    /// <see cref="SiblingNames"/>): el mismo si está libre, o "Nombre (2)", "Nombre (3)"…
+    /// </summary>
+    public static string UniqueSiblingName(string name, ICollection<string> taken)
+    {
+        name = (name ?? "").Trim();
+        if (!taken.Contains(name)) return name;
+        for (int n = 2; ; n++)
+        {
+            string candidate = $"{name} ({n.ToString(CultureInfo.InvariantCulture)})";
+            if (!taken.Contains(candidate)) return candidate;
+        }
+    }
+
+    private sealed class SiblingNameComparer : IEqualityComparer<string>
+    {
+        public bool Equals(string? x, string? y) =>
+            string.Equals((x ?? "").Trim(), (y ?? "").Trim(), StringComparison.OrdinalIgnoreCase);
+
+        public int GetHashCode(string obj) =>
+            StringComparer.OrdinalIgnoreCase.GetHashCode((obj ?? "").Trim());
+    }
+
+    /// <summary>
     /// La naturaleza que una biblioteca les da a sus entradas: la suya, o la de la primera ANCESTRO
     /// que tenga una (subiendo hacia la raíz). null si ninguna de la cadena la define. Es la misma
     /// regla que aplica en SQL <c>KnowledgeStore.GetEntriesByNature</c>: mantenerlas iguales.
@@ -159,7 +196,8 @@ public enum KnowledgeOpResult
     NotFound,
     /// <summary>El nombre quedó vacío después de recortar espacios.</summary>
     EmptyName,
-    /// <summary>Ya hay una naturaleza / un idioma con ese nombre (sin distinguir mayúsculas).</summary>
+    /// <summary>Ya hay una naturaleza / un idioma con ese nombre, o una biblioteca HERMANA (mismo
+    /// nivel) que se llama igual (ver <see cref="LibraryTree.SiblingNames"/>).</summary>
     NameTaken,
     /// <summary>Ya estaba ahí: no hay nada que mover.</summary>
     SameTarget,
