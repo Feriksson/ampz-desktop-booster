@@ -71,8 +71,9 @@ filtrá por `-Name` en vez de `Where-Object { $_... }`).
 5. **`BarWindow`** — la AppBar real (barra inferior) con tray + widget de sistema.
 6. **`WindowGovernor`** — enforcement de pins y restricciones.
 7. **`HotkeyService` + `HotkeyRouter`** — hook global de teclado y su ruteo a acciones.
-8. **`OverlayWindow`** — feedback central, persistente y oculto, con **debounce de 40ms** (al saltar
-   rápido entre desks la DLL postea un mensaje por salto; coalescemos y mostramos solo el final).
+8. **`OverlayWindow`** — feedback central, persistente y oculto. Se pinta **antes** de que el shell
+   quede ocupado con la transición (ver "⚠ El cartel de cambio de escritorio" en Interop): ya NO hay
+   debounce de 40ms ni repintado de confirmación.
 9. **`DesktopChangeListener`** — única fuente de verdad del feedback: cualquier cambio de desktop
    (venga de donde venga) actualiza el widget de la barra y dispara overlay + governor. También
    dispara `DeskWatchdog.CheckNow()` — ver "⚠ self-heal EN CALIENTE" en la sección del catálogo.
@@ -382,7 +383,7 @@ del hook no se puede bloquear).
 | ~~`Win+Numpad` (tecla del desk **donde ya estás**)~~ | **RETIRADO** a pedido del usuario: hacía "volver al desk anterior" (toggle tipo Alt+Tab). Hoy apretar la tecla del desk activo NO hace nada. El historial `DesktopService.NoteCurrent`/`Previous` se borró con él — no lo reintroduzcas. |
 | `Win+Shift+`(navegación) | Enviar la ventana activa a ese desk **y seguirla** |
 | `Win+NumpadEnter` | **Launcher**, usable desde CUALQUIER desk: elegís Espacio (`ProjectSetterWindow`) → encadena el picker de Contexto (`ModulePickerWindow`) → crea un escritorio DINÁMICO nuevo (o salta al que ya lo tenga abierto), lo asigna y salta ahí. **Ya NO auto-lanza sus servicios `AutoStart`** (se retiró a pedido del usuario: abrir un escritorio no dispara procesos solo — se levantan a mano con el re-press de `Win+Numpad +` o `Ctrl+Enter` en Servicios). Ambos pasos MARCAN lo que ya está abierto (leyendo `DynamicDeskStore.CountOpenModules`/`OpenKeyFor`, mismo criterio de comparación que el dedupe): el paso Espacio muestra "● N abiertos" junto a los que tengan algún contexto (o "sin contexto") vivo; el paso Contexto marca cada fila abierta con "● abierto — <tecla>" (reusa `NumpadDecoder.Label`), incluida la opción "Sin contexto". Elegir uno YA abierto no crea nada: `DeskLauncher.Open` dedupea primero y SALTA ahí (`LauncherOpenResult.SwitchedExisting`). **Re-press con el launcher abierto** cierra el picker y, si el desk donde estás parado es uno dinámico, lo BORRA (`RemoveDesktop`, fallback = el Main); en un desk fijo sólo cierra el picker (toast). Ver `DeskLauncher`. |
-| ~~`Win+Numpad .`~~ | **RETIRADO** con la reforma de escritorios dinámicos: el contexto se elige UNA sola vez, en el paso 2 del launcher — cada par espacio+contexto ES su propio desk, no hay "cambiar de contexto en el mismo desk". |
+| `Win+Numpad .` (Del) | Abrir la **Config** (o traerla al frente si ya está abierta; `Esc` la cierra). La tecla quedó libre cuando se RETIRÓ su uso anterior, "cambiar de contexto en el mismo desk": con escritorios dinámicos el contexto se elige UNA sola vez, en el paso 2 del launcher. |
 | `NumpadClear` (Numpad5, **sin Win**) | Abrir el **DeskPicker** (saltar a un espacio de la sesión) |
 | `Win+Numpad *` | **Variables** del espacio/contexto/global (Paths Manager); re-press dispara el predeterminado |
 | `Win+Numpad /` | **Notas** del espacio/contexto/global |
@@ -467,10 +468,31 @@ La build, el parche y el script para regenerarla viven en `native/VirtualDesktop
 
 - **NUNCA declares/llames `RestartVirtualDesktopAccessor`** en caliente: también es use-after-free (crasheó
   al instante bajo cdb). Ver `DesktopChangeListener`.
-- `DesktopChangeListener` mantiene un **poll de 250ms** del desk actual como red: si el shell deja de avisar
-  por lo que sea, la UI no se congela. Y se desuscribe al salir (antes no lo hacía).
+- `DesktopChangeListener` ya **NO hace polling** (se retiró a pedido del usuario; ver la sección de
+  abajo). Se desuscribe al salir (antes no lo hacía).
 - El `Kill()` al final de `App.OnExit` (cuelgue del detach de la DLL en `LdrShutdownProcess`) se mantiene
   aunque la build incluya el fix upstream #110: es inocuo y ya probamos que sin él el proceso queda zombie.
+
+### ⚠ El cartel de cambio de escritorio: consultarle al shell en plena transición BLOQUEA la UI
+
+Síntoma: al cambiar de desk primero cambiaba el fondo y aparecían las apps, y el cartel llegaba después.
+Medido con un log por evento (no teoría): el cartel se pintaba 110–190ms después de nuestro `GoTo`,
+con un timer de 40ms. El thread de UI estaba **trabado**: cualquier consulta a la DLL (nombre del desk,
+pin de la barra, conteo) hecha mientras el shell hace la transición no vuelve hasta que termina.
+
+- **Cambios PROPIOS** (`Win+Numpad`, DeskPicker, launcher): `DesktopService.Switching` se dispara ANTES
+  de `GoToDesktopNumber`; `App` pinta el overlay y fuerza el render (`Dispatcher.Invoke` a prioridad
+  Render). Ese bombeo puede colar otro salto: `_switchSeq` abandona el salto viejo.
+- **Cambios EXTERNOS** (`Win+Ctrl+Flechas`, gestos, vista de tareas): el overlay se pinta en el aviso
+  del shell con `OverlayWindow.ShowCached`, desde un snapshot (`RefreshSnapshot`) y SIN tocar el shell.
+  Barra, governor y watchdog se difieren a prioridad Background, y el trabajo diferido que quedó viejo
+  se descarta (`DesktopChangeListener.LastIndex`).
+- **No reintroduzcas** el polling ni un repintado de confirmación diferido: el segundo pintaba el desk
+  ANTERIOR encima del actual al saltar rápido (CONSOLES → MAIN → CONSOLES).
+- El overlay se pone en blanco antes de ocultarse (`BlankThenHide`): una ventana oculta reaparece con
+  su último cuadro, que siempre es el desk del que venís.
+- El aviso del shell llega siempre (27 de 27 medidos). Las entradas "aviso perdido" del viejo
+  `vd-listener.log` eran falsas alarmas del poll.
 
 ### ⚠ El z-order de la barra ROMPE el hook de teclado — y cómo se arregla (no lo deshagas)
 
