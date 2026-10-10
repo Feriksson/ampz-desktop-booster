@@ -99,13 +99,53 @@ public sealed class DesktopService
     // volver al anterior. Se retiró junto con ese atajo (ver HotkeyRouter): sin consumidor era
     // estado muerto que había que mantener sincronizado desde cinco lugares.
 
+    /// <summary>
+    /// La PROPIA app acaba de saltar a este desk (GoTo o "enviar y seguir"). Existe para no esperar
+    /// el aviso del shell, que llega pero a veces más de 150ms tarde (medido): quien pinta el
+    /// feedback se entera acá, en el acto. <c>App</c> lo cablea al DesktopChangeListener — esta capa
+    /// sigue sin conocer a nadie de arriba.
+    /// </summary>
+    public event Action<int>? Switched;
+
+    /// <summary>
+    /// La app está POR saltar a este desk — todavía no le pidió nada a Windows. Es el momento de
+    /// pintar el feedback (el overlay central).
+    ///
+    /// Por qué ANTES y no después (medido con log el 2026-10-10): apenas se llama a
+    /// GoToDesktopNumber el shell queda ocupado en la transición 110–190ms, y cualquier consulta que
+    /// le hagamos en ese lapso (el nombre del desk, el pin de la barra) BLOQUEA el thread de UI
+    /// hasta que termina. El popup, encolado detrás, salía siempre tarde: primero cambiaba el fondo
+    /// y aparecían las apps, después el cartel. Pintarlo acá, con el shell todavía libre, lo pone
+    /// en pantalla antes de que la transición empiece.
+    /// </summary>
+    public event Action<int>? Switching;
+
+    private int _switchSeq;
+
+    /// <summary>
+    /// Dispara <see cref="Switching"/> y dice si este salto sigue vigente. Quien pinta el feedback
+    /// bombea el dispatcher para que el cuadro salga YA, y en ese bombeo puede colarse OTRO salto
+    /// (una ráfaga de Win+Numpad): ese corre entero adentro del nuestro. Si al volver hay uno más
+    /// nuevo, el nuestro se abandona — si no, terminaríamos en el desk de la tecla VIEJA.
+    /// </summary>
+    private bool AnnounceSwitching(int index)
+    {
+        int seq = ++_switchSeq;
+        Switching?.Invoke(index);
+        return seq == _switchSeq;
+    }
+
     /// <summary>Navega al desktop por índice (no-op si ya estamos ahí). false si el índice no existe.</summary>
     public bool GoTo(int index)
     {
         if (index < 0 || index >= Count) return false;
 
         if (Current != index)
+        {
+            if (!AnnounceSwitching(index)) return true; // otro salto más nuevo ya tomó la posta
             VirtualDesktopAccessor.GoToDesktopNumber(index);
+            Switched?.Invoke(index);
+        }
         return true;
     }
 
@@ -130,8 +170,11 @@ public sealed class DesktopService
         if (Current == idx) return true;
 
         VirtualDesktopAccessor.MoveWindowToDesktopNumber(hwnd, idx);
-        if (follow)
+        if (follow && AnnounceSwitching(idx))
+        {
             VirtualDesktopAccessor.GoToDesktopNumber(idx);
+            Switched?.Invoke(idx);
+        }
         return true;
     }
 
@@ -146,8 +189,11 @@ public sealed class DesktopService
     {
         if (hwnd == IntPtr.Zero || index < 0 || index >= Count) return false;
         VirtualDesktopAccessor.MoveWindowToDesktopNumber(hwnd, index);
-        if (follow)
+        if (follow && AnnounceSwitching(index))
+        {
             VirtualDesktopAccessor.GoToDesktopNumber(index);
+            Switched?.Invoke(index);
+        }
         return true;
     }
 

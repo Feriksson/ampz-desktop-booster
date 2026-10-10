@@ -25,7 +25,7 @@
          TIPOGRAFÍA: Cascadia Mono (viene con Windows 11 / Windows Terminal; Consolas de respaldo).
          WPF no tiene letter-spacing, así que "más espaciada" se resuelve eligiendo una familia de
          paso fijo: cada letra tiene su celda y el nombre se lee de un golpe. -->
-    <Border Background="#F21A1A1A" CornerRadius="16" Padding="56,46" Width="760">
+    <Border x:Name="Card" Background="#F21A1A1A" CornerRadius="16" Padding="56,46" Width="760">
         <StackPanel HorizontalAlignment="Stretch">
 
             <TextBlock x:Name="TitleText"
