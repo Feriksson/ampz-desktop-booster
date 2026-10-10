@@ -479,6 +479,8 @@ public partial class App : Application
         // La marca (PNG + rótulo del extremo izquierdo) se guarda sola desde su pestaña, así que no
         // pasa por onApplied —que es el "Guardar" de Escritorios—: la barra la recarga cuando avisa.
         _configWindow.OnBrandChanged = () => _bar?.ReloadBrand();
+        // Arriba/abajo: se aplica en caliente y lo persiste la barra (dueña única de widgets.json).
+        _configWindow.OnBarDockChanged = top => _bar?.SetDockTop(top);
         _configWindow.Closed += (_, _) => _configWindow = null;
         // Config NO se cierra al perder el foco: es la superficie de trabajo largo (ir y volver de
         // otra app, drag & drop), a diferencia de los modales de un atajo. Ver ShowFocused.

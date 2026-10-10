@@ -1406,6 +1406,20 @@
                               Margin="0,6,0,0" Padding="6,4" FontSize="13" />
                     <TextBlock Text="{loc:Translate General.LanguageHint}" Foreground="{StaticResource FgMuted}"
                                FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap" />
+
+                    <!-- Borde donde se acopla la barra. Se aplica AL INSTANTE (sin Guardar, como el
+                         arranque con Windows): es una preferencia de un solo clic y verla moverse es
+                         la confirmación. -->
+                    <TextBlock Text="{loc:Translate General.BarPosition}" Foreground="{StaticResource Fg}"
+                               FontSize="13" FontWeight="SemiBold" Margin="0,20,0,0" />
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <RadioButton x:Name="BarBottomRadio" GroupName="BarPosition" FontSize="13"
+                                     Content="{loc:Translate General.BarBottom}" Margin="0,0,24,0" />
+                        <RadioButton x:Name="BarTopRadio" GroupName="BarPosition" FontSize="13"
+                                     Content="{loc:Translate General.BarTop}" />
+                    </StackPanel>
+                    <TextBlock Text="{loc:Translate General.BarPositionHint}" Foreground="{StaticResource FgMuted}"
+                               FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap" />
                 </StackPanel>
 
                 <!-- Zona de riesgo -->

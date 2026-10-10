@@ -120,6 +120,15 @@ public partial class ConfigWindow : Window
             AutoStartChk.IsEnabled = true;
         };
 
+        // Posición de la barra. La config sólo LEE widgets.json para pintar el estado: el cambio se lo
+        // pasa a la barra (OnBarDockChanged), que lo aplica en caliente y es la ÚNICA que lo guarda —
+        // ver WidgetSettings.DockTop. Click y no Checked, por lo mismo que el arranque.
+        bool dockTop = WidgetSettings.Load().DockTop;
+        BarTopRadio.IsChecked = dockTop;
+        BarBottomRadio.IsChecked = !dockTop;
+        BarTopRadio.Click += (_, _) => OnBarDockChanged?.Invoke(true);
+        BarBottomRadio.Click += (_, _) => OnBarDockChanged?.Invoke(false);
+
         // ── Pestaña Tareas ──
         // OJO orden: cableamos handlers ANTES de InitTasksTab. Si init seteara SelectedIndex con el
         // handler aún sin enganchar, OnAccountSelectionChanged NUNCA corre → _currentAccount queda
@@ -186,6 +195,12 @@ public partial class ConfigWindow : Window
     /// conoce a la BarWindow, ni tiene por qué).
     /// </summary>
     public Action? OnBrandChanged { get; set; }
+
+    /// <summary>
+    /// El usuario eligió arriba (true) / abajo (false) para la barra. Lo setea App y lo rutea a
+    /// BarWindow.SetDockTop — la config no conoce a la barra.
+    /// </summary>
+    public Action<bool>? OnBarDockChanged { get; set; }
 
     private readonly BrandSettings _brand = BrandSettings.Load();
 

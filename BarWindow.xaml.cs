@@ -86,9 +86,11 @@ public partial class BarWindow : Window
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
         // Recién acá la ventana tiene HWND: registramos la AppBar real.
-        _appBar = new AppBarManager(this, BarHeight);
+        // El borde sale de lo persistido (default abajo) — ver WidgetSettings.DockTop.
+        _appBar = new AppBarManager(this, BarHeight, EdgeFor(_settings.DockTop));
         _appBar.ZOrderChanged = _pendingZOrderChanged; // si App ya lo seteó antes del handle
         _appBar.Register();
+        ApplyDockVisuals();
 
         // Pinear la barra a TODOS los virtual desktops. Sin esto vive sólo en el desktop
         // donde se creó y queda vacía/ausente en los demás (mismo bug que tenía el overlay).
@@ -228,6 +230,36 @@ public partial class BarWindow : Window
 
         FixUpSeparators();
         ApplyBrand();  // su separador depende de si la fecha quedó visible
+    }
+
+    /// <summary>
+    /// La config eligió arriba/abajo. Se aplica EN CALIENTE (el AppBar re-acopla sobre la misma
+    /// registración, sin tocar el cableado de z-order/hook) y se persiste ACÁ, en la instancia de la
+    /// barra: es la única que escribe widgets.json, así un toggle de widget posterior desde el tray
+    /// no pisa la posición con una copia vieja.
+    /// </summary>
+    public void SetDockTop(bool top)
+    {
+        if (_settings.DockTop == top) return;
+        _settings.DockTop = top;
+        _settings.Save();
+        _appBar?.SetEdge(EdgeFor(top));
+        ApplyDockVisuals();
+    }
+
+    private static int EdgeFor(bool top) => top ? Interop.NativeMethods.ABE_TOP : Interop.NativeMethods.ABE_BOTTOM;
+
+    /// <summary>
+    /// Espeja la línea de acento y la sombra para que siempre miren hacia el CONTENIDO de la pantalla:
+    /// con la barra abajo van arriba (como siempre); con la barra arriba, abajo. Sin esto, acoplada
+    /// arriba la línea quedaría pegada al borde físico del monitor, donde no se ve.
+    /// </summary>
+    private void ApplyDockVisuals()
+    {
+        bool top = _settings.DockTop;
+        BarBorder.BorderThickness = top ? new Thickness(0, 0, 0, 1) : new Thickness(0, 1, 0, 0);
+        if (BarBorder.Effect is System.Windows.Media.Effects.DropShadowEffect shadow && !shadow.IsFrozen)
+            shadow.Direction = top ? 90 : 270;
     }
 
     /// <summary>

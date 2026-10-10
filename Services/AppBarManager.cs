@@ -14,7 +14,7 @@ namespace AmpzDesktopBooster.Services;
 public sealed class AppBarManager
 {
     private readonly Window _window;
-    private readonly int _edge;
+    private int _edge; // mutable: el usuario puede re-acoplar la barra en caliente (ver SetEdge)
     private readonly double _barHeightDip;
 
     private IntPtr _hWnd;
@@ -101,15 +101,39 @@ public sealed class AppBarManager
         // 4) SETPOS: confirmamos. Windows reserva el espacio de verdad.
         NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETPOS, ref data);
 
+        // Guardamos el rect reservado ANTES de mover la ventana: WndProc lo usa para revertir
+        // cualquier movimiento ajeno, y cada setter de abajo dispara un WM_WINDOWPOSCHANGING. Si
+        // el rect NUEVO no estuviera ya clavado, el hook "corregiría" nuestro propio movimiento de
+        // vuelta al rect VIEJO (pasa al cambiar de borde, o si cambia la resolución).
+        _lockedRect = data.rc;
+        _hasLockedRect = true;
+
         // 5) Movemos la ventana WPF. OJO: el rect viene en píxeles físicos, WPF trabaja en DIPs → dividimos.
         _window.Left = data.rc.left / dpiScale;
         _window.Top = data.rc.top / dpiScale;
         _window.Width = (data.rc.right - data.rc.left) / dpiScale;
         _window.Height = (data.rc.bottom - data.rc.top) / dpiScale;
+    }
 
-        // Guardamos el rect reservado: WndProc lo usa para revertir cualquier movimiento ajeno.
-        _lockedRect = data.rc;
-        _hasLockedRect = true;
+    /// <summary>
+    /// Re-acopla la barra a otro borde EN CALIENTE (lo pide la config). No hace falta ABM_REMOVE +
+    /// ABM_NEW: el protocolo de AppBar acepta un uEdge distinto en QUERYPOS/SETPOS sobre la misma
+    /// registración (es lo que hace el sample oficial al arrastrar una appbar a otro borde). Así no
+    /// se toca NADA del cableado: el hook del WndProc, el callback, ZOrderChanged y la supresión de
+    /// fullscreen siguen siendo los mismos. Windows recalcula el WorkArea y empuja las ventanas solo.
+    /// </summary>
+    public void SetEdge(int edge)
+    {
+        if (edge == _edge) return;
+        _edge = edge;
+        if (!_registered) return; // todavía sin handle: Register() ya va a usar el borde nuevo
+
+        PositionBar();
+
+        // Red: mover la barra NO debería tocar el z-order, pero cualquier reacomodo de la barra es
+        // sospechoso de cortar la entrega de teclas al hook (ver ApplyZOrder). ReinstallHook es
+        // idempotente, así que re-armarlo de más no cuesta nada; quedarse sin teclado sí.
+        _window.Dispatcher.BeginInvoke(DispatcherPriority.Background, () => ZOrderChanged?.Invoke());
     }
 
     /// <summary>Quitar la AppBar al cerrar. Si no lo hacés, Windows queda con el espacio reservado fantasma.</summary>
