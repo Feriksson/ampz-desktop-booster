@@ -59,6 +59,8 @@ public partial class ConfigWindow
     private IReadOnlyDictionary<long, int> _knNatureLibraryCounts = new Dictionary<long, int>();
     private IReadOnlyDictionary<long, int> _knLanguageTranslationCounts = new Dictionary<long, int>();
     private IReadOnlyDictionary<long, int> _knLanguageReviewCounts = new Dictionary<long, int>();
+    /// <summary>Entradas PROPIAS de cada biblioteca (sin descendientes). La que no aparece tiene cero.</summary>
+    private IReadOnlyDictionary<long, int> _knEntryCounts = new Dictionary<long, int>();
 
     // ── Entradas de la biblioteca elegida ──
     private List<KnEntryRow> _knRows = new();
@@ -178,6 +180,9 @@ public partial class ConfigWindow
         KnLanguageAddBtn.Click += (_, _) => AddKnLanguage();
         KnLanguageRenameBtn.Click += (_, _) => RenameKnLanguage();
         KnLanguageDeleteBtn.Click += (_, _) => DeleteKnLanguage();
+
+        // ── Importar / exportar (ver ConfigWindow.KnowledgeExchange.cs) ──
+        InitKnowledgeExchange();
     }
 
     // ──────────────────────────── Refresco general ────────────────────────────
@@ -204,7 +209,7 @@ public partial class ConfigWindow
         _knNatures = _knowledge.GetNatures().ToList();
         _knNatureNames = _knNatures.ToDictionary(n => n.Id, n => n.Name);
         _knLanguages = _knowledge.GetLanguages().ToList();
-        var entryCounts = _knowledge.GetEntryCountsByLibrary();
+        var entryCounts = _knEntryCounts = _knowledge.GetEntryCountsByLibrary();
         _knNatureEntryCounts = _knowledge.GetEntryCountsByNature();
         _knNatureLibraryCounts = _knowledge.GetLibraryCountsByDefaultNature();
         _knLanguageTranslationCounts = _knowledge.GetTranslationCountsByLanguage();
@@ -443,6 +448,9 @@ public partial class ConfigWindow
         KnLibNatureCombo.IsEnabled = any;
         KnLibNatureBtn.IsEnabled = any && choice is not null && !sameNature;
         KnLibNatureReason.Text = sameNature ? Loc.T("Config.KnowledgeLibNatureSameReason") : "";
+
+        // Lo que exporta «Exportar…» depende de la biblioteca elegida: se recalcula con ella.
+        UpdateKnExchangeScope();
     }
 
     private void OnKnLibListKeyDown(object sender, KeyEventArgs e)

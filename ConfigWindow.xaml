@@ -1598,17 +1598,71 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold"
-                           Text="{loc:Translate Config.KnowledgeTitle}" />
-                <TextBlock Grid.Row="1" Foreground="{StaticResource FgMuted}" FontSize="11"
-                           TextWrapping="Wrap" Margin="0,4,0,10"
-                           Text="{loc:Translate Config.KnowledgeHint}" />
+                <!-- Título + importar / exportar. Van en el ENCABEZADO de la pestaña y no debajo del
+                     árbol por dos motivos: ahí abajo ya viven cuatro botones y dos combos de la
+                     biblioteca elegida, y «Importar…» tiene que estar a mano justo cuando el árbol
+                     está vacío (restaurar un respaldo), que es cuando esos botones se ocultan. -->
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Text="{loc:Translate Config.KnowledgeTitle}" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,0,0"
+                                AutomationProperties.Name="{loc:Translate Config.KnowledgeExchangeGroup}">
+                        <Button x:Name="KnImportBtn" Content="{loc:Translate Config.KnowledgeImport}" MinWidth="96" />
+                        <Button x:Name="KnExportBtn" Content="{loc:Translate Config.KnowledgeExport}" MinWidth="96" />
+                        <Button x:Name="KnExportAllBtn" Content="{loc:Translate Config.KnowledgeExportAll}" MinWidth="96"
+                                Margin="0" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid Grid.Row="1" Margin="0,4,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Foreground="{StaticResource FgMuted}" FontSize="11"
+                               TextWrapping="Wrap" VerticalAlignment="Top"
+                               Text="{loc:Translate Config.KnowledgeHint}" />
+                    <!-- QUÉ se lleva cada exportación (con sus números) o, si están apagadas, por qué.
+                         A la vista, pegado a los botones: un «Exportar…» que no dice de cuál biblioteca
+                         ni cuánto incluye obliga a exportar para enterarse. -->
+                    <TextBlock x:Name="KnExchangeScope" Grid.Column="1" Style="{StaticResource KnReason}"
+                               MaxWidth="460" Margin="24,0,0,0" TextAlignment="Right" VerticalAlignment="Top" />
+                </Grid>
+
+                <!-- Resultado de la última importación / exportación (o por qué no se pudo). Es texto
+                     en la pestaña y no un toast porque lleva una RUTA que hay que poder leer con
+                     calma, y el botón para abrir esa carpeta. Se queda hasta que se cierra o hasta
+                     la próxima operación. -->
+                <Border x:Name="KnExchangeNotice" Grid.Row="2" Visibility="Collapsed" Margin="0,0,0,10"
+                        Padding="10,7" Background="{StaticResource Panel}" CornerRadius="4"
+                        BorderThickness="3,0,0,0" BorderBrush="{StaticResource Accent}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="KnExchangeNoticeText" Grid.Column="0" FontSize="12" TextWrapping="Wrap"
+                                   VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Margin="12,0,0,0">
+                            <Button x:Name="KnExchangeOpenFolderBtn" Visibility="Collapsed"
+                                    Content="{loc:Translate Config.KnowledgeExchangeOpenFolder}" />
+                            <Button x:Name="KnExchangeDismissBtn" Margin="0"
+                                    Content="{loc:Translate Config.KnowledgeExchangeDismiss}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
 
                 <!-- Sub-pestañas con el estilo propio: los implícitos de la ventana son los del sidebar. -->
-                <TabControl x:Name="KnTabs" Grid.Row="2" Style="{StaticResource SubTabControl}">
+                <TabControl x:Name="KnTabs" Grid.Row="3" Style="{StaticResource SubTabControl}">
 
                     <!-- ── Sub-pestaña BIBLIOTECAS: el árbol a la izquierda, sus entradas a la derecha ── -->
                     <TabItem Style="{StaticResource SubTabItem}" Header="{loc:Translate Config.KnowledgeLibrariesTab}">
