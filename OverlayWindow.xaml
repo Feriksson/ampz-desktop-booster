@@ -17,11 +17,20 @@
 
     <!-- Popup central al cambiar de desktop. Orden: título (el ESPACIO en un desk de espacio, el nombre
          en un fijo), chip del contexto justo debajo, y los dots de navegación al final. -->
-    <Border Background="#F21A1A1A" CornerRadius="16" Padding="80,46">
-        <StackPanel HorizontalAlignment="Center">
+    <!-- ANCHO FIJO (pedido explícito): antes la card se medía por el texto y cambiaba de tamaño en
+         cada salto — un popup que "respira" distinto según el nombre del desk se lee como otro
+         popup. Ahora siempre es la misma caja y lo que no entra se corta con "…". El alto sigue
+         libre (con o sin chip de contexto); la ventana sigue en SizeToContent, pero con este Width
+         el contenido ya no puede moverle el ancho.
+         TIPOGRAFÍA: Cascadia Mono (viene con Windows 11 / Windows Terminal; Consolas de respaldo).
+         WPF no tiene letter-spacing, así que "más espaciada" se resuelve eligiendo una familia de
+         paso fijo: cada letra tiene su celda y el nombre se lee de un golpe. -->
+    <Border Background="#F21A1A1A" CornerRadius="16" Padding="56,46" Width="760">
+        <StackPanel HorizontalAlignment="Stretch">
 
             <TextBlock x:Name="TitleText"
-                       FontFamily="Segoe UI" FontSize="42" FontWeight="Bold" Foreground="White"
+                       FontFamily="Cascadia Mono, Consolas, Segoe UI" FontSize="38" FontWeight="SemiBold"
+                       Foreground="White" TextTrimming="CharacterEllipsis" TextAlignment="Center"
                        HorizontalAlignment="Center" />
 
             <!-- Contexto (sub-scope del espacio). Va DEBAJO del espacio (el título), en su propia línea y con su
@@ -33,8 +42,9 @@
                  hace de separador. Mismo dato, distinta necesidad según el contexto. -->
             <Border x:Name="ModuleChip" HorizontalAlignment="Center" Margin="0,30,0,0"
                     CornerRadius="6" Padding="14,5" Background="#14FFFFFF">
-                <TextBlock x:Name="ModuleText" FontFamily="Segoe UI" FontSize="19"
-                           FontWeight="Normal" HorizontalAlignment="Center" />
+                <TextBlock x:Name="ModuleText" FontFamily="Cascadia Mono, Consolas, Segoe UI" FontSize="18"
+                           FontWeight="Normal" TextTrimming="CharacterEllipsis"
+                           HorizontalAlignment="Center" />
             </Border>
 
             <!-- Los dots se generan en código según la cantidad real de desktops. Van AL FINAL: en un
