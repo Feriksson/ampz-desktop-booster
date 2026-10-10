@@ -2384,7 +2384,7 @@ public partial class ConfigWindow : Window
         var entry = a.Entry;
         _projects.GetServicePoolFor(a.ScopeKey)
                  .Add(entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.Url,
-                      entry.AutoStart, entry.CloseOnExit);
+                      entry.AutoStart, entry.CloseOnExit, entry.RunElevated);
         RefreshScopeTree(a.ScopeKey); // ver NewVariable: el árbol salta al scope elegido
     }
 
@@ -2494,7 +2494,7 @@ public partial class ConfigWindow : Window
     /// </summary>
     private static string CmdFingerprint(ServiceEntry e) => ScopeClipboard.Fingerprint(
         e.Title, e.Command, e.WorkDir, e.Port.ToString(), e.Url, e.AutoStart?.ToString() ?? "",
-        e.CloseOnExit.ToString());
+        e.CloseOnExit.ToString(), e.RunElevated.ToString());
 
     private static List<string> CmdFingerprints(IReadOnlyList<ServiceEntry> entries) =>
         entries.Select(CmdFingerprint).ToList();

@@ -38,10 +38,12 @@ public enum LaunchResult
 public static class ServiceLauncher
 {
     /// <summary>
-    /// <paramref name="elevated"/> (acá y en <see cref="LaunchMany"/> / <see cref="LaunchGroupMissing"/>):
-    /// la terminal nace con token de administrador. Es una elección DE LA LANZADA, no del servicio
-    /// — por eso es un parámetro y no un campo de <see cref="ServiceEntry"/>: este launcher sólo la
-    /// transporta hasta <see cref="Shell"/>; de dónde sale (cómo la elige el usuario) lo decide la UI.
+    /// <paramref name="elevated"/> (acá y en <see cref="LaunchMany"/> / <see cref="LaunchGroupMissing"/>)
+    /// es un FORZADO de la lanzada, no la elevación efectiva: la terminal nace con token de
+    /// administrador si el servicio lo pide (<see cref="ServiceEntry.RunElevated"/>, el flag
+    /// persistido) O si esta lanzada lo fuerza (Ctrl+Shift+Enter en la ventana). Se resuelve POR
+    /// SERVICIO en <see cref="Resolve"/>, así que un lote puede salir mixto — "levantar todo" lanza
+    /// elevados los marcados y normal el resto en la misma pasada (<see cref="Shell.RunMany"/> lo parte).
     /// Default false: la app corre elevada y lo que lanza NO debe heredarlo salvo pedido explícito.
     /// </summary>
     public static LaunchResult Launch(ServiceEntry service, bool elevated = false)
@@ -114,7 +116,9 @@ public static class ServiceLauncher
         if (token == TokenResult.NoNetwork) return LaunchResult.NoNetwork;
         if (token == TokenResult.NoPort) return LaunchResult.NoPortToken;
 
-        job = new ShellJob(dir, expanded, service.CloseOnExit, elevated);
+        // El flag del servicio y el forzado de la lanzada se SUMAN: ninguno de los dos puede bajarle
+        // la elevación al otro (forzar nunca des-eleva, y sin forzar manda lo que el servicio declara).
+        job = new ShellJob(dir, expanded, service.CloseOnExit, service.RunElevated || elevated);
         return LaunchResult.Ok;
     }
 

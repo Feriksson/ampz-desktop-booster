@@ -25,6 +25,7 @@ namespace AmpzDesktopBooster;
 /// Sucede al viejo popup de Puertos, que modelaba el PUERTO (la consecuencia) en vez del SERVICIO, y
 /// que sabía decirte si algo corría pero no hacerlo correr. Hoy:
 ///   Enter        → acción primaria: LANZAR (o abrir en el browser si la entrada no tiene comando)
+///   Ctrl+Shift+Enter → la misma acción primaria, pero con la terminal ELEVADA sólo esta vez
 ///   Shift+Enter  → abrir http://localhost:PUERTO en el browser
 ///   Ctrl+Enter   → LEVANTAR TODO lo que falta (los que declaran puerto y no están escuchando)
 ///   Ctrl+N       → alta   ·   F2 → editar los cuatro campos   ·   Supr → borrar
@@ -46,6 +47,11 @@ namespace AmpzDesktopBooster;
 /// con el toggle Ctrl+P o SOLO al tipear un filtro. Parado en la GLOBAL el toggle ya arranca ON (desde
 /// ahí "¿dónde tenía el comando del worker?" no tiene un scope propio donde buscar). Las filas de otros espacios son de
 /// solo-lectura con la MISMA regla que las heredadas: se lanzan/visitan/copian, no se editan.
+///
+/// ELEVACIÓN: por defecto todo se lanza SIN elevar, aunque la app corra elevada. Hay dos formas de
+/// pedir lo contrario y conviven: el flag persistido del comando (<c>ServiceEntry.RunElevated</c>, 🛡
+/// en su columna — vale en toda lanzada, "levantar todo" incluido) y Ctrl+Shift+Enter, que eleva UNA
+/// lanzada de cualquier fila lanzable —también heredadas y de otros espacios— sin tocar el flag.
 ///
 /// URLs: una entrada puede declarar además una URL (<c>ServiceEntry.Url</c>) que se abre cuando el
 /// servicio se lanza y en "levantar todo". Con comando vacío la entrada es SÓLO eso —un enlace que
@@ -99,6 +105,11 @@ public partial class ServicesWindow : Window
         public required bool IsPortDuplicated { get; init; }
         /// <summary>Entra en "levantar todo". Se pinta en la fila para que se lea sin abrir el editor.</summary>
         public required bool AutoStarts { get; init; }
+        /// <summary>
+        /// Su terminal nace ELEVADA en toda lanzada (flag persistido). Ya viene filtrado por "tiene
+        /// comando": sin comando no hay terminal, y pintar el escudo en una fila de sólo URL mentiría.
+        /// </summary>
+        public required bool RunsElevated { get; init; }
 
         private bool _isListening;
         public bool IsListening
@@ -164,6 +175,9 @@ public partial class ServicesWindow : Window
 
         /// <summary>Celda de la columna Auto: ⏩ si entra en "Levantar todo", vacía si no.</summary>
         public string AutoIcon => AutoStarts ? "⏩" : "";
+
+        /// <summary>Celda de la columna Admin: 🛡 si el comando se lanza elevado, vacía si no.</summary>
+        public string ElevatedIcon => RunsElevated ? "🛡" : "";
 
         public event PropertyChangedEventHandler? PropertyChanged;
     }
@@ -247,6 +261,7 @@ public partial class ServicesWindow : Window
         ServiceList.MouseDoubleClick += (_, _) => PrimaryAction();
 
         LaunchBtn.Click += (_, _) => PrimaryAction();
+        LaunchElevatedBtn.Click += (_, _) => PrimaryAction(forceElevated: true);
         VisitBtn.Click += (_, _) => OpenInBrowser();
         LaunchAllBtn.Click += (_, _) => LaunchMissingWithFeedback();
         AddBtn.Click += (_, _) => AddNew();
@@ -276,7 +291,7 @@ public partial class ServicesWindow : Window
     /// star-sizing: sin esto, agrandar la ventana sólo agregaba un hueco a la derecha y el comando
     /// se seguía cortando exactamente igual que antes.
     ///
-    /// Estado y Puerto quedan FIJOS a propósito: uno es un puntito y el otro cuatro dígitos: darles
+    /// Estado, Auto, Admin y Puerto quedan FIJOS a propósito: son un puntito, dos íconos y cuatro dígitos: darles
     /// ancho proporcional sería regalarle a un círculo el espacio que necesita un comando. Espacio
     /// (120) y Contexto también fijas. CONTEXTO va en 240 —el doble, igual que en Variables— por
     /// pedido del usuario: es la columna que se lee para no errarle de contexto (la razón de ser de
@@ -292,7 +307,7 @@ public partial class ServicesWindow : Window
     /// </summary>
     private void LayoutColumns()
     {
-        const double fixedCols = 60 + 50 + 80 + 120 + 240;   // Estado + Auto + Puerto + Espacio + Contexto (ver los Width del XAML)
+        const double fixedCols = 60 + 50 + 50 + 80 + 120 + 240;   // Estado + Auto + Admin + Puerto + Espacio + Contexto (ver los Width del XAML)
         const double chrome = 34 + 4 + 24;  // borde+padding de la ventana, padding del panel, scrollbar
 
         double free = Width - fixedCols - chrome;
@@ -394,6 +409,7 @@ public partial class ServicesWindow : Window
                 IsBroken = IsBrokenDir(e),
                 IsPortDuplicated = e.Port > 0 && duplicated.Contains(e.Port),
                 AutoStarts = ServiceLauncher.IsGroupLaunchable(e),
+                RunsElevated = e.RunElevated && e.Command.Trim() != "",
                 IsListening = e.Port > 0 && listening.Contains(e.Port),
                 Project = project,
                 Module = module,
@@ -423,7 +439,7 @@ public partial class ServicesWindow : Window
     {
         Scope = RowScope.Separator, PoolIndex = -1, Pool = null, Title = text,
         Command = "", WorkDir = "", Port = 0, Url = "", IsBroken = false, AutoStarts = false,
-        IsPortDuplicated = false, Project = "", Module = "",
+        RunsElevated = false, IsPortDuplicated = false, Project = "", Module = "",
         ModuleBrush = System.Windows.Media.Brushes.Transparent,
     };
 
@@ -495,7 +511,12 @@ public partial class ServicesWindow : Window
     ///     TEXTO SELECCIONADO adentro, y Supr sólo si el filtro tiene texto.
     ///   · foco en un BOTÓN → Enter es "apretar ESTE botón". Si lo interceptáramos, tabular hasta
     ///     Borrar y hacer Enter lanzaría el servicio: lo contrario de lo que dice la pantalla.
-    /// Ctrl+Enter y Ctrl+Shift+C sí valen en todos lados: son combos explícitos, no colisionan.
+    /// Ctrl+Enter, Ctrl+Shift+Enter y Ctrl+Shift+C sí valen en todos lados: son combos explícitos,
+    /// no colisionan.
+    ///
+    /// ⚠ ORDEN de los casos de Enter: Ctrl+Shift+Enter va ARRIBA de Ctrl+Enter. El switch toma el
+    /// primer caso que matchea y <c>when Ctrl</c> también es verdadero con Shift apretado — al revés,
+    /// "lanzar elevado" dispararía "levantar todo".
     /// </summary>
     private void OnWindowKeyDown(object sender, KeyEventArgs e)
     {
@@ -509,6 +530,7 @@ public partial class ServicesWindow : Window
 
         switch (e.Key)
         {
+            case Key.Enter when Ctrl && Shift:      PrimaryAction(forceElevated: true); break;
             case Key.Enter when Ctrl:               LaunchMissingWithFeedback(); break;
             case Key.Enter when Shift && !onButton: OpenInBrowser();             break;
             case Key.Enter when !onButton:          PrimaryAction();             break;
@@ -540,17 +562,23 @@ public partial class ServicesWindow : Window
     /// su DEFINICIÓN, que es estable: si sabe cómo levantarse, lo levanta; si no tiene comando —una
     /// entrada de sólo monitoreo— lo único que puede hacer es abrirte el browser. Que dependa de la
     /// definición y no del estado es lo que la hace predecible: la misma fila hace siempre lo mismo.
+    ///
+    /// <paramref name="forceElevated"/> (Ctrl+Shift+Enter / su botón) es el MISMO camino con la
+    /// terminal elevada sólo por esta vez, tenga o no el flag la fila. No es una acción aparte a
+    /// propósito: así vale sobre cualquier fila lanzable (propia, heredada, de otro espacio) y sobre
+    /// la multi-selección sin duplicar una regla. En una fila SIN comando no hay terminal que elevar
+    /// → hace lo de siempre (abrir el browser), que es mejor que un atajo mudo.
     /// </summary>
-    private void PrimaryAction()
+    private void PrimaryAction(bool forceElevated = false)
     {
         var rows = SelectedRows;
-        if (rows.Count > 1) { LaunchRows(rows); return; }
+        if (rows.Count > 1) { LaunchRows(rows, forceElevated); return; }
 
         if (rows.FirstOrDefault() is not { } row) return;
 
         if (row.HasCommand)
         {
-            LaunchRow(row);
+            LaunchRow(row, forceElevated);
             // La URL de la entrada sale junto con su comando, esperando al puerto igual que en el
             // arranque grupal: lanzar el front y abrirle la pantalla es UN gesto, no dos.
             if (row.HasUrl) ServiceUrlOpener.Open(row.Url, row.Port);
@@ -560,12 +588,13 @@ public partial class ServicesWindow : Window
         if (row.HasUrl || row.HasPort) OpenInBrowser();
     }
 
-    private void LaunchRow(Row row)
+    private void LaunchRow(Row row, bool forceElevated = false)
     {
         if (PoolOf(row) is not { } pool) return;
         if (row.PoolIndex < 0 || row.PoolIndex >= pool.Entries.Count) return;
 
-        var result = ServiceLauncher.Launch(pool.Entries[row.PoolIndex]);
+        // El flag persistido de la entry lo suma el launcher: acá sólo viaja el forzado.
+        var result = ServiceLauncher.Launch(pool.Entries[row.PoolIndex], forceElevated);
         if (result == LaunchResult.Ok) return;
 
         MessageBox.Show(LaunchErrorText(result, row), Loc.T("Services.WindowTitle"),
@@ -581,7 +610,7 @@ public partial class ServicesWindow : Window
     /// A diferencia del arranque grupal, acá lo que no pudo arrancar SE AVISA, todo junto en un
     /// solo mensaje: estas filas las elegiste vos.
     /// </summary>
-    private void LaunchRows(List<Row> rows)
+    private void LaunchRows(List<Row> rows, bool forceElevated = false)
     {
         var entries = new List<ServiceEntry>();
         var owner = new Dictionary<ServiceEntry, Row>();
@@ -606,7 +635,7 @@ public partial class ServicesWindow : Window
         }
 
         var failures = new List<(ServiceEntry Service, LaunchResult Result)>();
-        ServiceLauncher.LaunchMany(entries, failures);
+        ServiceLauncher.LaunchMany(entries, failures, forceElevated);
         ServiceUrlOpener.OpenAll(urls);
 
         if (failures.Count == 0) return;
@@ -919,7 +948,7 @@ public partial class ServicesWindow : Window
         var e = a.Entry;
         bool here = _store is null || string.Equals(a.ScopeKey, _pool.Key, StringComparison.OrdinalIgnoreCase);
         var target = here ? _pool : _store!.GetServicePoolFor(a.ScopeKey);
-        target.Add(e.Title, e.Command, e.WorkDir, e.Port, e.Url, e.AutoStart, e.CloseOnExit);
+        target.Add(e.Title, e.Command, e.WorkDir, e.Port, e.Url, e.AutoStart, e.CloseOnExit, e.RunElevated);
         RefreshList();
 
         // En otro espacio/contexto la fila no aparece en esta lista (salvo que sea el padre o la
@@ -940,7 +969,7 @@ public partial class ServicesWindow : Window
                                            _pool.Entries[row.PoolIndex], _ports);
         if (entry is null) return;
         _pool.Update(row.PoolIndex, entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.Url,
-                     entry.AutoStart, entry.CloseOnExit);
+                     entry.AutoStart, entry.CloseOnExit, entry.RunElevated);
         RefreshList();
     }
 

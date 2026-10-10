@@ -42,7 +42,7 @@ public sealed class ServicePool
     public IReadOnlyList<ServiceEntry> Entries => _entries;
 
     public void Add(string title, string command, string workDir, int port, string url,
-                    bool? autoStart = null, bool closeOnExit = false)
+                    bool? autoStart = null, bool closeOnExit = false, bool runElevated = false)
     {
         _entries.Add(new ServiceEntry
         {
@@ -53,6 +53,7 @@ public sealed class ServicePool
             Url = url.Trim(),
             AutoStart = autoStart,
             CloseOnExit = closeOnExit,
+            RunElevated = runElevated,
         });
         _save();
     }
@@ -66,7 +67,7 @@ public sealed class ServicePool
 
     /// <summary>Reescribe una entrada completa (la edición es de todos los campos a la vez, en un diálogo).</summary>
     public void Update(int index, string title, string command, string workDir, int port, string url,
-                       bool? autoStart, bool closeOnExit = false)
+                       bool? autoStart, bool closeOnExit = false, bool runElevated = false)
     {
         if (index < 0 || index >= _entries.Count) return;
         var e = _entries[index];
@@ -77,6 +78,7 @@ public sealed class ServicePool
         e.Url = url.Trim();
         e.AutoStart = autoStart;
         e.CloseOnExit = closeOnExit;
+        e.RunElevated = runElevated;
         _save();
     }
 }
