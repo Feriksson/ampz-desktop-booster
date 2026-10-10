@@ -26,6 +26,8 @@ public partial class App : Application
 {
     private HotkeyService? _hotkeys;
     private HotkeyRouter? _router;
+    // El overlay pinta desde un snapshot; quien cambia nombres/asignaciones lo refresca por acá.
+    private OverlayWindow? _overlay;
     private DesktopChangeListener? _vdListener;
     // Para cerrar los escritorios dinámicos (temporales) en OnExit.
     private DesktopService? _desktops;
@@ -38,7 +40,7 @@ public partial class App : Application
     private AttentionArrowWindow? _attentionArrow;
     private BrowserPipeServer? _browserPipe;
     private DispatcherTimer? _overlayDebounce;
-    private int _pendingOverlayIdx = -1;
+    private bool _overlayNeedsShow; // el snapshot no conocía el desk: mostrar tras el refresco
 
     // Guard de instancia única. El nombre "Global\" lo hace válido entre sesiones del usuario.
     // Si dos instancias corren a la vez tendríamos dos hooks de teclado y dos listeners
@@ -224,6 +226,7 @@ public partial class App : Application
         {
             int c = desktops.Current;
             bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c), desktops.GetModule(c), c);
+            _overlay?.RefreshSnapshot(desktops); // el overlay pinta desde snapshot: mantenerlo al día
         });
         bar.AttachUsage(_usage); // la barra se suscribe y pinta el snapshot apenas llega
         bar.Show();
@@ -238,6 +241,7 @@ public partial class App : Application
         {
             int c = desktops.Current;
             bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c), desktops.GetModule(c), c);
+            _overlay?.RefreshSnapshot(desktops); // el overlay pinta desde snapshot: mantenerlo al día
         },
             taskSession,
             // Refresca el widget de tarea del desk ACTUAL (tras pickear o desanclar).
@@ -330,16 +334,26 @@ public partial class App : Application
 
         // El overlay central — persistente, oculto hasta el primer cambio de desktop.
         var overlay = new OverlayWindow();
+        _overlay = overlay;
+        overlay.RefreshSnapshot(desktops); // semilla: el primer cambio externo ya pinta sin consultar al shell
 
-        // Debounce del overlay: al saltar rápido entre desktops, la DLL postea un mensaje por
-        // cada salto. Sin coalescer, renderizaríamos los intermedios y haría flicker. Esperamos
-        // a que la ráfaga se asiente (~40ms) y mostramos SÓLO el desktop final.
-        _overlayDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
+        // Refresco del snapshot del overlay, cuando el cambio de desk ya se ASENTÓ (400ms después del
+        // último). Acá vivía un debounce de 40ms que además REPINTABA el cartel con el índice que
+        // había quedado pendiente — y con el trabajo de cada cambio diferido, ese repintado podía
+        // correr después de un cambio MÁS NUEVO y pintar el desk anterior encima del actual (visto
+        // por el usuario: CONSOLES → MAIN → CONSOLES; confirmado en el log). El cartel ya se pinta
+        // antes (Switching / ShowCached), así que esto sólo relee nombres con el shell libre. La
+        // única vez que muestra algo es si el snapshot no conocía el desk (creado por fuera).
+        _overlayDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _overlayDebounce.Tick += (_, _) =>
         {
             _overlayDebounce!.Stop();
-            if (_pendingOverlayIdx >= 0)
-                overlay.ShowOverlay(_pendingOverlayIdx, desktops);
+            overlay.RefreshSnapshot(desktops);
+            if (_overlayNeedsShow)
+            {
+                _overlayNeedsShow = false;
+                overlay.ShowCached(_vdListener?.LastIndex ?? -1);
+            }
         };
 
         // Una sola fuente de verdad para el feedback: el cambio de desktop (venga de donde venga)
@@ -351,33 +365,56 @@ public partial class App : Application
         {
             int c = desktops.Current;
             bar.UpdateDesk(desktops.GetName(c), desktops.GetProject(c), desktops.GetModule(c), c);
+            _overlay?.RefreshSnapshot(desktops); // el overlay pinta desde snapshot: mantenerlo al día
         });
 
         _vdListener = new DesktopChangeListener();
         _vdListener.DesktopChanged += idx =>
         {
-            bar.EnsurePinned(); // insurance: re-pin por si el del arranque no prendió
-            bar.UpdateDesk(desktops.GetName(idx), desktops.GetProject(idx), desktops.GetModule(idx), idx);
-            bar.UpdateDeskTask(taskSession.GetDeskTask(idx)); // tarea activa de ESTE desk (o se oculta)
-            _pendingOverlayIdx = idx;
-            _overlayDebounce!.Stop();
-            _overlayDebounce.Start();
-            _governor!.OnDesktopEntered(idx); // aplicar restricciones del desk entrante
-            _attention?.ClearDesk(idx);       // "lo viste, listo": apaga el aviso de atención de este desk
-            // El destello lateral se mata en CUALQUIER cambio de desk, no sólo al llegar al que
-            // reclamaba: apunta "desde donde estás", así que apenas te movés queda desactualizado y
-            // te seguiría empujando al costado cuando ya llegaste (se sentía como "falta uno más").
-            _attentionArrow?.Cancel();
+            // PRIMERO el cartel, desde el snapshot y sin tocar el shell; el resto (barra, governor,
+            // watchdog) se difiere a Background, o sea DESPUÉS del pase de render. Medido: todo lo de
+            // abajo le consulta al shell, que durante la transición no contesta, y con el cartel
+            // encolado detrás llegaba 65–200ms tarde en los cambios hechos por fuera de la app.
+            if (!overlay.ShowCached(idx)) _overlayNeedsShow = true;
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+            {
+                // Trabajo diferido que quedó VIEJO (ya hubo otro cambio de desk): se descarta. El del
+                // cambio más nuevo viene atrás en la cola y es el único que tiene que aplicarse.
+                if (_vdListener?.LastIndex != idx) return;
 
-            // Reacción rápida del watchdog: cualquier cambio de desk es una oportunidad barata de
-            // notar que uno desapareció (ver DeskWatchdog — el timer de abajo cubre lo que NO pasa
-            // por un cambio de desk activo, p.ej. cerrar uno desde Task View sin pararte encima).
-            _watchdog?.CheckNow();
+                bar.EnsurePinned(); // insurance: re-pin por si el del arranque no prendió
+                bar.UpdateDesk(desktops.GetName(idx), desktops.GetProject(idx), desktops.GetModule(idx), idx);
+                bar.UpdateDeskTask(taskSession.GetDeskTask(idx)); // tarea activa de ESTE desk (o se oculta)
+                _overlayDebounce!.Stop();
+                _overlayDebounce.Start();
+                _governor!.OnDesktopEntered(idx); // aplicar restricciones del desk entrante
+                _attention?.ClearDesk(idx);       // "lo viste, listo": apaga el aviso de atención de este desk
+                // El destello lateral se mata en CUALQUIER cambio de desk, no sólo al llegar al que
+                // reclamaba: apunta "desde donde estás", así que apenas te movés queda desactualizado y
+                // te seguiría empujando al costado cuando ya llegaste (se sentía como "falta uno más").
+                _attentionArrow?.Cancel();
+
+                // Reacción rápida del watchdog: cualquier cambio de desk es una oportunidad barata de
+                // notar que uno desapareció (ver DeskWatchdog — el timer de abajo cubre lo que NO pasa
+                // por un cambio de desk activo, p.ej. cerrar uno desde Task View sin pararte encima).
+                _watchdog?.CheckNow();
+            }));
         };
 
         // Los cambios de desk que hace la app se anuncian YA, sin esperar al shell (ver el summary
         // del listener: el aviso llega siempre, pero a veces tarde — eso era el delay del popup).
         desktops.Switched += idx => _vdListener?.NotifyLocalChange(idx);
+
+        // El overlay se pinta ANTES de pedirle el salto a Windows (ver DesktopService.Switching: con
+        // el shell en plena transición el thread de UI se bloquea y el popup llegaba tarde). El
+        // Invoke vacío a prioridad Render fuerza el pase de layout+render ahora, así el cuadro ya
+        // está entregado al compositor cuando GoToDesktopNumber nos frena. El show "oficial" que
+        // dispara después el listener (debounced) repinta lo mismo y sólo reinicia el auto-hide.
+        desktops.Switching += idx =>
+        {
+            overlay.ShowOverlay(idx, desktops);
+            Dispatcher.Invoke(DispatcherPriority.Render, new Action(() => { }));
+        };
 
         _hotkeys.Start();
         _governor.Start();

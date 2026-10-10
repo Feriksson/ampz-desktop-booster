@@ -39,6 +39,9 @@ public sealed class DesktopChangeListener : IDisposable
     private readonly HwndSource _source;
     private int _lastIndex; // último desk ANUNCIADO: dedupe entre el aviso local y el del shell
 
+    /// <summary>Último desk anunciado. Sirve para descartar trabajo diferido que quedó viejo.</summary>
+    public int LastIndex => _lastIndex;
+
     /// <summary>Se dispara con el índice del desktop al que se acaba de cambiar.</summary>
     public event Action<int>? DesktopChanged;
 

@@ -33,7 +33,7 @@ public partial class OverlayWindow : Window
         InitializeComponent();
 
         _hideTimer = new DispatcherTimer { Interval = AutoHide };
-        _hideTimer.Tick += (_, _) => { _hideTimer.Stop(); Hide(); };
+        _hideTimer.Tick += (_, _) => { _hideTimer.Stop(); BlankThenHide(); };
 
         // Auto-corrección del centrado: con SizeToContent la ventana se re-mide cada vez que
         // cambian los textos/dots, y ESTE evento llega con el ancho REAL ya arrangeado (no una
@@ -64,40 +64,110 @@ public partial class OverlayWindow : Window
         try { VirtualDesktopAccessor.PinWindow(hwnd); } catch { }
     }
 
-    /// <summary>Renderiza y muestra el overlay para el desktop dado, y reinicia el auto-hide.</summary>
+    /// <summary>
+    /// Oculta en DOS tiempos: primero deja la card transparente y recién cuando ESE cuadro se pintó
+    /// oculta la ventana.
+    ///
+    /// Por qué: una ventana oculta conserva su último cuadro dibujado, y al volver a mostrarla ese
+    /// cuadro VIEJO se ve un instante antes de que WPF pinte el nuevo. El último cuadro de este
+    /// overlay es siempre el desk del que venís, así que el popup aparecía con el nombre del desk
+    /// ACTUAL y saltaba al del destino — el usuario lo vio y lo rechazó. Se destapó al anunciar los
+    /// cambios propios en el acto: antes el popup salía más tarde y el parpadeo quedaba tapado por
+    /// la transición de Windows. Con el último cuadro en blanco, lo viejo que reaparece no se ve.
+    /// </summary>
+    private void BlankThenHide()
+    {
+        Card.Opacity = 0;
+        int ticket = ++_hideTicket;
+        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+        {
+            // Si entre el blanqueo y este pase entró otro ShowOverlay, ese show manda: no ocultar.
+            if (ticket == _hideTicket) Hide();
+        }));
+    }
+
+    private int _hideTicket; // invalida un ocultado pendiente cuando llega un show nuevo
+
+    /// <summary>
+    /// Lo que el overlay necesita saber de UN desk para pintarse, ya resuelto. Existe para poder
+    /// pintar SIN consultarle nada al shell — ver <see cref="ShowCached"/>.
+    /// </summary>
+    private sealed record DeskView(string Title, bool SpaceTitle, DeskModule Module, Color Active, Color Inactive);
+
+    private DeskView[] _snapshot = Array.Empty<DeskView>();
+
+    /// <summary>
+    /// Relee del shell todo lo que el overlay muestra (un <see cref="DeskView"/> por desk). Hay que
+    /// llamarlo con el shell LIBRE: durante una transición de escritorio cada consulta bloquea el
+    /// thread de UI hasta que termina (medido: 65–200ms), que es justo lo que este snapshot evita.
+    /// </summary>
+    public void RefreshSnapshot(DesktopService desktops)
+    {
+        try
+        {
+            int count = desktops.Count;
+            var views = new DeskView[count];
+            for (int d = 0; d < count; d++)
+            {
+                string name = desktops.GetName(d);
+                // El ROL se pregunta a DeskCatalog (idx-aware: ve los dinámicos), nunca al nombre. Acá
+                // quedaba el viejo name.Contains("DESK") y con los escritorios DINÁMICOS (que se llaman
+                // "Espacio / Contexto") el overlay los tomaba por fijos: escondía espacio y contexto y
+                // mostraba el nombre crudo con la "/" pegada — el mismo error que ya se había corregido
+                // en la barra y que el usuario rechazó.
+                string project = DeskCatalog.IsSpace(name, d) ? desktops.GetProject(d) : "";
+                bool spaceTitle = !string.IsNullOrEmpty(project);
+                // Contexto: sólo tiene sentido con espacio arriba (sin espacio no hay sub-scope posible).
+                var module = spaceTitle ? desktops.GetModule(d) : DeskModule.None;
+                var (active, inactive) = DeskPalette.For(name);
+                // Desk de espacio: el TÍTULO es el espacio en MAYÚSCULAS (pedido explícito: manda la
+                // jerarquía sobre el contexto de abajo). NO se muestra el nombre del desk: ya ES
+                // "Espacio / Contexto", repetirlo arriba sería el dato dos veces.
+                views[d] = new DeskView(spaceTitle ? project.ToUpperInvariant() : name, spaceTitle, module, active, inactive);
+            }
+            _snapshot = views;
+        }
+        catch { /* shell en un estado raro: nos quedamos con el snapshot anterior */ }
+    }
+
+    /// <summary>Relee el estado del shell, muestra el overlay para el desktop dado y reinicia el auto-hide.</summary>
     public void ShowOverlay(int index, DesktopService desktops)
     {
-        int count = desktops.Count;
-        string name = desktops.GetName(index);
-        // El ROL se pregunta a DeskCatalog (idx-aware: ve los dinámicos), nunca al nombre. Acá
-        // quedaba el viejo name.Contains("DESK") y con los escritorios DINÁMICOS (que se llaman
-        // "Espacio / Contexto") el overlay los tomaba por fijos: escondía espacio y contexto y
-        // mostraba el nombre crudo con la "/" pegada — el mismo error que ya se había corregido en
-        // la barra y que el usuario rechazó.
-        string project = DeskCatalog.IsSpace(name, index) ? desktops.GetProject(index) : "";
-        bool spaceTitle = !string.IsNullOrEmpty(project);
+        RefreshSnapshot(desktops);
+        ShowCached(index);
+    }
 
-        // Desk de espacio: el TÍTULO es el espacio (dorado, el acento del rol Space igual que en la
-        // barra) y el contexto va en su chip de color. NO se muestra el nombre del desk: ya ES
-        // "Espacio / Contexto", repetirlo arriba sería el dato dos veces. (La vieja línea dorada del
-        // espacio, que iba debajo de los dots cuando el título era "DESK +N", se retiró del XAML.)
-        // El espacio en MAYÚSCULAS (pedido explícito): manda la jerarquía sobre el contexto de abajo.
-        TitleText.Text = spaceTitle ? project.ToUpperInvariant() : name;
-        TitleText.Foreground = spaceTitle ? SpaceGold : Brushes.White;
+    /// <summary>
+    /// Muestra el overlay para <paramref name="index"/> con lo que ya hay en el snapshot, SIN tocar el
+    /// shell. Es lo que se llama en el instante en que Windows avisa un cambio de escritorio hecho
+    /// por fuera de la app (Win+Ctrl+Flechas, gestos, vista de tareas): ahí el shell sigue en plena
+    /// transición y consultarle el nombre dejaba el cartel 65–200ms atrás del cambio. false si el
+    /// snapshot no conoce ese índice (un desk recién creado por fuera): el show normal lo cubre.
+    /// </summary>
+    public bool ShowCached(int index)
+    {
+        var views = _snapshot;
+        if (index < 0 || index >= views.Length) return false;
+        var view = views[index];
 
-        // Contexto: sólo tiene sentido con espacio arriba (sin espacio no hay sub-scope posible).
-        // El TEXTO va pintado con el color del contexto — es la señal que se percibe de reflejo.
-        var module = string.IsNullOrEmpty(project) ? DeskModule.None : desktops.GetModule(index);
-        if (module.IsSet)
+        _hideTicket++;    // cancela un BlankThenHide a medio camino
+        Card.Opacity = 1;
+
+        // Título dorado en un desk de espacio (el acento del rol Space, igual que en la barra).
+        TitleText.Text = view.Title;
+        TitleText.Foreground = view.SpaceTitle ? SpaceGold : Brushes.White;
+
+        // El TEXTO del contexto va pintado con su color — es la señal que se percibe de reflejo.
+        if (view.Module.IsSet)
         {
-            ModuleText.Text = module.Name;
-            ModuleText.Foreground = new SolidColorBrush(module.Accent);
+            ModuleText.Text = view.Module.Name;
+            ModuleText.Foreground = new SolidColorBrush(view.Module.Accent);
             ModuleChip.Visibility = Visibility.Visible;
         }
         else
             ModuleChip.Visibility = Visibility.Collapsed;
 
-        BuildDots(count, index, desktops);
+        BuildDots(views, index);
 
         // Posicionamiento tentativo ANTES de mostrar, para que no aparezca en 0,0 y salte.
         // OJO: acá el ancho es sólo una ESTIMACIÓN — la primera vez tras el arranque la ventana
@@ -121,6 +191,7 @@ public partial class OverlayWindow : Window
 
         _hideTimer.Stop();
         _hideTimer.Start();
+        return true;
     }
 
     /// <summary>
@@ -136,22 +207,21 @@ public partial class OverlayWindow : Window
         Top = SystemParameters.PrimaryScreenHeight / 2 - 220;
     }
 
-    /// <summary>Un dot por desktop: el activo relleno (⬤) y brillante, el resto huecos (○) apagados.</summary>
-    private void BuildDots(int count, int activeIndex, DesktopService desktops)
+    /// <summary>Un dot por desktop: el activo relleno y brillante, el resto huecos y apagados.</summary>
+    private void BuildDots(DeskView[] views, int activeIndex)
     {
         DotsPanel.Children.Clear();
 
-        for (int d = 0; d < count; d++)
+        for (int d = 0; d < views.Length; d++)
         {
             bool isActive = d == activeIndex;
-            var (active, inactive) = desktops.GetName(d) is var dn ? DeskPalette.For(dn) : default;
 
             DotsPanel.Children.Add(new TextBlock
             {
-                Text = isActive ? "⬤" : "○", // ⬤ / ○
+                Text = isActive ? "\u2B24" : "\u25CB",
                 FontFamily = new FontFamily("Segoe UI"),
                 FontSize = 28,
-                Foreground = new SolidColorBrush(isActive ? active : inactive),
+                Foreground = new SolidColorBrush(isActive ? views[d].Active : views[d].Inactive),
                 Width = DotCellWidth,
                 TextAlignment = TextAlignment.Center,
             });
