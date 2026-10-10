@@ -109,26 +109,104 @@ internal static partial class UnelevatedLauncher
     /// de-elevado sea un <c>cmd.exe</c> intermedio y que ÉL lance la app — Chromium nace como hijo
     /// normal de un proceso que ya tiene integridad media, sin padre "adoptado".
     /// </para>
+    /// <para>
+    /// También es el camino de <c>wt.exe</c> (ver <c>Apps/Shell.cs</c>). HALLAZGO 2026-10-10: lanzado
+    /// DIRECTO con el atributo de padre, el Windows Terminal resultante (y todas sus pestañas de pwsh)
+    /// salía ELEVADO igual. <c>wt.exe</c> es un App Execution Alias y su activación AppX no garantiza
+    /// respetar al padre declarado; con el trampolín el que nace de-elevado es un cmd.exe común y es
+    /// ÉL quien activa el alias, ya con token de integridad media de verdad.
+    /// </para>
+    /// <para>
+    /// La caída al camino elevado dejó de ser MUDA: ese mismo día no se pudo distinguir "el camino
+    /// de-elevado falló y caímos al fallback" de "anduvo pero el alias ignoró al padre", porque el
+    /// <c>catch</c> se tragaba todo. Hoy cada caída deja una línea en <see cref="LogFileName"/>.
+    /// </para>
     /// </summary>
     public static Process? Start(ProcessStartInfo psi, bool viaTrampoline = false)
     {
         if (!ElevationHelper.IsElevated())
             return Process.Start(psi);
 
+        string failure;
         try
         {
             // Con trampolín, el Process devuelto es el cmd efímero, no la app: ningún caller que
             // lo pida lo usa para nada más que "¿arrancó?".
             string commandLine = viaTrampoline ? BuildTrampolineCommandLine(psi) : BuildCommandLine(psi);
-            if (TryStartDeelevated(psi, commandLine, out var proc))
+
+            // cmd.exe corta su línea en 8191 caracteres (CreateProcess banca 32767). Un lote grande
+            // de pestañas con sus comandos en base64 puede pasarse: ahí el trampolín lanzaría un
+            // comando TRUNCADO, que es peor que no usarlo. Se va por el camino directo y se anota,
+            // porque para wt.exe ese camino es justo el que puede terminar elevado.
+            if (viaTrampoline && commandLine.Length > MaxCmdLineLength)
+            {
+                LogFailure(psi.FileName, $"trampolín omitido: la línea de {commandLine.Length} caracteres " +
+                    "supera el límite de cmd.exe → se usa el camino directo (puede nacer ELEVADO si es un alias AppX)");
+                commandLine = BuildCommandLine(psi);
+            }
+
+            if (TryStartDeelevated(psi, commandLine, out var proc, out failure))
                 return proc;
         }
-        catch { /* cualquier fallo del camino nativo → fallback de abajo, ver el summary de la clase */ }
+        catch (Exception ex)
+        {
+            failure = $"excepción {ex.GetType().Name}: {ex.Message}";
+        }
 
         // Fallback CONSCIENTE: el hijo nace elevado (no ideal) pero la acción del usuario SÍ pasa
-        // algo, que es preferible a un botón que no responde.
+        // algo, que es preferible a un botón que no responde. Pero se ANOTA: una regresión de
+        // seguridad silenciosa es la que nadie arregla.
+        LogFailure(psi.FileName, $"{failure} (trampolín={viaTrampoline}) → fallback a Process.Start ELEVADO");
         try { return Process.Start(psi); }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            LogFailure(psi.FileName, $"el fallback elevado TAMBIÉN falló: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
+    }
+
+    // ── Registro de caídas ────────────────────────────────────────────────────
+
+    /// <summary>Nombre del log (en <see cref="Persistence.AppPaths.DataDir"/>) de las caídas al camino elevado.</summary>
+    public const string LogFileName = "unelevated-launch.log";
+
+    // Tope del log. Cada línea es un evento raro (una caída), así que 256 KB son años de uso normal;
+    // el tope existe para el caso patológico (un lazo que falla siempre) y al pasarlo se conserva
+    // sólo la cola, que es lo que importa al diagnosticar.
+    private const long LogMaxBytes = 256 * 1024;
+    private const int LogKeepChars = 64 * 1024;
+
+    // Margen bajo el límite real de cmd.exe (8191), ver Start.
+    private const int MaxCmdLineLength = 8000;
+
+    private static readonly object LogLock = new();
+
+    /// <summary>
+    /// Agrega UNA línea al log de lanzamientos. Jamás tira (regla del repo: la persistencia nunca
+    /// voltea la app): si el disco falla, se pierde la línea y el lanzamiento sigue igual. Es
+    /// <c>internal</c> porque <c>Shell</c> anota acá las negativas de su camino elevado — un solo
+    /// archivo para "qué pasó con el token de lo que lancé".
+    /// </summary>
+    internal static void LogFailure(string fileName, string detail)
+    {
+        try
+        {
+            lock (LogLock)
+            {
+                string path = System.IO.Path.Combine(Persistence.AppPaths.DataDir, LogFileName);
+
+                var info = new System.IO.FileInfo(path);
+                if (info.Exists && info.Length > LogMaxBytes)
+                {
+                    string all = System.IO.File.ReadAllText(path);
+                    System.IO.File.WriteAllText(path, all[^Math.Min(all.Length, LogKeepChars)..]);
+                }
+
+                System.IO.File.AppendAllText(path,
+                    $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} | {fileName} | {detail}{Environment.NewLine}");
+            }
+        }
+        catch { /* sin log seguimos: lo que no puede pasar es que anotar una falla rompa el lanzamiento */ }
     }
 
     /// <summary>
@@ -144,18 +222,37 @@ internal static partial class UnelevatedLauncher
 
     // ── Implementación ────────────────────────────────────────────────────────
 
-    private static bool TryStartDeelevated(ProcessStartInfo psi, string commandLine, out Process? process)
+    /// <summary>
+    /// <paramref name="failure"/> nombra el PASO que falló y su código Win32 — es lo que termina en el
+    /// log. Antes eran cinco <c>return false</c> pelados e indistinguibles entre sí. El código se lee
+    /// PEGADO a la llamada que falló: cualquier P/Invoke posterior (hasta un CloseHandle) lo pisa.
+    /// </summary>
+    private static bool TryStartDeelevated(ProcessStartInfo psi, string commandLine, out Process? process,
+                                           out string failure)
     {
         process = null;
+        failure = "";
 
         IntPtr shellHwnd = GetShellWindow();
-        if (shellHwnd == IntPtr.Zero) return false; // sin shell vivo no hay de quién copiar el token
+        if (shellHwnd == IntPtr.Zero)
+        {
+            failure = "GetShellWindow devolvió 0 (no hay shell vivo de quién copiar el token)";
+            return false;
+        }
 
         GetWindowThreadProcessId(shellHwnd, out uint shellPid);
-        if (shellPid == 0) return false;
+        if (shellPid == 0)
+        {
+            failure = "GetWindowThreadProcessId no resolvió el PID del shell";
+            return false;
+        }
 
         IntPtr hShellProcess = OpenProcess(PROCESS_CREATE_PROCESS | PROCESS_QUERY_LIMITED_INFORMATION, false, shellPid);
-        if (hShellProcess == IntPtr.Zero) return false;
+        if (hShellProcess == IntPtr.Zero)
+        {
+            failure = $"OpenProcess(shell pid {shellPid}) err={Marshal.GetLastWin32Error()}";
+            return false;
+        }
 
         IntPtr attrList = IntPtr.Zero;
         try
@@ -164,12 +261,18 @@ internal static partial class UnelevatedLauncher
             InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref size);
             attrList = Marshal.AllocHGlobal(size);
             if (!InitializeProcThreadAttributeList(attrList, 1, 0, ref size))
+            {
+                failure = $"InitializeProcThreadAttributeList err={Marshal.GetLastWin32Error()}";
                 return false;
+            }
 
             IntPtr parentHandle = hShellProcess;
             if (!UpdateProcThreadAttribute(attrList, 0, (IntPtr)PROC_THREAD_ATTRIBUTE_PARENT_PROCESS,
                     ref parentHandle, (IntPtr)IntPtr.Size, IntPtr.Zero, IntPtr.Zero))
+            {
+                failure = $"UpdateProcThreadAttribute(PARENT_PROCESS) err={Marshal.GetLastWin32Error()}";
                 return false;
+            }
 
             var si = new STARTUPINFOEX
             {
@@ -186,7 +289,11 @@ internal static partial class UnelevatedLauncher
             {
                 bool ok = CreateProcessW(null, commandLine, IntPtr.Zero, IntPtr.Zero, false, flags,
                     envBlock, workingDir, ref si, out var pi);
-                if (!ok) return false;
+                if (!ok)
+                {
+                    failure = $"CreateProcessW err={Marshal.GetLastWin32Error()}";
+                    return false;
+                }
 
                 CloseHandle(pi.hThread);
                 try { process = Process.GetProcessById(pi.dwProcessId); }
@@ -210,14 +317,14 @@ internal static partial class UnelevatedLauncher
     /// "<c>exe</c> arg1 arg2 ..." con el quoting Win32 estándar. Prioriza <c>ArgumentList</c> (lo que
     /// usa la mayoría de los call sites de este repo, ver Shell.cs) sobre <c>Arguments</c> crudo.
     /// </summary>
-    private static string BuildCommandLine(ProcessStartInfo psi)
+    private static string BuildCommandLine(ProcessStartInfo psi, bool forCmd = false)
     {
         var sb = new StringBuilder();
-        sb.Append(Quote(psi.FileName));
+        sb.Append(Quote(psi.FileName, forCmd));
 
         if (psi.ArgumentList.Count > 0)
         {
-            foreach (var a in psi.ArgumentList) { sb.Append(' '); sb.Append(Quote(a)); }
+            foreach (var a in psi.ArgumentList) { sb.Append(' '); sb.Append(Quote(a, forCmd)); }
         }
         else if (!string.IsNullOrEmpty(psi.Arguments))
         {
@@ -235,14 +342,53 @@ internal static partial class UnelevatedLauncher
     /// armamos desde <c>psi.Environment</c>, con el scrub de VSCODE_*/ELECTRON_* ya aplicado — y su
     /// working dir. Límite asumido: cmd expande <c>%VAR%</c> aunque esté entre comillas; un path real
     /// con un <c>%algo%</c> que coincida con una variable definida es rarísimo.
+    ///
+    /// La línea pasa por el PARSER de cmd antes de llegar a la app, así que los argumentos se arman
+    /// con <c>forCmd</c> — ver <see cref="Quote"/>. Dos límites más, asumidos: (1) <c>Arguments</c>
+    /// crudo viaja tal cual (lo pre-armó el caller, no hay forma de re-citarlo sin romperlo); (2) un
+    /// argumento con una comilla ADENTRO se escapa como <c>\"</c> para la app, pero cmd no entiende ese
+    /// escape y cuenta la comilla — lo que le siga queda fuera de comillas para él. Ningún call site
+    /// del trampolín pasa hoy un argumento así (paths y base64 no llevan comillas).
     /// </summary>
     private static string BuildTrampolineCommandLine(ProcessStartInfo psi) =>
-        "cmd.exe /d /c start \"\" " + BuildCommandLine(psi);
+        "cmd.exe " + BuildTrampolineArguments(psi);
 
-    private static string Quote(string arg)
+    private static string BuildTrampolineArguments(ProcessStartInfo psi) =>
+        "/d /c start \"\" " + BuildCommandLine(psi, forCmd: true);
+
+    /// <summary>
+    /// Los argumentos de cmd.exe del trampolín, para quien necesite lanzar ESE cmd por otra vía que
+    /// CreateProcess — hoy <c>Shell</c>, que lo levanta con el verbo <c>runas</c> cuando piden una
+    /// terminal elevada y la app no lo está. <c>null</c> si la línea no entra en el límite de cmd:
+    /// el caller decide qué hacer, acá no se lanza nada truncado.
+    /// </summary>
+    internal static string? TryBuildTrampolineArguments(ProcessStartInfo psi)
     {
-        if (arg.Length > 0 && arg.IndexOfAny([' ', '\t', '"']) < 0)
-            return arg; // sin espacios/comillas no hace falta nada
+        string args = BuildTrampolineArguments(psi);
+        return "cmd.exe ".Length + args.Length > MaxCmdLineLength ? null : args;
+    }
+
+    // Metacaracteres que cmd interpreta FUERA de comillas. Probado el 2026-10-10 con un programa que
+    // hace eco de su argv detrás de `cmd /d /c start ""`: un argumento sin comillas con `^` llegaba
+    // SIN el caret (cmd se lo come como escape), y `& | < >` directamente parten o redirigen el
+    // comando. Entre comillas todos son literales. Los paréntesis entran por las dudas (dentro de un
+    // bloque de cmd cierran el bloque). Quedan AFUERA a propósito:
+    //   `;` `,` `=`  → verificado que pasan intactos, y el `;` SUELTO tiene que viajar pelado: es el
+    //                  separador de pestañas de wt.exe, que entre comillas dejaría de reconocerlo.
+    //   `%`          → cmd lo expande también entre comillas; citarlo no arregla nada (límite
+    //                  documentado en BuildTrampolineCommandLine).
+    private static readonly char[] CmdMetaChars = ['&', '|', '<', '>', '^', '(', ')'];
+
+    /// <summary>
+    /// <paramref name="forCmd"/>: además de espacios/comillas, cita el argumento si trae un
+    /// metacaracter de cmd. Sólo para el trampolín — en el camino directo la línea va a
+    /// CreateProcess sin pasar por ningún shell, y ahí esas comillas de más no aportan nada.
+    /// </summary>
+    private static string Quote(string arg, bool forCmd = false)
+    {
+        if (arg.Length > 0 && arg.IndexOfAny([' ', '\t', '"']) < 0
+            && !(forCmd && arg.IndexOfAny(CmdMetaChars) >= 0))
+            return arg; // sin espacios/comillas (ni metacaracteres de cmd) no hace falta nada
         // Escape Win32 estándar: comillas se escapan con \", y una racha de \ que precede a una
         // comilla se duplica (ver la doc de CommandLineToArgvW).
         var sb = new StringBuilder();

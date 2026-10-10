@@ -37,12 +37,19 @@ public enum LaunchResult
 /// </summary>
 public static class ServiceLauncher
 {
-    public static LaunchResult Launch(ServiceEntry service)
+    /// <summary>
+    /// <paramref name="elevated"/> (acá y en <see cref="LaunchMany"/> / <see cref="LaunchGroupMissing"/>):
+    /// la terminal nace con token de administrador. Es una elección DE LA LANZADA, no del servicio
+    /// — por eso es un parámetro y no un campo de <see cref="ServiceEntry"/>: este launcher sólo la
+    /// transporta hasta <see cref="Shell"/>; de dónde sale (cómo la elige el usuario) lo decide la UI.
+    /// Default false: la app corre elevada y lo que lanza NO debe heredarlo salvo pedido explícito.
+    /// </summary>
+    public static LaunchResult Launch(ServiceEntry service, bool elevated = false)
     {
-        var result = Resolve(service, out var job);
+        var result = Resolve(service, elevated, out var job);
         if (result != LaunchResult.Ok) return result;
 
-        Shell.RunInDir(job.WorkingDir, job.Command, job.CloseOnExit);
+        Shell.RunInDir(job.WorkingDir, job.Command, job.CloseOnExit, job.Elevated);
         return LaunchResult.Ok;
     }
 
@@ -68,12 +75,13 @@ public static class ServiceLauncher
     /// se leería como "el botón ignoró la mitad". El arranque grupal no lo pasa y sigue mudo.
     /// </summary>
     public static int LaunchMany(IEnumerable<ServiceEntry> services,
-                                 ICollection<(ServiceEntry Service, LaunchResult Result)>? failures = null)
+                                 ICollection<(ServiceEntry Service, LaunchResult Result)>? failures = null,
+                                 bool elevated = false)
     {
         var jobs = new List<ShellJob>();
         foreach (var s in services)
         {
-            var result = Resolve(s, out var job);
+            var result = Resolve(s, elevated, out var job);
             if (result == LaunchResult.Ok) jobs.Add(job);
             else failures?.Add((s, result));
         }
@@ -87,7 +95,7 @@ public static class ServiceLauncher
     /// Valida el servicio y expande sus tokens, SIN lanzar nada. Separado de <see cref="Launch"/>
     /// para que el arranque grupal pueda resolver todo primero y recién después disparar una sola vez.
     /// </summary>
-    private static LaunchResult Resolve(ServiceEntry service, out ShellJob job)
+    private static LaunchResult Resolve(ServiceEntry service, bool elevated, out ShellJob job)
     {
         job = default;
 
@@ -106,7 +114,7 @@ public static class ServiceLauncher
         if (token == TokenResult.NoNetwork) return LaunchResult.NoNetwork;
         if (token == TokenResult.NoPort) return LaunchResult.NoPortToken;
 
-        job = new ShellJob(dir, expanded, service.CloseOnExit);
+        job = new ShellJob(dir, expanded, service.CloseOnExit, elevated);
         return LaunchResult.Ok;
     }
 
@@ -136,7 +144,8 @@ public static class ServiceLauncher
     /// que no necesita recordar nada entre llamadas.
     /// </summary>
     public static int LaunchGroupMissing(IEnumerable<ServicePool?> scopedPools,
-                                         HashSet<string>? groupLaunchedPortless = null)
+                                         HashSet<string>? groupLaunchedPortless = null,
+                                         bool elevated = false)
     {
         var listening = TcpPortInfo.ListeningPorts();
         var pending = new List<ServiceEntry>();
@@ -169,7 +178,7 @@ public static class ServiceLauncher
             }
         }
 
-        int launched = LaunchMany(pending);
+        int launched = LaunchMany(pending, elevated: elevated);
         ServiceUrlOpener.OpenAll(urls);
         return launched + urls.Count;
     }
