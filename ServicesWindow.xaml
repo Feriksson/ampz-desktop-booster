@@ -66,7 +66,9 @@
                 <!-- Solo-lectura (espacio padre, global u OTRO espacio): texto ATENUADO cuando NO están
                      seleccionadas. Se pueden LANZAR igual que las propias — heredar un servicio es
                      justamente poder levantarlo desde el contexto, y encontrar uno de otro espacio es
-                     para usarlo. Lo que no se puede es EDITARLAS acá (ver la ventana). -->
+                     para usarlo. Lo que no se puede es EDITARLAS acá (ver la ventana).
+                     Parado en la GLOBAL las de otros espacios SÍ se editan: ahí IsReadOnlyRef da
+                     false y no se atenúan — el gris quiere decir "acá no se toca". -->
                 <MultiDataTrigger>
                     <MultiDataTrigger.Conditions>
                         <Condition Binding="{Binding IsReadOnlyRef}" Value="True" />
@@ -284,8 +286,10 @@
                 </ListView>
             </Border>
 
-            <TextBlock Grid.Row="4" Foreground="#6E6E78" FontSize="10" Margin="0,8,0,0"
-                       TextWrapping="Wrap" Text="{loc:Translate Services.Hints}" />
+            <!-- El texto lo pone el code-behind: la cola cambia según estés en la global (todo se
+                 edita) o en un espacio/contexto (las grises son de solo-lectura). -->
+            <TextBlock Grid.Row="4" x:Name="HintsText" Foreground="#6E6E78" FontSize="10" Margin="0,8,0,0"
+                       TextWrapping="Wrap" />
 
             <!-- WrapPanel y no StackPanel: con el keycap adentro cada botón creció, y son TRECE. Un
                  StackPanel horizontal recorta en silencio lo que no entra (te quedás sin el botón de

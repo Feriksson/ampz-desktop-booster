@@ -41,12 +41,20 @@ namespace AmpzDesktopBooster;
 /// editan ni se borran desde acá: se tocan parándote en el scope donde viven, para que no puedas
 /// romperle el servicio a otro contexto sin darte cuenta.
 ///
+/// ⚠ EXCEPCIÓN — parado en la GLOBAL se edita y se borra TODO, también las filas de otros espacios
+/// y contextos. La regla de arriba protege "lo tuyo" de un cambio hecho desde el scope de al lado;
+/// la global no tiene un scope propio que proteger ni nadie de quien hereda: es la vista de
+/// administración del catálogo ("desde global puedo editar cualquier cosa"). La edición escribe en
+/// la pool DUEÑA de la fila (<see cref="Row.Pool"/>), así que la entrada no cambia de scope: editar
+/// no es mover. Ver <see cref="IsGlobalPrimary"/>.
+///
 /// COLUMNAS Y BÚSQUEDA: el mismo rediseño que Variables. Cada fila dice su Espacio ("GLOBAL" o el
 /// nombre) y su Contexto (con su color), así que los viejos rótulos "Heredados de X" se fueron: la
 /// columna ya dice de quién es cada fila. Queda UN solo divisor, el de "otros espacios", que aparece
 /// con el toggle Ctrl+P o SOLO al tipear un filtro. Parado en la GLOBAL el toggle ya arranca ON (desde
 /// ahí "¿dónde tenía el comando del worker?" no tiene un scope propio donde buscar). Las filas de otros espacios son de
-/// solo-lectura con la MISMA regla que las heredadas: se lanzan/visitan/copian, no se editan.
+/// solo-lectura con la MISMA regla que las heredadas: se lanzan/visitan/copian, no se editan —
+/// salvo parado en la GLOBAL, donde son tan operables como las propias (ver la excepción de arriba).
 ///
 /// ELEVACIÓN: por defecto todo se lanza SIN elevar, aunque la app corra elevada. Hay dos formas de
 /// pedir lo contrario y conviven: el flag persistido del comando (<c>ServiceEntry.RunElevated</c>, 🛡
@@ -74,6 +82,8 @@ public partial class ServicesWindow : Window
     /// Own = operable (editás/borrás). Parent, Global y Other = SOLO-LECTURA (lanzás/visitás/copiás,
     /// no editás): Parent y Global son la herencia; Other es OTRO espacio/contexto traído por el
     /// toggle Ctrl+P o por la ampliación automática desde la global. Separator = divisor, no seleccionable.
+    /// El scope dice DE DÓNDE viene la fila; si se puede editar lo dice <see cref="Row.Editable"/>,
+    /// que no es lo mismo: parado en la global, las Other también se editan.
     /// </remarks>
     private enum RowScope { Own, Parent, Global, Other, Separator }
 
@@ -88,6 +98,12 @@ public partial class ServicesWindow : Window
         /// con "otros espacios" hay N pools de scope Other, y el scope solo ya no dice cuál es.
         /// </summary>
         public required ServicePool? Pool { get; init; }
+        /// <summary>
+        /// Se puede editar y borrar desde ESTA ventana. Las propias siempre; las de otros espacios
+        /// sólo parado en la global. Se resuelve al armar la fila (no se deduce del scope) porque
+        /// depende de dónde está parada la ventana, que la fila no conoce.
+        /// </summary>
+        public required bool Editable { get; init; }
         /// <summary>Columna Espacio: "GLOBAL" (localizado) o el espacio dueño — ver <see cref="ProjectPathsWindow.ResolveScopeColumns"/>.</summary>
         public required string Project { get; init; }
         /// <summary>Columna Contexto: el contexto dueño, o "" si la fila es del espacio pelado o global.</summary>
@@ -125,8 +141,12 @@ public partial class ServicesWindow : Window
 
         public bool IsSeparator => Scope == RowScope.Separator;
         public bool IsOwn => Scope == RowScope.Own;
-        /// <summary>Fila de SOLO-LECTURA: heredada (espacio padre, global) o de otro espacio.</summary>
-        public bool IsReadOnlyRef => Scope is RowScope.Parent or RowScope.Global or RowScope.Other;
+        /// <summary>
+        /// Fila de SOLO-LECTURA (se pinta atenuada): heredada (espacio padre, global) o de otro
+        /// espacio — salvo las de otro espacio vistas desde la global, que son editables y por eso
+        /// NO se atenúan: el gris significa "acá no se toca", y ahí sería mentira.
+        /// </summary>
+        public bool IsReadOnlyRef => !IsSeparator && !Editable;
 
         /// <summary>Declara puerto → es un SERVIDOR y tiene estado que mostrar. Ver ServiceEntry.</summary>
         public bool HasPort => Port > 0;
@@ -185,7 +205,14 @@ public partial class ServicesWindow : Window
     private readonly ServicePool _pool;          // scope primario: el único EDITABLE desde acá
     private readonly ServicePool? _parentPool;   // el espacio, si estás parado en un contexto
     private readonly ServicePool? _globalPool;
-    private readonly IReadOnlyList<ServicePool> _otherPools; // los demás espacios/contextos (Ctrl+P), read-only
+    private readonly IReadOnlyList<ServicePool> _otherPools; // los demás espacios/contextos (Ctrl+P); read-only salvo desde la global
+
+    /// <summary>
+    /// La pool primaria ES la global (<c>_globalPool</c> null — misma convención que
+    /// <see cref="LaunchMissing"/> y que el arranque de <see cref="_showAllProjects"/>). Es lo que
+    /// levanta el solo-lectura de las filas de otros espacios: ver la excepción en el doc de la clase.
+    /// </summary>
+    private bool IsGlobalPrimary => _globalPool is null;
     private readonly ProjectStore? _store;                   // color del contexto + scope a elegir en el alta
     /// <summary>
     /// Toggle "otros espacios". OFF por default en un espacio/contexto (arrancás en TU scope y te abrís
@@ -252,6 +279,12 @@ public partial class ServicesWindow : Window
         // Sin otros espacios con servicios no hay nada que togglear → ocultamos el botón (como Variables).
         AllProjectsBtn.Visibility = _otherPools.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         UpdateAllProjectsBtn();
+
+        // La cola del hint depende de dónde estás parado: en un espacio/contexto explica las filas
+        // grises (se lanzan, no se editan); en la global no hay grises —todo se edita— y repetir esa
+        // frase ahí describiría una restricción que no existe.
+        HintsText.Text = Loc.T("Services.Hints") + " · "
+                       + Loc.T(IsGlobalPrimary ? "Services.HintsGlobal" : "Services.HintsScoped");
 
         ServiceList.ItemsSource = _rows;
         RefreshList();
@@ -401,6 +434,7 @@ public partial class ServicesWindow : Window
                 Scope = scope,
                 PoolIndex = i,
                 Pool = pool,
+                Editable = scope == RowScope.Own || (scope == RowScope.Other && IsGlobalPrimary),
                 Title = e.Title,
                 Command = e.Command,
                 WorkDir = e.WorkDir,
@@ -437,7 +471,7 @@ public partial class ServicesWindow : Window
     /// <summary>Fila-rótulo (divisor de "otros espacios"). No es operable (ver estilo en el XAML).</summary>
     private static Row SeparatorRow(string text) => new()
     {
-        Scope = RowScope.Separator, PoolIndex = -1, Pool = null, Title = text,
+        Scope = RowScope.Separator, PoolIndex = -1, Pool = null, Editable = false, Title = text,
         Command = "", WorkDir = "", Port = 0, Url = "", IsBroken = false, AutoStarts = false,
         RunsElevated = false, IsPortDuplicated = false, Project = "", Module = "",
         ModuleBrush = System.Windows.Media.Brushes.Transparent,
@@ -933,7 +967,9 @@ public partial class ServicesWindow : Window
                 Loc.T("Services.WindowTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
-    // ── Alta / edición / borrado (SÓLO sobre el scope primario) ────────────────
+    // ── Alta / edición / borrado ───────────────────────────────────────────────
+    // Editar y borrar valen sobre las filas `Editable`: el scope primario siempre, y parado en la
+    // GLOBAL también las de otros espacios. Siempre escriben en la pool DUEÑA de la fila.
 
     /// <summary>
     /// Alta con elección de DÓNDE se guarda (default = el scope primario de esta ventana). Mismo
@@ -960,24 +996,32 @@ public partial class ServicesWindow : Window
     private void EditSelected()
     {
         if (Selected is not { } row || row.IsSeparator) return;
-        if (!row.IsOwn) { ReadOnlyRow(row); return; }
-        if (row.PoolIndex < 0 || row.PoolIndex >= _pool.Entries.Count) return;
+        if (!row.Editable) { ReadOnlyRow(row); return; }
+
+        // La pool DUEÑA de la fila, no `_pool`: desde la global se editan filas de otros espacios, y
+        // escribirlas en la primaria las pisaría sobre la entrada global que comparte índice. Con la
+        // dueña la entrada se queda en su scope (editar no es mover) y persiste por el mismo camino
+        // que una edición hecha parado ahí (ServicePool.Update → save del store).
+        if (PoolOf(row) is not { } pool) return;
+        if (row.PoolIndex < 0 || row.PoolIndex >= pool.Entries.Count) return;
 
         // Se pasa la entry VIVA de la pool (no una copia): el registro de puertos la excluye por
-        // referencia para que re-guardar sin tocar el puerto no se choque consigo mismo.
-        var entry = ServiceEditWindow.Show(this, Loc.T("Services.DlgEditTitle"), _pool.Label,
-                                           _pool.Entries[row.PoolIndex], _ports);
+        // referencia para que re-guardar sin tocar el puerto no se choque consigo mismo. El rótulo
+        // de scope es el de la dueña: el diálogo tiene que decir dónde VIVE lo que estás tocando.
+        var entry = ServiceEditWindow.Show(this, Loc.T("Services.DlgEditTitle"), pool.Label,
+                                           pool.Entries[row.PoolIndex], _ports);
         if (entry is null) return;
-        _pool.Update(row.PoolIndex, entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.Url,
-                     entry.AutoStart, entry.CloseOnExit, entry.RunElevated);
+        pool.Update(row.PoolIndex, entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.Url,
+                    entry.AutoStart, entry.CloseOnExit, entry.RunElevated);
         RefreshList();
     }
 
     private void DeleteSelected()
     {
         if (Selected is not { } row || row.IsSeparator) return;
-        if (!row.IsOwn) { ReadOnlyRow(row); return; }
-        _pool.Delete(row.PoolIndex);
+        if (!row.Editable) { ReadOnlyRow(row); return; }
+        // Misma razón que en EditSelected: se borra de la pool dueña de la fila.
+        PoolOf(row)?.Delete(row.PoolIndex);
         RefreshList();
     }
 
