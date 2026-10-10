@@ -99,13 +99,24 @@ public sealed class DesktopService
     // volver al anterior. Se retiró junto con ese atajo (ver HotkeyRouter): sin consumidor era
     // estado muerto que había que mantener sincronizado desde cinco lugares.
 
+    /// <summary>
+    /// La PROPIA app acaba de saltar a este desk (GoTo o "enviar y seguir"). Existe para no esperar
+    /// el aviso del shell, que llega pero a veces más de 150ms tarde (medido): quien pinta el
+    /// feedback se entera acá, en el acto. <c>App</c> lo cablea al DesktopChangeListener — esta capa
+    /// sigue sin conocer a nadie de arriba.
+    /// </summary>
+    public event Action<int>? Switched;
+
     /// <summary>Navega al desktop por índice (no-op si ya estamos ahí). false si el índice no existe.</summary>
     public bool GoTo(int index)
     {
         if (index < 0 || index >= Count) return false;
 
         if (Current != index)
+        {
             VirtualDesktopAccessor.GoToDesktopNumber(index);
+            Switched?.Invoke(index);
+        }
         return true;
     }
 
@@ -131,7 +142,10 @@ public sealed class DesktopService
 
         VirtualDesktopAccessor.MoveWindowToDesktopNumber(hwnd, idx);
         if (follow)
+        {
             VirtualDesktopAccessor.GoToDesktopNumber(idx);
+            Switched?.Invoke(idx);
+        }
         return true;
     }
 
@@ -147,7 +161,10 @@ public sealed class DesktopService
         if (hwnd == IntPtr.Zero || index < 0 || index >= Count) return false;
         VirtualDesktopAccessor.MoveWindowToDesktopNumber(hwnd, index);
         if (follow)
+        {
             VirtualDesktopAccessor.GoToDesktopNumber(index);
+            Switched?.Invoke(index);
+        }
         return true;
     }
 

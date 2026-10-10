@@ -1,9 +1,6 @@
 using System;
-using System.IO;
 using System.Windows.Interop;
-using System.Windows.Threading;
 using AmpzDesktopBooster.Interop;
-using AmpzDesktopBooster.Persistence;
 
 namespace AmpzDesktopBooster.Desktops;
 
@@ -16,37 +13,31 @@ namespace AmpzDesktopBooster.Desktops;
 /// Es el equivalente exacto del RegisterPostMessageHook + OnMessage(0x5100) del legacy:
 /// una sola fuente de verdad que alimenta el overlay central Y el widget de la barra.
 ///
-/// ⚠ El aviso de la DLL NO es confiable por sí solo — de ahí la RED de polling (no la saques).
-/// Caso real: tras un cierre abrupto de la app (crash nativo), al relanzarla la navegación
-/// andaba (Win+Numpad2 llevaba a NOTES) pero el mensaje 0x5100 no llegaba NUNCA más: la barra y
-/// el overlay quedaban congelados en el desk del arranque, y sólo un reinicio de Windows lo
-/// arreglaba. Verificado: desde otro proceso la DLL reportaba bien el desk actual — lo roto era
-/// la entrega de notificaciones (vienen del shell, explorer), no la consulta.
-/// Por eso: (1) un poll barato del desk actual cada 250ms dispara el MISMO evento si el aviso no
-/// llegó — la UI nunca se congela, esté como esté el shell; (2) los avisos perdidos se anotan en
-/// vd-listener.log como evidencia (NO se re-suscribe en caliente: ver ReportMissed, crasheaba);
-/// (3) Dispose SE DESUSCRIBE (antes no lo hacía: incluso saliendo bien dejábamos la suscripción
-/// colgada en el shell).
+/// ⚠ El aviso del shell LLEGA SIEMPRE pero a veces TARDE — y por eso acá ya NO hay polling.
+/// Durante dos semanas hubo un poll de 250ms "de red" que anotaba cada cambio que detectaba antes
+/// que el aviso como "aviso perdido" (262 entradas en vd-listener.log). Medido el 2026-10-10 con
+/// una línea por evento: de 27 cambios el aviso llegó en los 27; en 4 el poll lo vio primero y el
+/// aviso apareció 44–167ms DESPUÉS, para el mismo desk. No se perdía nada: el poll le ganaba la
+/// carrera a un aviso que venía en camino. (La pérdida REAL de avisos que motivó el poll era el
+/// double free de la DLL al renombrar, curado con la build parcheada — ver el CLAUDE.md.)
+///
+/// Lo que sí se sentía era esa demora del shell: el popup aparecía tarde. La cura no es sondear
+/// más rápido sino no esperar al shell cuando no hace falta: los cambios que hace la PROPIA app
+/// (Win+Numpad, DeskPicker, launcher) entran por <see cref="NotifyLocalChange"/> en el acto — la
+/// app ya sabe adónde fue. El aviso del shell queda para lo que NO pasa por nosotros
+/// (Win+Ctrl+Flechas, vista de tareas, gestos), y cuando llega tarde para un cambio ya anunciado
+/// se descarta contra el desk REAL (ver WndProc).
+///
+/// NO se re-suscribe en caliente (Unregister + RestartVirtualDesktopAccessor + Register crasheó
+/// bajo cdb: use-after-free en la DLL). Dispose SE DESUSCRIBE.
 /// </summary>
 public sealed class DesktopChangeListener : IDisposable
 {
     // Mismo offset que usaba el .ahk. El id del mensaje posteado == este offset.
     private const int WM_VD_CHANGED = 0x5100;
 
-    // 250ms: imperceptible para el ojo al cambiar de desk y despreciable en costo (una consulta al
-    // shell). El debounce del overlay (40ms) coalesce un eventual doble disparo aviso+poll.
-    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
-
-    // El log de avisos perdidos va espaciado: con el shell roto se perdería uno por cada salto.
-    private static readonly TimeSpan ReportCooldown = TimeSpan.FromSeconds(30);
-
-    private static string LogPath => Path.Combine(AppPaths.DataDir, "vd-listener.log");
-
     private readonly HwndSource _source;
-    private readonly DispatcherTimer _poll;
-    private int _lastIndex;
-    private DateTime _lastReport = DateTime.MinValue;
-    private int _missed; // avisos perdidos desde el último reporte (evidencia para el log)
+    private int _lastIndex; // último desk ANUNCIADO: dedupe entre el aviso local y el del shell
 
     /// <summary>Se dispara con el índice del desktop al que se acaba de cambiar.</summary>
     public event Action<int>? DesktopChanged;
@@ -66,32 +57,33 @@ public sealed class DesktopChangeListener : IDisposable
         VirtualDesktopAccessor.RegisterPostMessageHook(_source.Handle, WM_VD_CHANGED);
 
         _lastIndex = VirtualDesktopAccessor.GetCurrentDesktopNumber();
-        _poll = new DispatcherTimer(DispatcherPriority.Background) { Interval = PollInterval };
-        _poll.Tick += (_, _) => Poll();
-        _poll.Start();
+    }
+
+    /// <summary>
+    /// Un cambio de desk que hizo la PROPIA app: se anuncia ya, sin esperar el aviso del shell (que
+    /// puede tardar más de 150ms). Idempotente: si ese desk ya está anunciado no hace nada.
+    /// </summary>
+    public void NotifyLocalChange(int index)
+    {
+        if (index < 0 || index == _lastIndex) return;
+        Raise(index);
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (msg == WM_VD_CHANGED)
         {
-            Raise(lParam.ToInt32()); // lParam = índice del nuevo desktop
+            // La verdad es el desk REAL de ahora, no el lParam: el aviso puede llegar tarde, y en
+            // una ráfaga A→B→A anunciada en local el aviso atrasado de B llegaría cuando ya estamos
+            // en A — obedecerlo pintaría B un instante (popup y barra con el desk equivocado).
+            int current;
+            try { current = VirtualDesktopAccessor.GetCurrentDesktopNumber(); }
+            catch { current = lParam.ToInt32(); } // DLL en un estado raro: nos quedamos con el aviso
+            if (current >= 0 && current != _lastIndex)
+                Raise(current);
             handled = true;
         }
         return IntPtr.Zero;
-    }
-
-    private void Poll()
-    {
-        int current;
-        try { current = VirtualDesktopAccessor.GetCurrentDesktopNumber(); }
-        catch { return; } // la DLL/shell en un estado raro: el próximo tick reintenta
-        if (current < 0 || current == _lastIndex) return;
-
-        // El desk cambió y el aviso NO llegó (si hubiera llegado, _lastIndex ya valdría esto).
-        _missed++;
-        Raise(current);
-        ReportMissed();
     }
 
     private void Raise(int index)
@@ -100,28 +92,8 @@ public sealed class DesktopChangeListener : IDisposable
         DesktopChanged?.Invoke(index);
     }
 
-    private void ReportMissed()
-    {
-        // Sólo evidencia, espaciada: NO intentamos re-suscribir. Se probó Unregister +
-        // RestartVirtualDesktopAccessor + Register y crasheó la app al instante bajo cdb:
-        // "HEAP: Free Heap block modified after it was freed" — Restart libera los objetos internos
-        // de la DLL mientras su propio thread de notificaciones todavía los usa (use-after-free).
-        // El poll ya mantiene la UI viva; tocar la suscripción en caliente no vale ese riesgo.
-        if (DateTime.Now - _lastReport < ReportCooldown) return;
-        _lastReport = DateTime.Now;
-        Log($"aviso de cambio de escritorio perdido (x{_missed}) — cubierto por el poll");
-        _missed = 0;
-    }
-
-    private static void Log(string line)
-    {
-        try { File.AppendAllText(LogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {line}{Environment.NewLine}"); }
-        catch { /* el log es evidencia, nunca motivo para voltear la app */ }
-    }
-
     public void Dispose()
     {
-        _poll.Stop();
         try { VirtualDesktopAccessor.UnregisterPostMessageHook(_source.Handle); } catch { }
         _source.Dispose();
     }

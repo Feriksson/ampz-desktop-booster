@@ -375,6 +375,10 @@ public partial class App : Application
             _watchdog?.CheckNow();
         };
 
+        // Los cambios de desk que hace la app se anuncian YA, sin esperar al shell (ver el summary
+        // del listener: el aviso llega siempre, pero a veces tarde — eso era el delay del popup).
+        desktops.Switched += idx => _vdListener?.NotifyLocalChange(idx);
+
         _hotkeys.Start();
         _governor.Start();
 
