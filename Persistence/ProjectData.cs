@@ -138,6 +138,20 @@ public sealed class ServiceEntry
     /// mostrando el error, y eso es intencional: no queremos tragarnos un fallo en silencio.
     /// </summary>
     [JsonPropertyName("closeOnExit")] public bool CloseOnExit { get; set; }
+
+    /// <summary>
+    /// "Ejecutar como administrador": la terminal de ESTE comando nace con token elevado en toda
+    /// lanzada — a mano y también en "levantar todo". Default OFF, y es el default que importa: la
+    /// app corre elevada (tarea programada) y lo que lanza NO debe heredarlo salvo pedido explícito;
+    /// un `npm run dev` elevado deja archivos que después tu usuario normal no puede tocar.
+    ///
+    /// Bool no-nullable por el mismo motivo que <see cref="CloseOnExit"/>: falta en el JSON viejo =
+    /// false = el comportamiento por defecto, así que no hay nada que migrar.
+    ///
+    /// Es la mitad PERSISTIDA de la elección. La otra es por lanzada (Ctrl+Shift+Enter en la ventana
+    /// de Servicios), que eleva una vez sin tocar este flag — ver <see cref="Apps.ServiceLauncher"/>.
+    /// </summary>
+    [JsonPropertyName("runElevated")] public bool RunElevated { get; set; }
 }
 
 /// <summary>

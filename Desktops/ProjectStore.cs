@@ -546,6 +546,7 @@ public sealed class ProjectStore
         e.Url = values.Url.Trim();
         e.AutoStart = values.AutoStart;
         e.CloseOnExit = values.CloseOnExit;
+        e.RunElevated = values.RunElevated;
         Save();
     }
 
@@ -626,6 +627,7 @@ public sealed class ProjectStore
                 Url = e.Url,
                 AutoStart = e.AutoStart,
                 CloseOnExit = e.CloseOnExit,
+                RunElevated = e.RunElevated,
             });
         }
 
@@ -1267,6 +1269,7 @@ public sealed class ProjectStore
                 Url = e.Url,
                 AutoStart = e.AutoStart,
                 CloseOnExit = e.CloseOnExit,
+                RunElevated = e.RunElevated,
             });
         }
     }

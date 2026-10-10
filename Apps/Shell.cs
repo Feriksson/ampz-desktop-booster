@@ -20,7 +20,14 @@ namespace AmpzDesktopBooster.Apps;
 /// mantiene el comportamiento de siempre para todo lo que no venga de un <c>ServiceEntry</c> con el
 /// flag tildado.
 /// </summary>
-public readonly record struct ShellJob(string WorkingDir, string Command, bool CloseOnExit = false);
+/// <summary>
+/// <paramref name="Elevated"/>: si true, la terminal de este comando nace con token de
+/// ADMINISTRADOR. Default false — y ese default es el punto: la app corre elevada (tarea
+/// programada) y TODO lo que lanza sale de-elevado salvo pedido explícito. Ver
+/// <see cref="Shell.StartTerminal"/>.
+/// </summary>
+public readonly record struct ShellJob(string WorkingDir, string Command, bool CloseOnExit = false,
+                                       bool Elevated = false);
 
 /// <summary>
 /// Resuelve y lanza el shell preferido. "PowerShell" (el moderno, v7+) es pwsh.exe; "Windows
@@ -45,6 +52,11 @@ public readonly record struct ShellJob(string WorkingDir, string Command, bool C
 /// lo que rompía los comandos anidados (el motivo por el que antes evitábamos wt). Si WT no está
 /// instalado, caemos al lanzamiento directo del .exe (en esa máquina el host es conhost, que igual
 /// abre ventana nueva en el escritorio actual) — la app sigue siendo compartible.
+///
+/// ELEVACIÓN: por defecto la terminal nace SIN privilegios aunque la app corra elevada; elevada es
+/// opt-in por lanzamiento (<c>elevated</c>). Y las dos familias NO se mezclan: un Windows Terminal
+/// elevado y uno normal son instancias separadas (cada una con su monarca), así que la decisión de
+/// reusar ventana mira sólo las del MISMO lado — ver <see cref="IsTerminalOn"/>.
 /// </summary>
 public static class Shell
 {
@@ -79,9 +91,11 @@ public static class Shell
     /// <summary>
     /// Abre el shell en <paramref name="workingDir"/> y corre <paramref name="command"/>.
     /// <paramref name="closeOnExit"/> — ver <see cref="ShellJob.CloseOnExit"/>.
+    /// <paramref name="elevated"/> — ver <see cref="ShellJob.Elevated"/>.
     /// </summary>
-    public static void RunInDir(string workingDir, string command, bool closeOnExit = false) =>
-        Launch(workingDir, command, closeOnExit);
+    public static void RunInDir(string workingDir, string command, bool closeOnExit = false,
+                                bool elevated = false) =>
+        Launch(workingDir, command, closeOnExit, elevated);
 
     /// <summary>
     /// Corre VARIOS comandos en UNA sola ventana de terminal, uno por pestaña.
@@ -103,16 +117,34 @@ public static class Shell
     /// base64 y es opaco, ver <see cref="Launch"/>): un workingDir con un <c>;</c> adentro partiría el
     /// comando. Es un path que en la práctica no existe, y el precio de blindarlo sería escapar a mano
     /// la línea de wt — justo lo que el base64 vino a evitar.
+    ///
+    /// LOTE MIXTO (elevados + normales): se parte en DOS invocaciones, una por lado. No es una
+    /// concesión: una ventana de WT tiene UN token, así que esos comandos no pueden compartirla de
+    /// ninguna forma. Y partirlo NO reintroduce la carrera de arriba, porque cada mitad decide
+    /// mirando sólo las ventanas de SU elevación — son dos preguntas distintas, no la misma dos veces.
     /// </summary>
     public static void RunMany(IReadOnlyList<ShellJob> jobs)
     {
         if (jobs.Count == 0) return;
 
+        var elevatedJobs = jobs.Where(j => j.Elevated).ToList();
+        if (elevatedJobs.Count > 0 && elevatedJobs.Count < jobs.Count)
+        {
+            // Primero la tanda normal y al final la elevada: si la app no corre elevada, la elevada
+            // dispara el UAC, y conviene que lo último que pida atención sea eso.
+            RunMany(jobs.Where(j => !j.Elevated).ToList());
+            RunMany(elevatedJobs);
+            return;
+        }
+
+        // De acá en más el lote es HOMOGÉNEO: la elevación de cualquiera es la de todos.
+        bool elevated = jobs[0].Elevated;
+
         // Uno solo no necesita nada de esto: se va por el camino de siempre, que además resuelve el
         // foco y el fallback sin WT sin duplicar una línea.
         if (jobs.Count == 1)
         {
-            Launch(jobs[0].WorkingDir, jobs[0].Command, jobs[0].CloseOnExit);
+            Launch(jobs[0].WorkingDir, jobs[0].Command, jobs[0].CloseOnExit, elevated);
             return;
         }
 
@@ -120,11 +152,11 @@ public static class Shell
         // hay forma de agruparlas. Se degrada al comportamiento viejo en vez de no lanzar nada.
         if (AppDetector.InPath("wt.exe") is null)
         {
-            foreach (var job in jobs) LaunchDirect(job.WorkingDir, job.Command, job.CloseOnExit);
+            foreach (var job in jobs) LaunchDirect(job.WorkingDir, job.Command, job.CloseOnExit, elevated);
             return;
         }
 
-        string target = ResolveWindowTarget(out int current);
+        string target = ResolveWindowTarget(elevated, out int current);
 
         var psi = new ProcessStartInfo("wt.exe") { UseShellExecute = false };
         ScrubInheritedEditorEnv(psi);
@@ -143,25 +175,26 @@ public static class Shell
             AddTabArgs(psi, jobs[i].WorkingDir, jobs[i].Command, jobs[i].CloseOnExit);
         }
 
-        UnelevatedLauncher.Start(psi);
+        if (!StartTerminal(psi, elevated)) return;
 
         if (target == "new" && current >= 0)
-            WindowFocuser.FocusWhenReady(hwnd => IsTerminalOn(hwnd, current), preserveMaximized: true);
+            WindowFocuser.FocusWhenReady(hwnd => IsTerminalOn(hwnd, current, elevated), preserveMaximized: true);
     }
 
     /// <summary>
     /// Núcleo del lanzamiento: decide reusar/forzar ventana por escritorio y dispara wt.exe.
     /// Si no hay WT, cae al lanzamiento directo del .exe.
     /// </summary>
-    private static void Launch(string workingDir, string? command, bool closeOnExit = false)
+    private static void Launch(string workingDir, string? command, bool closeOnExit = false,
+                               bool elevated = false)
     {
         if (AppDetector.InPath("wt.exe") is null)
         {
-            LaunchDirect(workingDir, command, closeOnExit);
+            LaunchDirect(workingDir, command, closeOnExit, elevated);
             return;
         }
 
-        string target = ResolveWindowTarget(out int current);
+        string target = ResolveWindowTarget(elevated, out int current);
 
         // UseShellExecute = FALSE a propósito: wt.exe es un App Execution Alias (reparse point en
         // WindowsApps). Por ShellExecuteEx (UseShellExecute=true) el alias NO recibe los argumentos
@@ -172,7 +205,7 @@ public static class Shell
         psi.ArgumentList.Add("-w");
         psi.ArgumentList.Add(target);
         AddTabArgs(psi, workingDir, command, closeOnExit);
-        UnelevatedLauncher.Start(psi);
+        if (!StartTerminal(psi, elevated)) return;
 
         // FOCO GARANTIZADO a la ventana NUEVA. El reuse ("last") ya hizo ForceForeground arriba;
         // el caso pendiente es "new". Aunque sea un Process.Start, la ventana NO siempre nace con
@@ -184,8 +217,79 @@ public static class Shell
         // preserveMaximized: no le tocamos el tamaño a WT, sólo le damos foreground/foco. Llegamos
         // acá sólo cuando NO había WT en este desk, así que la primera ventana de WT que aparezca acá
         // es la nuestra. El timer corre en el hilo de UI (el router difiere todo al Dispatcher).
+        // El criterio de espera lleva la MISMA elevación que el de reuso: con un WT del otro lado ya
+        // abierto en este desk, "la primera ventana de WT que aparezca" sería esa y no la nuestra.
         if (target == "new" && current >= 0)
-            WindowFocuser.FocusWhenReady(hwnd => IsTerminalOn(hwnd, current), preserveMaximized: true);
+            WindowFocuser.FocusWhenReady(hwnd => IsTerminalOn(hwnd, current, elevated), preserveMaximized: true);
+    }
+
+    /// <summary>
+    /// Dispara el wt.exe ya armado con el token que corresponde. Punto ÚNICO donde se decide la
+    /// elevación de una terminal — lo comparten el lanzamiento simple y el grupal. Devuelve false
+    /// sólo cuando se pidió elevado y NO se lanzó nada (UAC cancelado, o imposible): el caller no
+    /// tiene ventana que esperar.
+    ///
+    /// NORMAL (el default): <see cref="UnelevatedLauncher"/> CON TRAMPOLÍN. Hallazgo 2026-10-10: con
+    /// el lanzamiento directo (CreateProcess + padre adoptado = explorer) el Windows Terminal y sus
+    /// pestañas salían ELEVADOS igual — wt.exe es un App Execution Alias y su activación no respetaba
+    /// al padre declarado. Con el trampolín el de-elevado es un cmd.exe común y es él quien activa el
+    /// alias. Si la app no corre elevada, UnelevatedLauncher es un Process.Start de siempre.
+    ///
+    /// ELEVADO, app elevada: Process.Start pelado — el hijo hereda nuestro token, que es justo lo
+    /// que acá se quiere (y lo que <see cref="UnelevatedLauncher"/> existe para evitar en el resto).
+    ///
+    /// ELEVADO, app SIN elevar: hace falta el UAC (verbo <c>runas</c>, que exige ShellExecute). Pero
+    /// por ShellExecute el alias wt.exe NO recibe sus argumentos (ver <see cref="Launch"/>), así que
+    /// lo que se eleva es un cmd.exe —binario real, que sí los recibe— con el mismo trampolín
+    /// <c>start "" wt.exe …</c>. Un solo prompt de UAC. Costos asumidos de esta rama: (1) con
+    /// ShellExecute no se puede tocar el entorno, así que NO lleva el scrub de VSCODE_*/ELECTRON_*;
+    /// (2) si el UAC se resuelve con las credenciales de OTRO usuario, ese cmd puede no tener el
+    /// alias wt.exe en su PATH. Lo que NUNCA hace es lanzar sin elevar diciendo que elevó: si no
+    /// puede, no lanza y lo anota.
+    /// </summary>
+    private static bool StartTerminal(ProcessStartInfo psi, bool elevated)
+    {
+        if (!elevated)
+        {
+            UnelevatedLauncher.Start(psi, viaTrampoline: true);
+            return true;
+        }
+
+        try
+        {
+            if (ElevationHelper.IsElevated())
+            {
+                Process.Start(psi);
+                return true;
+            }
+
+            string? cmdArgs = UnelevatedLauncher.TryBuildTrampolineArguments(psi);
+            if (cmdArgs is null)
+            {
+                // Un lote tan grande que no entra en una línea de cmd (8191). Sin elevar no hay otra
+                // vía que respete los argumentos del alias → no se lanza a medias.
+                UnelevatedLauncher.LogFailure(psi.FileName,
+                    "lanzamiento ELEVADO cancelado: la línea no entra en el límite de cmd.exe y la app no corre elevada");
+                return false;
+            }
+
+            Process.Start(new ProcessStartInfo("cmd.exe")
+            {
+                Arguments = cmdArgs,
+                UseShellExecute = true,
+                Verb = "runas",
+                WindowStyle = ProcessWindowStyle.Hidden, // el cmd es un pasamanos: que no parpadee
+            });
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // Lo normal acá es ERROR_CANCELLED (1223): el usuario dijo que no en el UAC. Es SU
+            // decisión — no se reintenta y, sobre todo, no se "arregla" lanzando sin elevar.
+            UnelevatedLauncher.LogFailure(psi.FileName,
+                $"lanzamiento ELEVADO no realizado: {ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
     }
 
     /// <summary>
@@ -193,19 +297,24 @@ public static class Shell
     /// forzar una nueva acá (<c>new</c>). Devuelve además el escritorio actual (-1 si no se pudo
     /// resolver), que el caller necesita para el foco de la ventana nueva.
     ///
+    /// Sólo cuentan las ventanas cuya elevación coincide con <paramref name="elevated"/>: <c>-w last</c>
+    /// lo resuelve el monarca del lado que lanza, y ése no ve las ventanas del otro. Reusar una
+    /// ventana "que está ahí" pero del otro lado traía al frente la equivocada y la pestaña
+    /// terminaba en la última ventana de NUESTRO lado — posiblemente en otro escritorio.
+    ///
     /// ⚠ La respuesta sólo vale para UN lanzamiento: wt.exe crea sus ventanas ASÍNCRONO vía el
     /// monarca, así que preguntar dos veces seguidas devuelve "no hay" las dos veces aunque la
     /// primera ya haya pedido una. Por eso el arranque grupal NO llama acá una vez por servicio —
     /// ver <see cref="RunMany"/>.
     /// </summary>
-    private static string ResolveWindowTarget(out int current)
+    private static string ResolveWindowTarget(bool elevated, out int current)
     {
         // "new" por defecto: si no podemos resolver el escritorio (Desktops null) o no hay una
         // ventana de WT acá, abrimos una ventana nueva en el escritorio actual.
         current = Desktops?.Current ?? -1;
         if (current < 0) return "new";
 
-        IntPtr existing = FindTerminalOnDesktop(current);
+        IntPtr existing = FindTerminalOnDesktop(current, elevated);
         if (existing == IntPtr.Zero) return "new";
 
         // Hay WT en ESTE escritorio → traerla al frente (queda como "last" / MRU de WT) y abrir la
@@ -255,17 +364,24 @@ public static class Shell
     /// El filtro de "visible" lo aplica el enumerador (<see cref="WindowMethods.FindVisible"/> /
     /// <see cref="WindowFocuser"/>); acá sólo decidimos clase + escritorio. Una única definición del
     /// criterio, reusada tanto para BUSCAR la ventana (reuse) como para ESPERARLA (ventana nueva).
+    ///
+    /// La elevación se compara ÚLTIMA (abrir el token de un proceso es lo caro, y así sólo se paga por
+    /// ventanas que ya son WT de este desk) y contra el tri-estado de
+    /// <see cref="ElevationHelper.IsWindowProcessElevated"/>: "no se pudo saber" NO coincide con
+    /// nada. El peor caso de ese criterio es una ventana nueva de más; el del contrario, una pestaña
+    /// perdida en la ventana del otro lado.
     /// </summary>
-    private static bool IsTerminalOn(IntPtr hwnd, int desktop) =>
+    private static bool IsTerminalOn(IntPtr hwnd, int desktop, bool elevated) =>
         WindowMethods.ClassOf(hwnd) == WtWindowClass
-        && VirtualDesktopAccessor.GetWindowDesktopNumber(hwnd) == desktop;
+        && VirtualDesktopAccessor.GetWindowDesktopNumber(hwnd) == desktop
+        && ElevationHelper.IsWindowProcessElevated(hwnd) == elevated;
 
     /// <summary>
-    /// Primera ventana de Windows Terminal VISIBLE en el escritorio virtual dado (IntPtr.Zero si
-    /// ninguna). Mismo patrón "desktop-aware" que <c>QuickActions.OpenDownloads</c>.
+    /// Primera ventana de Windows Terminal VISIBLE en el escritorio virtual dado y con la elevación
+    /// pedida (IntPtr.Zero si ninguna). Mismo patrón "desktop-aware" que <c>QuickActions.OpenDownloads</c>.
     /// </summary>
-    private static IntPtr FindTerminalOnDesktop(int desktop) =>
-        WindowMethods.FindVisible(hwnd => IsTerminalOn(hwnd, desktop));
+    private static IntPtr FindTerminalOnDesktop(int desktop, bool elevated) =>
+        WindowMethods.FindVisible(hwnd => IsTerminalOn(hwnd, desktop, elevated));
 
     /// <summary>
     /// Saca del entorno del hijo las env vars que VS Code inyecta en TODOS sus descendientes. Si esta
@@ -295,20 +411,45 @@ public static class Shell
     /// <summary>
     /// Fallback sin Windows Terminal: lanza el .exe directo. OJO: acá NO podemos limpiar el entorno
     /// heredado como en el camino de wt — <see cref="ProcessStartInfo.Environment"/> sólo se puede
-    /// tocar con <c>UseShellExecute=false</c>, y lo necesitamos en true para heredar nuestro token
-    /// no-admin. Es un mal menor consciente: este camino sólo corre en máquinas SIN Windows Terminal.
+    /// tocar con <c>UseShellExecute=false</c>, y acá va en true: es como este camino lanzó siempre
+    /// cuando la app corre SIN elevar (un Process.Start común), y es lo que exige el verbo
+    /// <c>runas</c> de abajo. El token del hijo ya NO depende de ese flag: corriendo elevados,
+    /// <see cref="UnelevatedLauncher"/> lo ignora y crea el proceso con el token de explorer.
+    /// Es un mal menor consciente: este camino sólo corre en máquinas SIN Windows Terminal.
     /// En esa máquina el host es conhost, que abre ventana nueva en el escritorio actual.
+    ///
+    /// <paramref name="elevated"/>: mismo contrato que <see cref="StartTerminal"/> — app elevada →
+    /// Process.Start pelado (hereda nuestro token); app sin elevar → <c>runas</c> (UAC). Acá no hace
+    /// falta trampolín: no hay alias wt.exe de por medio. Si el UAC se cancela, no se lanza nada.
     /// </summary>
-    private static void LaunchDirect(string workingDir, string? command, bool closeOnExit = false)
+    private static void LaunchDirect(string workingDir, string? command, bool closeOnExit = false,
+                                     bool elevated = false)
     {
         // Mismo criterio que AddTabArgs: sin -NoExit, pwsh sale solo al terminar el comando (ver el
         // comentario de ahí para el porqué). Sin comando no hay nada que "terminar" → siempre -NoExit.
         string noExit = command is null || !closeOnExit ? "-NoExit " : "";
-        UnelevatedLauncher.Start(new ProcessStartInfo(PreferredExe)
+        var psi = new ProcessStartInfo(PreferredExe)
         {
             UseShellExecute = true,
             WorkingDirectory = workingDir,
             Arguments = command is null ? "-NoExit" : $"{noExit}-Command \"{command}\"",
-        });
+        };
+
+        if (!elevated)
+        {
+            UnelevatedLauncher.Start(psi);
+            return;
+        }
+
+        try
+        {
+            if (!ElevationHelper.IsElevated()) psi.Verb = "runas";
+            Process.Start(psi);
+        }
+        catch (Exception ex)
+        {
+            UnelevatedLauncher.LogFailure(psi.FileName,
+                $"lanzamiento ELEVADO (sin Windows Terminal) no realizado: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 }

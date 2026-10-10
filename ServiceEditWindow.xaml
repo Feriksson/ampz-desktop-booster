@@ -211,6 +211,14 @@
             <TextBlock x:Name="CloseOnExitHint" Text="{loc:Translate Services.CloseOnExitHint}"
                        Foreground="#6E6E78" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,6" />
 
+            <!-- Misma regla de visibilidad que el de arriba: sin comando no hay terminal que elevar.
+                 Destildado por defecto a propósito — la app corre elevada y lo que lanza NO debe
+                 heredarlo salvo que se pida acá (o por lanzada, con Ctrl+Shift+Enter). -->
+            <CheckBox x:Name="RunElevatedBox" Foreground="#E6E6EA" FontSize="12"
+                      Content="{loc:Translate Services.FldRunElevated}" Margin="0,2,0,4" />
+            <TextBlock x:Name="RunElevatedHint" Text="{loc:Translate Services.RunElevatedHint}"
+                       Foreground="#6E6E78" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,6" />
+
             <TextBlock Text="{loc:Translate Services.DlgHint}" TextWrapping="Wrap"
                        Foreground="#6E6E78" FontSize="10" Margin="0,2,0,0" />
 

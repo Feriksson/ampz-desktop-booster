@@ -25,6 +25,7 @@ namespace AmpzDesktopBooster;
 /// Sucede al viejo popup de Puertos, que modelaba el PUERTO (la consecuencia) en vez del SERVICIO, y
 /// que sabía decirte si algo corría pero no hacerlo correr. Hoy:
 ///   Enter        → acción primaria: LANZAR (o abrir en el browser si la entrada no tiene comando)
+///   Ctrl+Shift+Enter → la misma acción primaria, pero con la terminal ELEVADA sólo esta vez
 ///   Shift+Enter  → abrir http://localhost:PUERTO en el browser
 ///   Ctrl+Enter   → LEVANTAR TODO lo que falta (los que declaran puerto y no están escuchando)
 ///   Ctrl+N       → alta   ·   F2 → editar los cuatro campos   ·   Supr → borrar
@@ -40,12 +41,25 @@ namespace AmpzDesktopBooster;
 /// editan ni se borran desde acá: se tocan parándote en el scope donde viven, para que no puedas
 /// romperle el servicio a otro contexto sin darte cuenta.
 ///
+/// ⚠ EXCEPCIÓN — parado en la GLOBAL se edita y se borra TODO, también las filas de otros espacios
+/// y contextos. La regla de arriba protege "lo tuyo" de un cambio hecho desde el scope de al lado;
+/// la global no tiene un scope propio que proteger ni nadie de quien hereda: es la vista de
+/// administración del catálogo ("desde global puedo editar cualquier cosa"). La edición escribe en
+/// la pool DUEÑA de la fila (<see cref="Row.Pool"/>), así que la entrada no cambia de scope: editar
+/// no es mover. Ver <see cref="IsGlobalPrimary"/>.
+///
 /// COLUMNAS Y BÚSQUEDA: el mismo rediseño que Variables. Cada fila dice su Espacio ("GLOBAL" o el
 /// nombre) y su Contexto (con su color), así que los viejos rótulos "Heredados de X" se fueron: la
 /// columna ya dice de quién es cada fila. Queda UN solo divisor, el de "otros espacios", que aparece
-/// con el toggle Ctrl+P o SOLO al tipear un filtro parado en la GLOBAL (desde ahí "¿dónde tenía el
-/// comando del worker?" no tiene un scope propio donde buscar). Las filas de otros espacios son de
-/// solo-lectura con la MISMA regla que las heredadas: se lanzan/visitan/copian, no se editan.
+/// con el toggle Ctrl+P o SOLO al tipear un filtro. Parado en la GLOBAL el toggle ya arranca ON (desde
+/// ahí "¿dónde tenía el comando del worker?" no tiene un scope propio donde buscar). Las filas de otros espacios son de
+/// solo-lectura con la MISMA regla que las heredadas: se lanzan/visitan/copian, no se editan —
+/// salvo parado en la GLOBAL, donde son tan operables como las propias (ver la excepción de arriba).
+///
+/// ELEVACIÓN: por defecto todo se lanza SIN elevar, aunque la app corra elevada. Hay dos formas de
+/// pedir lo contrario y conviven: el flag persistido del comando (<c>ServiceEntry.RunElevated</c>, 🛡
+/// en su columna — vale en toda lanzada, "levantar todo" incluido) y Ctrl+Shift+Enter, que eleva UNA
+/// lanzada de cualquier fila lanzable —también heredadas y de otros espacios— sin tocar el flag.
 ///
 /// URLs: una entrada puede declarar además una URL (<c>ServiceEntry.Url</c>) que se abre cuando el
 /// servicio se lanza y en "levantar todo". Con comando vacío la entrada es SÓLO eso —un enlace que
@@ -68,6 +82,8 @@ public partial class ServicesWindow : Window
     /// Own = operable (editás/borrás). Parent, Global y Other = SOLO-LECTURA (lanzás/visitás/copiás,
     /// no editás): Parent y Global son la herencia; Other es OTRO espacio/contexto traído por el
     /// toggle Ctrl+P o por la ampliación automática desde la global. Separator = divisor, no seleccionable.
+    /// El scope dice DE DÓNDE viene la fila; si se puede editar lo dice <see cref="Row.Editable"/>,
+    /// que no es lo mismo: parado en la global, las Other también se editan.
     /// </remarks>
     private enum RowScope { Own, Parent, Global, Other, Separator }
 
@@ -82,6 +98,12 @@ public partial class ServicesWindow : Window
         /// con "otros espacios" hay N pools de scope Other, y el scope solo ya no dice cuál es.
         /// </summary>
         public required ServicePool? Pool { get; init; }
+        /// <summary>
+        /// Se puede editar y borrar desde ESTA ventana. Las propias siempre; las de otros espacios
+        /// sólo parado en la global. Se resuelve al armar la fila (no se deduce del scope) porque
+        /// depende de dónde está parada la ventana, que la fila no conoce.
+        /// </summary>
+        public required bool Editable { get; init; }
         /// <summary>Columna Espacio: "GLOBAL" (localizado) o el espacio dueño — ver <see cref="ProjectPathsWindow.ResolveScopeColumns"/>.</summary>
         public required string Project { get; init; }
         /// <summary>Columna Contexto: el contexto dueño, o "" si la fila es del espacio pelado o global.</summary>
@@ -99,6 +121,11 @@ public partial class ServicesWindow : Window
         public required bool IsPortDuplicated { get; init; }
         /// <summary>Entra en "levantar todo". Se pinta en la fila para que se lea sin abrir el editor.</summary>
         public required bool AutoStarts { get; init; }
+        /// <summary>
+        /// Su terminal nace ELEVADA en toda lanzada (flag persistido). Ya viene filtrado por "tiene
+        /// comando": sin comando no hay terminal, y pintar el escudo en una fila de sólo URL mentiría.
+        /// </summary>
+        public required bool RunsElevated { get; init; }
 
         private bool _isListening;
         public bool IsListening
@@ -114,8 +141,12 @@ public partial class ServicesWindow : Window
 
         public bool IsSeparator => Scope == RowScope.Separator;
         public bool IsOwn => Scope == RowScope.Own;
-        /// <summary>Fila de SOLO-LECTURA: heredada (espacio padre, global) o de otro espacio.</summary>
-        public bool IsReadOnlyRef => Scope is RowScope.Parent or RowScope.Global or RowScope.Other;
+        /// <summary>
+        /// Fila de SOLO-LECTURA (se pinta atenuada): heredada (espacio padre, global) o de otro
+        /// espacio — salvo las de otro espacio vistas desde la global, que son editables y por eso
+        /// NO se atenúan: el gris significa "acá no se toca", y ahí sería mentira.
+        /// </summary>
+        public bool IsReadOnlyRef => !IsSeparator && !Editable;
 
         /// <summary>Declara puerto → es un SERVIDOR y tiene estado que mostrar. Ver ServiceEntry.</summary>
         public bool HasPort => Port > 0;
@@ -165,15 +196,28 @@ public partial class ServicesWindow : Window
         /// <summary>Celda de la columna Auto: ⏩ si entra en "Levantar todo", vacía si no.</summary>
         public string AutoIcon => AutoStarts ? "⏩" : "";
 
+        /// <summary>Celda de la columna Admin: 🛡 si el comando se lanza elevado, vacía si no.</summary>
+        public string ElevatedIcon => RunsElevated ? "🛡" : "";
+
         public event PropertyChangedEventHandler? PropertyChanged;
     }
 
     private readonly ServicePool _pool;          // scope primario: el único EDITABLE desde acá
     private readonly ServicePool? _parentPool;   // el espacio, si estás parado en un contexto
     private readonly ServicePool? _globalPool;
-    private readonly IReadOnlyList<ServicePool> _otherPools; // los demás espacios/contextos (Ctrl+P), read-only
+    private readonly IReadOnlyList<ServicePool> _otherPools; // los demás espacios/contextos (Ctrl+P); read-only salvo desde la global
+
+    /// <summary>
+    /// La pool primaria ES la global (<c>_globalPool</c> null — misma convención que
+    /// <see cref="LaunchMissing"/> y que el arranque de <see cref="_showAllProjects"/>). Es lo que
+    /// levanta el solo-lectura de las filas de otros espacios: ver la excepción en el doc de la clase.
+    /// </summary>
+    private bool IsGlobalPrimary => _globalPool is null;
     private readonly ProjectStore? _store;                   // color del contexto + scope a elegir en el alta
-    /// <summary>Toggle "otros espacios". OFF por default: arrancás en TU scope y te abrís al resto a pedido.</summary>
+    /// <summary>
+    /// Toggle "otros espacios". OFF por default en un espacio/contexto (arrancás en TU scope y te abrís
+    /// al resto a pedido); ON de entrada parado en la GLOBAL — ver el constructor.
+    /// </summary>
     private bool _showAllProjects;
     private readonly ObservableCollection<Row> _rows = new();
     private readonly DispatcherTimer _statusTimer;
@@ -226,9 +270,21 @@ public partial class ServicesWindow : Window
             ? $"{deskName}    ·    {Loc.T("Services.NoNetwork")}"
             : $"{deskName}    ·    {string.Format(Loc.T("Services.NetworkIp"), _networkIp)}";
 
+        // Parado en la GLOBAL arrancás con "otros espacios" ya ON: ahí no hay un scope propio que
+        // proteger del ruido, y lo que venís a buscar ("¿dónde tenía el comando del worker?") casi
+        // siempre vive en algún espacio. _globalPool null = la pool primaria ES la global (misma
+        // convención que LaunchMissing). En un espacio/contexto sigue OFF: arrancás en lo tuyo.
+        _showAllProjects = _globalPool is null && _otherPools.Count > 0;
+
         // Sin otros espacios con servicios no hay nada que togglear → ocultamos el botón (como Variables).
         AllProjectsBtn.Visibility = _otherPools.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         UpdateAllProjectsBtn();
+
+        // La cola del hint depende de dónde estás parado: en un espacio/contexto explica las filas
+        // grises (se lanzan, no se editan); en la global no hay grises —todo se edita— y repetir esa
+        // frase ahí describiría una restricción que no existe.
+        HintsText.Text = Loc.T("Services.Hints") + " · "
+                       + Loc.T(IsGlobalPrimary ? "Services.HintsGlobal" : "Services.HintsScoped");
 
         ServiceList.ItemsSource = _rows;
         RefreshList();
@@ -238,6 +294,7 @@ public partial class ServicesWindow : Window
         ServiceList.MouseDoubleClick += (_, _) => PrimaryAction();
 
         LaunchBtn.Click += (_, _) => PrimaryAction();
+        LaunchElevatedBtn.Click += (_, _) => PrimaryAction(forceElevated: true);
         VisitBtn.Click += (_, _) => OpenInBrowser();
         LaunchAllBtn.Click += (_, _) => LaunchMissingWithFeedback();
         AddBtn.Click += (_, _) => AddNew();
@@ -267,7 +324,7 @@ public partial class ServicesWindow : Window
     /// star-sizing: sin esto, agrandar la ventana sólo agregaba un hueco a la derecha y el comando
     /// se seguía cortando exactamente igual que antes.
     ///
-    /// Estado y Puerto quedan FIJOS a propósito: uno es un puntito y el otro cuatro dígitos: darles
+    /// Estado, Auto, Admin y Puerto quedan FIJOS a propósito: son un puntito, dos íconos y cuatro dígitos: darles
     /// ancho proporcional sería regalarle a un círculo el espacio que necesita un comando. Espacio
     /// (120) y Contexto también fijas. CONTEXTO va en 240 —el doble, igual que en Variables— por
     /// pedido del usuario: es la columna que se lee para no errarle de contexto (la razón de ser de
@@ -283,7 +340,7 @@ public partial class ServicesWindow : Window
     /// </summary>
     private void LayoutColumns()
     {
-        const double fixedCols = 60 + 50 + 80 + 120 + 240;   // Estado + Auto + Puerto + Espacio + Contexto (ver los Width del XAML)
+        const double fixedCols = 60 + 50 + 50 + 80 + 120 + 240;   // Estado + Auto + Admin + Puerto + Espacio + Contexto (ver los Width del XAML)
         const double chrome = 34 + 4 + 24;  // borde+padding de la ventana, padding del panel, scrollbar
 
         double free = Width - fixedCols - chrome;
@@ -377,6 +434,7 @@ public partial class ServicesWindow : Window
                 Scope = scope,
                 PoolIndex = i,
                 Pool = pool,
+                Editable = scope == RowScope.Own || (scope == RowScope.Other && IsGlobalPrimary),
                 Title = e.Title,
                 Command = e.Command,
                 WorkDir = e.WorkDir,
@@ -385,6 +443,7 @@ public partial class ServicesWindow : Window
                 IsBroken = IsBrokenDir(e),
                 IsPortDuplicated = e.Port > 0 && duplicated.Contains(e.Port),
                 AutoStarts = ServiceLauncher.IsGroupLaunchable(e),
+                RunsElevated = e.RunElevated && e.Command.Trim() != "",
                 IsListening = e.Port > 0 && listening.Contains(e.Port),
                 Project = project,
                 Module = module,
@@ -412,9 +471,9 @@ public partial class ServicesWindow : Window
     /// <summary>Fila-rótulo (divisor de "otros espacios"). No es operable (ver estilo en el XAML).</summary>
     private static Row SeparatorRow(string text) => new()
     {
-        Scope = RowScope.Separator, PoolIndex = -1, Pool = null, Title = text,
+        Scope = RowScope.Separator, PoolIndex = -1, Pool = null, Editable = false, Title = text,
         Command = "", WorkDir = "", Port = 0, Url = "", IsBroken = false, AutoStarts = false,
-        IsPortDuplicated = false, Project = "", Module = "",
+        RunsElevated = false, IsPortDuplicated = false, Project = "", Module = "",
         ModuleBrush = System.Windows.Media.Brushes.Transparent,
     };
 
@@ -486,7 +545,12 @@ public partial class ServicesWindow : Window
     ///     TEXTO SELECCIONADO adentro, y Supr sólo si el filtro tiene texto.
     ///   · foco en un BOTÓN → Enter es "apretar ESTE botón". Si lo interceptáramos, tabular hasta
     ///     Borrar y hacer Enter lanzaría el servicio: lo contrario de lo que dice la pantalla.
-    /// Ctrl+Enter y Ctrl+Shift+C sí valen en todos lados: son combos explícitos, no colisionan.
+    /// Ctrl+Enter, Ctrl+Shift+Enter y Ctrl+Shift+C sí valen en todos lados: son combos explícitos,
+    /// no colisionan.
+    ///
+    /// ⚠ ORDEN de los casos de Enter: Ctrl+Shift+Enter va ARRIBA de Ctrl+Enter. El switch toma el
+    /// primer caso que matchea y <c>when Ctrl</c> también es verdadero con Shift apretado — al revés,
+    /// "lanzar elevado" dispararía "levantar todo".
     /// </summary>
     private void OnWindowKeyDown(object sender, KeyEventArgs e)
     {
@@ -500,6 +564,7 @@ public partial class ServicesWindow : Window
 
         switch (e.Key)
         {
+            case Key.Enter when Ctrl && Shift:      PrimaryAction(forceElevated: true); break;
             case Key.Enter when Ctrl:               LaunchMissingWithFeedback(); break;
             case Key.Enter when Shift && !onButton: OpenInBrowser();             break;
             case Key.Enter when !onButton:          PrimaryAction();             break;
@@ -531,17 +596,23 @@ public partial class ServicesWindow : Window
     /// su DEFINICIÓN, que es estable: si sabe cómo levantarse, lo levanta; si no tiene comando —una
     /// entrada de sólo monitoreo— lo único que puede hacer es abrirte el browser. Que dependa de la
     /// definición y no del estado es lo que la hace predecible: la misma fila hace siempre lo mismo.
+    ///
+    /// <paramref name="forceElevated"/> (Ctrl+Shift+Enter / su botón) es el MISMO camino con la
+    /// terminal elevada sólo por esta vez, tenga o no el flag la fila. No es una acción aparte a
+    /// propósito: así vale sobre cualquier fila lanzable (propia, heredada, de otro espacio) y sobre
+    /// la multi-selección sin duplicar una regla. En una fila SIN comando no hay terminal que elevar
+    /// → hace lo de siempre (abrir el browser), que es mejor que un atajo mudo.
     /// </summary>
-    private void PrimaryAction()
+    private void PrimaryAction(bool forceElevated = false)
     {
         var rows = SelectedRows;
-        if (rows.Count > 1) { LaunchRows(rows); return; }
+        if (rows.Count > 1) { LaunchRows(rows, forceElevated); return; }
 
         if (rows.FirstOrDefault() is not { } row) return;
 
         if (row.HasCommand)
         {
-            LaunchRow(row);
+            LaunchRow(row, forceElevated);
             // La URL de la entrada sale junto con su comando, esperando al puerto igual que en el
             // arranque grupal: lanzar el front y abrirle la pantalla es UN gesto, no dos.
             if (row.HasUrl) ServiceUrlOpener.Open(row.Url, row.Port);
@@ -551,12 +622,13 @@ public partial class ServicesWindow : Window
         if (row.HasUrl || row.HasPort) OpenInBrowser();
     }
 
-    private void LaunchRow(Row row)
+    private void LaunchRow(Row row, bool forceElevated = false)
     {
         if (PoolOf(row) is not { } pool) return;
         if (row.PoolIndex < 0 || row.PoolIndex >= pool.Entries.Count) return;
 
-        var result = ServiceLauncher.Launch(pool.Entries[row.PoolIndex]);
+        // El flag persistido de la entry lo suma el launcher: acá sólo viaja el forzado.
+        var result = ServiceLauncher.Launch(pool.Entries[row.PoolIndex], forceElevated);
         if (result == LaunchResult.Ok) return;
 
         MessageBox.Show(LaunchErrorText(result, row), Loc.T("Services.WindowTitle"),
@@ -572,7 +644,7 @@ public partial class ServicesWindow : Window
     /// A diferencia del arranque grupal, acá lo que no pudo arrancar SE AVISA, todo junto en un
     /// solo mensaje: estas filas las elegiste vos.
     /// </summary>
-    private void LaunchRows(List<Row> rows)
+    private void LaunchRows(List<Row> rows, bool forceElevated = false)
     {
         var entries = new List<ServiceEntry>();
         var owner = new Dictionary<ServiceEntry, Row>();
@@ -597,7 +669,7 @@ public partial class ServicesWindow : Window
         }
 
         var failures = new List<(ServiceEntry Service, LaunchResult Result)>();
-        ServiceLauncher.LaunchMany(entries, failures);
+        ServiceLauncher.LaunchMany(entries, failures, forceElevated);
         ServiceUrlOpener.OpenAll(urls);
 
         if (failures.Count == 0) return;
@@ -895,7 +967,9 @@ public partial class ServicesWindow : Window
                 Loc.T("Services.WindowTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
-    // ── Alta / edición / borrado (SÓLO sobre el scope primario) ────────────────
+    // ── Alta / edición / borrado ───────────────────────────────────────────────
+    // Editar y borrar valen sobre las filas `Editable`: el scope primario siempre, y parado en la
+    // GLOBAL también las de otros espacios. Siempre escriben en la pool DUEÑA de la fila.
 
     /// <summary>
     /// Alta con elección de DÓNDE se guarda (default = el scope primario de esta ventana). Mismo
@@ -910,7 +984,7 @@ public partial class ServicesWindow : Window
         var e = a.Entry;
         bool here = _store is null || string.Equals(a.ScopeKey, _pool.Key, StringComparison.OrdinalIgnoreCase);
         var target = here ? _pool : _store!.GetServicePoolFor(a.ScopeKey);
-        target.Add(e.Title, e.Command, e.WorkDir, e.Port, e.Url, e.AutoStart, e.CloseOnExit);
+        target.Add(e.Title, e.Command, e.WorkDir, e.Port, e.Url, e.AutoStart, e.CloseOnExit, e.RunElevated);
         RefreshList();
 
         // En otro espacio/contexto la fila no aparece en esta lista (salvo que sea el padre o la
@@ -922,24 +996,32 @@ public partial class ServicesWindow : Window
     private void EditSelected()
     {
         if (Selected is not { } row || row.IsSeparator) return;
-        if (!row.IsOwn) { ReadOnlyRow(row); return; }
-        if (row.PoolIndex < 0 || row.PoolIndex >= _pool.Entries.Count) return;
+        if (!row.Editable) { ReadOnlyRow(row); return; }
+
+        // La pool DUEÑA de la fila, no `_pool`: desde la global se editan filas de otros espacios, y
+        // escribirlas en la primaria las pisaría sobre la entrada global que comparte índice. Con la
+        // dueña la entrada se queda en su scope (editar no es mover) y persiste por el mismo camino
+        // que una edición hecha parado ahí (ServicePool.Update → save del store).
+        if (PoolOf(row) is not { } pool) return;
+        if (row.PoolIndex < 0 || row.PoolIndex >= pool.Entries.Count) return;
 
         // Se pasa la entry VIVA de la pool (no una copia): el registro de puertos la excluye por
-        // referencia para que re-guardar sin tocar el puerto no se choque consigo mismo.
-        var entry = ServiceEditWindow.Show(this, Loc.T("Services.DlgEditTitle"), _pool.Label,
-                                           _pool.Entries[row.PoolIndex], _ports);
+        // referencia para que re-guardar sin tocar el puerto no se choque consigo mismo. El rótulo
+        // de scope es el de la dueña: el diálogo tiene que decir dónde VIVE lo que estás tocando.
+        var entry = ServiceEditWindow.Show(this, Loc.T("Services.DlgEditTitle"), pool.Label,
+                                           pool.Entries[row.PoolIndex], _ports);
         if (entry is null) return;
-        _pool.Update(row.PoolIndex, entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.Url,
-                     entry.AutoStart, entry.CloseOnExit);
+        pool.Update(row.PoolIndex, entry.Title, entry.Command, entry.WorkDir, entry.Port, entry.Url,
+                    entry.AutoStart, entry.CloseOnExit, entry.RunElevated);
         RefreshList();
     }
 
     private void DeleteSelected()
     {
         if (Selected is not { } row || row.IsSeparator) return;
-        if (!row.IsOwn) { ReadOnlyRow(row); return; }
-        _pool.Delete(row.PoolIndex);
+        if (!row.Editable) { ReadOnlyRow(row); return; }
+        // Misma razón que en EditSelected: se borra de la pool dueña de la fila.
+        PoolOf(row)?.Delete(row.PoolIndex);
         RefreshList();
     }
 

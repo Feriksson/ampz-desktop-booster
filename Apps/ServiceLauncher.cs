@@ -37,12 +37,21 @@ public enum LaunchResult
 /// </summary>
 public static class ServiceLauncher
 {
-    public static LaunchResult Launch(ServiceEntry service)
+    /// <summary>
+    /// <paramref name="elevated"/> (acá y en <see cref="LaunchMany"/> / <see cref="LaunchGroupMissing"/>)
+    /// es un FORZADO de la lanzada, no la elevación efectiva: la terminal nace con token de
+    /// administrador si el servicio lo pide (<see cref="ServiceEntry.RunElevated"/>, el flag
+    /// persistido) O si esta lanzada lo fuerza (Ctrl+Shift+Enter en la ventana). Se resuelve POR
+    /// SERVICIO en <see cref="Resolve"/>, así que un lote puede salir mixto — "levantar todo" lanza
+    /// elevados los marcados y normal el resto en la misma pasada (<see cref="Shell.RunMany"/> lo parte).
+    /// Default false: la app corre elevada y lo que lanza NO debe heredarlo salvo pedido explícito.
+    /// </summary>
+    public static LaunchResult Launch(ServiceEntry service, bool elevated = false)
     {
-        var result = Resolve(service, out var job);
+        var result = Resolve(service, elevated, out var job);
         if (result != LaunchResult.Ok) return result;
 
-        Shell.RunInDir(job.WorkingDir, job.Command, job.CloseOnExit);
+        Shell.RunInDir(job.WorkingDir, job.Command, job.CloseOnExit, job.Elevated);
         return LaunchResult.Ok;
     }
 
@@ -68,12 +77,13 @@ public static class ServiceLauncher
     /// se leería como "el botón ignoró la mitad". El arranque grupal no lo pasa y sigue mudo.
     /// </summary>
     public static int LaunchMany(IEnumerable<ServiceEntry> services,
-                                 ICollection<(ServiceEntry Service, LaunchResult Result)>? failures = null)
+                                 ICollection<(ServiceEntry Service, LaunchResult Result)>? failures = null,
+                                 bool elevated = false)
     {
         var jobs = new List<ShellJob>();
         foreach (var s in services)
         {
-            var result = Resolve(s, out var job);
+            var result = Resolve(s, elevated, out var job);
             if (result == LaunchResult.Ok) jobs.Add(job);
             else failures?.Add((s, result));
         }
@@ -87,7 +97,7 @@ public static class ServiceLauncher
     /// Valida el servicio y expande sus tokens, SIN lanzar nada. Separado de <see cref="Launch"/>
     /// para que el arranque grupal pueda resolver todo primero y recién después disparar una sola vez.
     /// </summary>
-    private static LaunchResult Resolve(ServiceEntry service, out ShellJob job)
+    private static LaunchResult Resolve(ServiceEntry service, bool elevated, out ShellJob job)
     {
         job = default;
 
@@ -106,7 +116,9 @@ public static class ServiceLauncher
         if (token == TokenResult.NoNetwork) return LaunchResult.NoNetwork;
         if (token == TokenResult.NoPort) return LaunchResult.NoPortToken;
 
-        job = new ShellJob(dir, expanded, service.CloseOnExit);
+        // El flag del servicio y el forzado de la lanzada se SUMAN: ninguno de los dos puede bajarle
+        // la elevación al otro (forzar nunca des-eleva, y sin forzar manda lo que el servicio declara).
+        job = new ShellJob(dir, expanded, service.CloseOnExit, service.RunElevated || elevated);
         return LaunchResult.Ok;
     }
 
@@ -136,7 +148,8 @@ public static class ServiceLauncher
     /// que no necesita recordar nada entre llamadas.
     /// </summary>
     public static int LaunchGroupMissing(IEnumerable<ServicePool?> scopedPools,
-                                         HashSet<string>? groupLaunchedPortless = null)
+                                         HashSet<string>? groupLaunchedPortless = null,
+                                         bool elevated = false)
     {
         var listening = TcpPortInfo.ListeningPorts();
         var pending = new List<ServiceEntry>();
@@ -169,7 +182,7 @@ public static class ServiceLauncher
             }
         }
 
-        int launched = LaunchMany(pending);
+        int launched = LaunchMany(pending, elevated: elevated);
         ServiceUrlOpener.OpenAll(urls);
         return launched + urls.Count;
     }
