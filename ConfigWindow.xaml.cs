@@ -53,6 +53,18 @@ public partial class ConfigWindow : Window
 
         Icon = AppIcon.TryLoadForWindow(); // ícono real en taskbar / Alt-Tab / título
 
+        // Esc cierra la config, como el resto de las ventanas de la app (se abre con Win+NumpadDel:
+        // tiene que poder cerrarse sin ir a buscar la X). KeyDown BURBUJEANTE y no Preview a
+        // propósito: si un control de adentro usa el Esc para lo suyo (un combo con la lista
+        // desplegada lo cierra y marca Handled) gana él, y recién el siguiente Esc cierra la ventana.
+        // Equivale a la X: lo no guardado de la pestaña Escritorios se descarta igual que con ella.
+        KeyDown += (_, e) =>
+        {
+            if (e.Key != System.Windows.Input.Key.Escape || e.Handled) return;
+            e.Handled = true;
+            Close();
+        };
+
         AutoCreateChk.IsChecked = _config.AutoCreate;
         RebuildDeskRows();
 
