@@ -145,8 +145,13 @@ public partial class KnowledgeImportWindow : Window
                 ? string.Format(Loc.T("KnowledgeImport.CollisionMany"), _copyPlan.Collisions, original)
                 : string.Format(Loc.T("KnowledgeImport.CollisionOne"), original);
             CopyDesc.Text = string.Format(Loc.T(many ? "KnowledgeImport.CopyDescMany" : "KnowledgeImport.CopyDescOne"), copyName, total);
-            MergeDesc.Text = string.Format(Loc.T("KnowledgeImport.MergeDesc"),
-                _mergePlan.CardsAdded + _mergePlan.TermsAdded, _mergePlan.EntriesSkipped);
+            // Si combinar va a completar ayuda, la consecuencia lo DICE y deja de prometer "nada
+            // tuyo se modifica": es la única escritura sobre lo existente y no puede ir escondida.
+            MergeDesc.Text = _mergePlan.HelpCompleted > 0
+                ? string.Format(Loc.T("KnowledgeImport.MergeDescHelp"),
+                    _mergePlan.CardsAdded + _mergePlan.TermsAdded, _mergePlan.EntriesSkipped, _mergePlan.HelpCompleted)
+                : string.Format(Loc.T("KnowledgeImport.MergeDesc"),
+                    _mergePlan.CardsAdded + _mergePlan.TermsAdded, _mergePlan.EntriesSkipped);
         }
 
         // El lector de pantalla lee la opción CON su consecuencia, no sólo el título.
@@ -167,6 +172,8 @@ public partial class KnowledgeImportWindow : Window
             : "";
         MergeSummaryText.Text = string.Format(Loc.T("KnowledgeImport.SummaryMerge"), plan.LibrariesMerged, plan.EntriesSkipped);
         MergeSummaryText.Visibility = ok && plan.LibrariesMerged > 0 ? Visibility.Visible : Visibility.Collapsed;
+        HelpSummaryText.Text = string.Format(Loc.T("KnowledgeImport.SummaryHelp"), plan.HelpCompleted);
+        HelpSummaryText.Visibility = ok && plan.HelpCompleted > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         TreeList.ItemsSource = plan.Lines.Select(BuildRow).ToList();
 
@@ -199,9 +206,11 @@ public partial class KnowledgeImportWindow : Window
             ImportLibraryState.CreatedAsCopy => "KnowledgeImport.RowCopy",
             _ => "KnowledgeImport.RowNew",
         });
-        string counts = merged
-            ? string.Format(Loc.T("KnowledgeImport.RowCountsMerged"), line.Cards + line.Terms, line.Skipped)
-            : string.Format(Loc.T("KnowledgeImport.RowCounts"), line.Cards, line.Terms);
+        string counts = !merged
+            ? string.Format(Loc.T("KnowledgeImport.RowCounts"), line.Cards, line.Terms)
+            : line.HelpCompleted > 0
+                ? string.Format(Loc.T("KnowledgeImport.RowCountsMergedHelp"), line.Cards + line.Terms, line.Skipped, line.HelpCompleted)
+                : string.Format(Loc.T("KnowledgeImport.RowCountsMerged"), line.Cards + line.Terms, line.Skipped);
 
         return new TreeRow
         {

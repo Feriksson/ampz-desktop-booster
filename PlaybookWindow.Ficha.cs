@@ -16,7 +16,8 @@ namespace AmpzDesktopBooster;
 //
 // Una entrada para LEER, sin jugarla: es a lo que lleva Enter sobre un resultado de la búsqueda.
 // A la izquierda, la entrada completa (en un término: palabra, tipo, definición, traducciones,
-// contexto de uso y origen) con la tipografía de la tarjeta del quiz. A la derecha, cuán firme está
+// contexto de uso y origen; en una card: frente, dorso y su glosario) con la tipografía de la
+// tarjeta del quiz. A la derecha, cuán firme está
 // vista desde cada lado y su historial de repasos con fechas — "lo sabía en marzo y se me fue".
 //
 // Leer NO anota nada: mirar una ficha no dice cuánto se la sabe, igual que "saltar" en el quiz. El
@@ -139,6 +140,7 @@ public partial class PlaybookWindow
         AddSide(FichaPanel, entry, front: true, term, question: true);
         AddSide(FichaPanel, entry, front: false, term, question: false, topMargin: 22);
         if (term) AddTermSheet(FichaPanel, entry, translations);
+        else AddGlossarySection(FichaPanel, _store.GetGlossary(entry.Id));
 
         // ── Solidez por lado + historial ── Una consulta por la entrada que se abre (no por fila).
         var reviews = _store.GetReviews(new[] { entry.Id });
@@ -155,6 +157,18 @@ public partial class PlaybookWindow
         UpdateLayout();
         FichaScroll.Focus();
         Keyboard.Focus(FichaScroll);
+    }
+
+    /// <summary>
+    /// El glosario de una card, como una sección más de su ficha (un término no lo lleva: lo suyo es
+    /// el origen, que ya está en su ficha). Se lee de la base al abrir, igual que las traducciones:
+    /// una consulta por la entrada que se abre. Sin glosario no se pinta nada, ni el rótulo.
+    /// </summary>
+    private void AddGlossarySection(Panel panel, IReadOnlyList<GlossaryItem> items)
+    {
+        if (items.Count == 0) return;
+        AddLabel(panel, Loc.T("Playbook.FieldGlossary"), topMargin: 22);
+        panel.Children.Add(BuildGlossaryList(items));
     }
 
     /// <summary>Cómo se llama un lado en la ficha: "Término" / "Definición" (o "Frente" / "Dorso" en

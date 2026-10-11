@@ -12,7 +12,8 @@ namespace AmpzDesktopBooster;
 
 // ── Pestaña CONOCIMIENTO: importar / exportar bibliotecas ────────────────────────────────────────
 //
-// Los tres botones del encabezado de la pestaña. Esta parte sólo pone la UI: el formato del archivo
+// Los botones del encabezado de la pestaña (más «Copiar prompt para IA», la ayuda para generar un
+// archivo importable con un modelo de IA). Esta parte sólo pone la UI: el formato del archivo
 // es de KnowledgeExchange y lo que entra y sale de la base es de KnowledgeStore.
 //
 //   • Exportar NO tiene confirmación propia: el diálogo de guardar ya es el "¿dónde?", y qué se lleva
@@ -32,6 +33,7 @@ public partial class ConfigWindow
         KnImportBtn.Click += (_, _) => ImportKnLibraries();
         KnExportBtn.Click += (_, _) => ExportKnLibraries(all: false);
         KnExportAllBtn.Click += (_, _) => ExportKnLibraries(all: true);
+        KnPromptCopyBtn.Click += (_, _) => CopyKnImportPrompt();
         KnExchangeOpenFolderBtn.Click += (_, _) => OpenKnExchangeFolder();
         KnExchangeDismissBtn.Click += (_, _) => HideKnExchangeNotice();
     }
@@ -191,8 +193,12 @@ public partial class ConfigWindow
         // Queda elegida la biblioteca importada (o la que recibió lo combinado): es lo que se vino a ver.
         RefreshKnowledge(selectLibraryId: outcome.RootLibraryIds.Count > 0 ? outcome.RootLibraryIds[0] : null,
             selectEntryIds: Array.Empty<long>());
-        ShowKnExchangeNotice(string.Format(Loc.T("Config.KnowledgeImportDone"), fileName, result.DestinationLabel,
-            outcome.LibrariesCreated, outcome.CardsAdded, outcome.TermsAdded, outcome.EntriesSkipped), error: false);
+        string done = string.Format(Loc.T("Config.KnowledgeImportDone"), fileName, result.DestinationLabel,
+            outcome.LibrariesCreated, outcome.CardsAdded, outcome.TermsAdded, outcome.EntriesSkipped);
+        // Sólo al combinar puede haber: entradas que ya estaban y recibieron la ayuda que no tenían.
+        if (outcome.HelpCompleted > 0)
+            done = string.Format(Loc.T("Config.KnowledgeImportDoneHelp"), done, outcome.HelpCompleted);
+        ShowKnExchangeNotice(done, error: false);
         KnLibList.Focus();
     }
 
@@ -239,6 +245,51 @@ public partial class ConfigWindow
 
         // Una biblioteca cuyo nombre no se pudo leer figura por su posición ("#3"): se aclara qué es.
         return error.Library.Contains('#') ? text + " " + Loc.T("Config.KnowledgeImportPositionLegend") : text;
+    }
+
+    // ──────────────────────────── El prompt para un modelo de IA ────────────────────────────
+
+    /// <summary>
+    /// Copia al portapapeles el pedido para que un modelo de IA arme un archivo importable, con las
+    /// naturalezas y los idiomas de ESTA base ya escritos (por qué: ver <see cref="ImportPrompt"/>).
+    /// Se leen de la base en el momento y no de la foto de la pestaña: son dos consultas cortas, y
+    /// así el texto no sale viejo si algo cambió desde otra ventana.
+    /// </summary>
+    private void CopyKnImportPrompt()
+    {
+        if (ImportPrompt.Build(_knowledge.GetNatures(), _knowledge.GetLanguages()) is not { } prompt)
+        {
+            ShowKnExchangeNotice(Loc.T("Config.KnowledgePromptUnavailable"), error: true);
+            return;
+        }
+
+        // El aviso dice lo que PASÓ: «copiado» sólo si el portapapeles lo tomó.
+        bool copied = TryCopyKnText(prompt);
+        ShowKnExchangeNotice(Loc.T(copied ? "Config.KnowledgePromptCopied" : "Config.KnowledgePromptClipboardBusy"),
+            error: !copied);
+    }
+
+    /// <summary>
+    /// Copia texto al portapapeles y dice si quedó. El portapapeles de Windows es de UN proceso por
+    /// vez: si otro lo tiene abierto (un gestor de portapapeles, un escritorio remoto), SetText tira.
+    /// Un único intento: WPF ya reintenta por dentro durante cerca de un segundo antes de tirar, y
+    /// sumar un bucle propio sólo alargaría la espera en el thread de UI, que es el del hook de teclado.
+    /// (El resto de la app copia con un try/catch mudo; acá hace falta el resultado para el aviso.)
+    /// </summary>
+    private static bool TryCopyKnText(string text)
+    {
+        try
+        {
+            Clipboard.SetText(text);
+            return true;
+        }
+        catch
+        {
+            // A veces SetText tira DESPUÉS de haber escrito (falla al cerrar el portapapeles, no al
+            // llenarlo). Se mira qué quedó antes de decir que no se pudo.
+            try { return Clipboard.GetText() == text; }
+            catch { return false; }
+        }
     }
 
     // ──────────────────────────── El aviso de resultado ────────────────────────────

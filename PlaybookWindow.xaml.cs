@@ -18,7 +18,8 @@ namespace AmpzDesktopBooster;
 /// leerla, y mirar cómo viene todo. Una sola ventana con seis vistas que se alternan por Visibility
 /// (mismo recurso que el Shortcuts Helper):
 ///
-///   BÚSQUEDA → ARMADO (qué lado se muestra primero) → QUIZ → RESUMEN        (este archivo)
+///   BÚSQUEDA → ARMADO (qué lado se muestra primero) → QUIZ → RESUMEN        (este archivo;
+///                                             la ayuda del quiz, tecla H: PlaybookWindow.Helper.cs)
 ///   BÚSQUEDA → FICHA de una entrada, para leerla                             (PlaybookWindow.Ficha.cs)
 ///   BÚSQUEDA → ESTADÍSTICAS                                                  (PlaybookWindow.Stats.cs)
 ///
@@ -150,6 +151,7 @@ public partial class PlaybookWindow : Window
         InitBrowse();
         InitFicha();
         InitStats();
+        InitHelper();
 
         StartBtn.Click += (_, _) => StartRound();
         SetupBackBtn.Click += (_, _) => LeaveSetup();
@@ -205,7 +207,7 @@ public partial class PlaybookWindow : Window
     // ──────────────────────────── Datos ────────────────────────────
 
     /// <summary>
-    /// Lee todo lo que la ventana necesita y arma las filas. Cuatro lecturas + el historial, y de
+    /// Lee todo lo que la ventana necesita y arma las filas. Cinco lecturas + el historial, y de
     /// ahí en más es todo memoria. Con la base caída cada lectura degrada a vacío (el store ya avisó
     /// por su cuenta): la ventana muestra el estado "sin bibliotecas" en vez de romperse.
     /// </summary>
@@ -217,6 +219,8 @@ public partial class PlaybookWindow : Window
         var natures = _store.GetNatures();
         _natureNames = natures.ToDictionary(n => n.Id, n => n.Name);
         _languageNames = _store.GetLanguages().ToDictionary(l => l.Id, l => l.Name);
+        // Los glosarios de TODAS las cards, de una vez: es lo que muestra la ayuda del quiz (H).
+        _glossaries = _store.GetAllGlossaries();
 
         // UNA lectura del historial y un solo cálculo para todas las filas (y para las estadísticas,
         // que lo reusan: por eso se guardan el historial y la fecha del cálculo).
@@ -442,7 +446,7 @@ public partial class PlaybookWindow : Window
         {
             Stage.Search => Loc.T("Playbook.HintSearch"),
             Stage.Setup => SetupHint(),
-            Stage.Quiz => Loc.T(_revealed ? "Playbook.HintQuizAnswer" : "Playbook.HintQuizQuestion"),
+            Stage.Quiz => QuizHint(),
             Stage.Ficha => Loc.T("Playbook.HintFicha"),
             Stage.Stats => Loc.T("Playbook.HintStats"),
             _ => Loc.T("Playbook.HintSummary"),
@@ -799,12 +803,13 @@ public partial class PlaybookWindow : Window
         CardNatureText.Text = nature;
         CardNatureChip.Visibility = nature == "" ? Visibility.Collapsed : Visibility.Visible;
 
-        RenderCard(card);
+        ShowQuestionWithHelpClosed(card);
         CardScroll.ScrollToTop();
 
         RevealBtn.Visibility = Visibility.Visible;
         GradePanel.Visibility = Visibility.Collapsed;
         CardSolidityText.Text = "";
+        UpdateHelpControls();
         UpdateHint();
 
         // El foco vive en la tarjeta: las flechas scrollean el texto largo y ningún botón queda
@@ -823,7 +828,13 @@ public partial class PlaybookWindow : Window
         _revealed = true;
 
         var card = _round[_index];
+        // La respuesta re-acomoda la tarjeta entera (como siempre): vuelve a centrarse, con la ayuda
+        // tal como estaba — si se la había abierto, sigue abierta debajo de la pregunta; si no, se le
+        // prevé el lugar (con la respuesta a la vista puede abrirse en cualquier lado).
+        CenterCard();
         RenderCard(card);
+        CloseHelpIfAnswerDoesNotFit(card);
+        ReserveHelpRoom(card);
 
         // La solidez que tenía ESTE lado al empezar la ronda (cada tarjeta sale una sola vez por
         // ronda, así que ese valor sigue siendo el vigente). Se muestra recién ahora: antes de
@@ -835,6 +846,7 @@ public partial class PlaybookWindow : Window
 
         RevealBtn.Visibility = Visibility.Collapsed;
         GradePanel.Visibility = Visibility.Visible;
+        UpdateHelpControls(); // con la respuesta a la vista la ayuda ya no delata nada: se habilita
         UpdateHint();
         CardScroll.Focus();
     }
@@ -859,7 +871,8 @@ public partial class PlaybookWindow : Window
 
         var card = _round[_index];
         _gradeCounts[(int)grade]++;
-        if (!_store.AddReview(card.Entry.Id, card.Side, grade))
+        // helped: sólo si la ayuda se abrió ANTES de revelar. No cambia la nota ni la solidez.
+        if (!_store.AddReview(card.Entry.Id, card.Side, grade, helped: _helpedBeforeReveal))
         {
             // No se pudo guardar (base tomada, disco). La ronda SIGUE — cortarla sería peor — pero
             // se dice acá mismo y queda dicho hasta el final: el resumen no puede mentir un guardado.
@@ -913,7 +926,7 @@ public partial class PlaybookWindow : Window
         if (_advancing)
         {
             // Durante el destello sólo se traga lo que tendría efecto; el resto (Alt+Tab, etc.) pasa.
-            if (e.Key is Key.Space or Key.Escape or Key.Enter || GradeFromKey(e.Key) is not null) e.Handled = true;
+            if (e.Key is Key.Space or Key.Escape or Key.Enter or Key.H || GradeFromKey(e.Key) is not null) e.Handled = true;
             return;
         }
 
@@ -927,7 +940,16 @@ public partial class PlaybookWindow : Window
 
             case Key.Escape:
                 e.Handled = true;
-                EndRound();
+                // Con la ayuda abierta, el primer Esc la cierra; recién el siguiente corta la ronda.
+                if (!CloseHelpIfOpen()) EndRound();
+                break;
+
+            // H: la ayuda. Se traga siempre (acá no hay dónde escribir una hache); si no hay ayuda
+            // que abrir no pasa nada, y el motivo está escrito junto al botón. Con Ctrl / Alt no es
+            // esta tecla: se deja pasar.
+            case Key.H when Keyboard.Modifiers == ModifierKeys.None:
+                e.Handled = true;
+                ToggleHelp();
                 break;
 
             default:
@@ -963,6 +985,8 @@ public partial class PlaybookWindow : Window
     ///
     /// Con un lado de IDIOMA la pregunta es la traducción sola ("Technical debt") y la respuesta es
     /// la ficha entera del término: la palabra, su definición y el resto.
+    ///
+    /// Con la AYUDA abierta, su bloque va pegado debajo de la pregunta (ver PlaybookWindow.Helper.cs).
     /// </summary>
     private void RenderCard(QuizCard card)
     {
@@ -976,6 +1000,7 @@ public partial class PlaybookWindow : Window
             AddBigText(CardPanel, LanguageOf(card.Side), TranslationOf(entry.Id, languageId) ?? "", question: true);
         else
             AddSide(CardPanel, entry, front: frontIsQuestion, term, question: true);
+        if (_helperOpen && HasHelp(entry)) CardPanel.Children.Add(BuildHelpBlock(entry));
         if (!_revealed) return;
 
         CardPanel.Children.Add(new Border
@@ -997,14 +1022,17 @@ public partial class PlaybookWindow : Window
         // sólo gasta un renglón de una tarjeta que, con este lado, es la más alta de todas.
         if (term)
             AddTermSheet(CardPanel, entry, _translations.TryGetValue(entry.Id, out var list) ? list : null,
-                skipLanguageId: languageQuestion ? languageId : null);
+                skipLanguageId: languageQuestion ? languageId : null,
+                // El origen es lo que muestra la ayuda de un término: abierta, no se repite acá abajo.
+                skipOrigin: _helperOpen);
     }
 
     /// <summary>
     /// Lo que un término tiene además de palabra y definición: traducciones, contexto de uso y
     /// origen. Lo comparten la respuesta del quiz y la ficha de lectura.
     /// </summary>
-    private void AddTermSheet(Panel panel, Entry entry, IReadOnlyList<Translation>? translations, long? skipLanguageId = null)
+    private void AddTermSheet(Panel panel, Entry entry, IReadOnlyList<Translation>? translations,
+        long? skipLanguageId = null, bool skipOrigin = false)
     {
         if (translations is { Count: > 0 })
         {
@@ -1014,7 +1042,7 @@ public partial class PlaybookWindow : Window
             AddField(panel, Loc.T("Playbook.FieldTranslations"), string.Join(Environment.NewLine, lines));
         }
         AddField(panel, Loc.T("Playbook.FieldUsage"), entry.UsageContext);
-        AddField(panel, Loc.T("Playbook.FieldOrigin"), entry.Origin);
+        if (!skipOrigin) AddField(panel, Loc.T("Playbook.FieldOrigin"), entry.Origin);
     }
 
     private void AddSide(Panel panel, Entry entry, bool front, bool term, bool question, double topMargin = 0)

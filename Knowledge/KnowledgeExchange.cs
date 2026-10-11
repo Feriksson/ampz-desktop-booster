@@ -22,12 +22,21 @@ namespace AmpzDesktopBooster.Knowledge;
 //      de otra es "Inglés". Al importar se buscan por nombre y se crean los que falten.
 //   3. La naturaleza de una entrada es la PROPIA, o null si la hereda. Escribir la heredada como si
 //      fuera propia la congelaría: en el destino dejaría de seguir a la biblioteca al cambiarla.
+//
+// El glosario de una card (`glossary`) se sumó DESPUÉS y el formato sigue en la versión 1 a propósito:
+// es un campo OPCIONAL, y un lector anterior ignora las claves que no conoce — importa la card igual,
+// sin su ayuda. Subir la versión habría hecho que esos lectores rechacen el archivo entero por un dato
+// que podían saltear.
 
-/// <summary>Una entrada tal como viaja en el archivo. <see cref="Nature"/> null = la hereda.</summary>
+/// <summary>
+/// Una entrada tal como viaja en el archivo. <see cref="Nature"/> null = la hereda.
+/// <see cref="Glossary"/> sólo tiene contenido en una card (ver <see cref="GlossaryItem"/>).
+/// </summary>
 public sealed record ExchangeEntry(
     EntryKind Kind, string Front, string Back, string? Nature,
     string WordType, string UsageContext, string Origin,
-    IReadOnlyList<KeyValuePair<string, string>> Translations);
+    IReadOnlyList<KeyValuePair<string, string>> Translations,
+    IReadOnlyList<GlossaryItem> Glossary);
 
 /// <summary>Una biblioteca con sus entradas y sus hijas (recursivo).</summary>
 public sealed record ExchangeLibrary(
@@ -205,6 +214,19 @@ public static class KnowledgeExchange
                 foreach (var (language, text) in entry.Translations) w.WriteString(language, text);
                 w.WriteEndObject();
             }
+        }
+        else if (entry.Glossary.Count > 0)
+        {
+            // Sólo en una card y sólo si tiene: mismo criterio que los demás opcionales.
+            w.WriteStartArray("glossary");
+            foreach (var item in entry.Glossary)
+            {
+                w.WriteStartObject();
+                w.WriteString("term", item.Term);
+                w.WriteString("definition", item.Definition);
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
         }
         w.WriteEndObject();
     }
@@ -439,9 +461,11 @@ public static class KnowledgeExchange
 
         // La ficha de vocabulario sólo existe en un término. En una tarjeta esos campos se ignoran
         // aunque vengan: la app no tiene dónde mostrarlos ni editarlos, y guardarlos sería dejar
-        // datos fantasma.
+        // datos fantasma. Y al revés: el glosario sólo existe en una card, así que en un término
+        // `glossary` ni se mira (su ayuda es `origin`).
         if (kind != EntryKind.Term)
-            return new ExchangeEntry(kind, front, back, nature, "", "", "", Array.Empty<KeyValuePair<string, string>>());
+            return new ExchangeEntry(kind, front, back, nature, "", "", "",
+                Array.Empty<KeyValuePair<string, string>>(), ReadGlossary(element, library, index));
 
         string wordType = (OptionalText(element, "wordType", library, index) ?? "").Trim();
         string usage = (OptionalText(element, "usageContext", library, index) ?? "").Trim();
@@ -465,7 +489,34 @@ public static class KnowledgeExchange
                 if (text != "" && seen.Add(language)) translations.Add(new KeyValuePair<string, string>(language, text));
             }
         }
-        return new ExchangeEntry(kind, front, back, nature, wordType, usage, origin, translations);
+        return new ExchangeEntry(kind, front, back, nature, wordType, usage, origin, translations,
+            Array.Empty<GlossaryItem>());
+    }
+
+    /// <summary>
+    /// El glosario de una card. Estricto con la FORMA (un tipo equivocado es un archivo mal armado y
+    /// se dice cuál campo) e indulgente con el CONTENIDO, como el resto del lector: un renglón al que
+    /// le falta la palabra o la definición se saltea, y si vienen más de
+    /// <see cref="Glossary.MaxGlossaryItems"/> quedan los primeros. Rechazar el archivo entero porque
+    /// un modelo de IA escribió seis renglones sería castigar de más un exceso inofensivo.
+    /// </summary>
+    private static IReadOnlyList<GlossaryItem> ReadGlossary(JsonElement element, string library, int index)
+    {
+        if (!element.TryGetProperty("glossary", out var g) || g.ValueKind == JsonValueKind.Null)
+            return Array.Empty<GlossaryItem>();
+        if (g.ValueKind != JsonValueKind.Array)
+            throw Invalid(new ExchangeError(ExchangeErrorKind.WrongType, library, index, "glossary"));
+
+        var items = new List<GlossaryItem>();
+        foreach (var item in g.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                throw Invalid(new ExchangeError(ExchangeErrorKind.WrongType, library, index, "glossary"));
+            items.Add(new GlossaryItem(
+                OptionalText(item, "term", library, index, "glossary.term") ?? "",
+                OptionalText(item, "definition", library, index, "glossary.definition") ?? ""));
+        }
+        return Glossary.Normalize(items);
     }
 
     // ── Plomería de la validación ────────────────────────────────────────────────────────────
@@ -479,11 +530,13 @@ public static class KnowledgeExchange
         return value.GetString() ?? "";
     }
 
-    private static string? OptionalText(JsonElement owner, string field, string library, int entry)
+    // `reportAs` = cómo se nombra el campo en el mensaje cuando está anidado ("glossary.term"): el
+    // nombre suelto ("term") no le diría a nadie dónde buscarlo.
+    private static string? OptionalText(JsonElement owner, string field, string library, int entry, string? reportAs = null)
     {
         if (!owner.TryGetProperty(field, out var value) || value.ValueKind == JsonValueKind.Null) return null;
         if (value.ValueKind != JsonValueKind.String)
-            throw Invalid(new ExchangeError(ExchangeErrorKind.WrongType, library, entry, field));
+            throw Invalid(new ExchangeError(ExchangeErrorKind.WrongType, library, entry, reportAs ?? field));
         return value.GetString();
     }
 

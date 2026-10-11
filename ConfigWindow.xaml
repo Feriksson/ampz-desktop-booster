@@ -1540,6 +1540,43 @@
                             </Setter>
                         </Style>
 
+                        <!-- Botón de SÓLO TEXTO, para una ayuda que acompaña a los botones de verdad sin
+                             competirles (hoy: «Copiar prompt para IA» junto a Importar / Exportar). Sin
+                             relleno ni borde en reposo; el foco de teclado se marca con el anillo de
+                             acento, igual que KnSortHeader. -->
+                        <Style x:Key="KnTextButton" TargetType="Button">
+                            <Setter Property="Foreground" Value="{StaticResource FgMuted}" />
+                            <Setter Property="FontSize" Value="12" />
+                            <Setter Property="Padding" Value="8,5" />
+                            <Setter Property="Cursor" Value="Hand" />
+                            <Setter Property="VerticalAlignment" Value="Center" />
+                            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="bd" Background="Transparent" BorderBrush="Transparent"
+                                                BorderThickness="1" CornerRadius="4"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bd" Property="Background" Value="#2D2D2D" />
+                                                <Setter Property="Foreground" Value="{StaticResource Fg}" />
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter TargetName="bd" Property="Background" Value="#222222" />
+                                            </Trigger>
+                                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                                <Setter Property="Foreground" Value="{StaticResource Fg}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+
                         <!-- Por qué un botón está apagado: texto A LA VISTA al lado, nunca un tooltip
                              (WPF ni siquiera muestra el tooltip de un control deshabilitado). -->
                         <Style x:Key="KnReason" TargetType="TextBlock">
@@ -1616,6 +1653,13 @@
                                Text="{loc:Translate Config.KnowledgeTitle}" />
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,0,0"
                                 AutomationProperties.Name="{loc:Translate Config.KnowledgeExchangeGroup}">
+                        <!-- Va PRIMERO porque es el paso anterior a importar (se copia el pedido, el
+                             modelo devuelve el archivo, se importa), y sin caja para no pesar lo mismo
+                             que las tres acciones. Siempre habilitado: sirve con la base vacía. -->
+                        <Button x:Name="KnPromptCopyBtn" Style="{StaticResource KnTextButton}" Margin="0,0,10,0"
+                                Content="{loc:Translate Config.KnowledgePromptCopy}"
+                                ToolTip="{loc:Translate Config.KnowledgePromptCopyHelp}"
+                                AutomationProperties.HelpText="{loc:Translate Config.KnowledgePromptCopyHelp}" />
                         <Button x:Name="KnImportBtn" Content="{loc:Translate Config.KnowledgeImport}" MinWidth="96" />
                         <Button x:Name="KnExportBtn" Content="{loc:Translate Config.KnowledgeExport}" MinWidth="96" />
                         <Button x:Name="KnExportAllBtn" Content="{loc:Translate Config.KnowledgeExportAll}" MinWidth="96"
