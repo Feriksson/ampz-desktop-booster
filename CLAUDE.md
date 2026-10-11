@@ -388,7 +388,8 @@ que agregues tiene que describir un estado, no reclamar una obligación.
 | `Entry` | `EntryKind.Card` o `EntryKind.Term`, conviven en la misma biblioteca | Un solo motor, un solo quiz, un solo seguimiento. En un término `Front` = palabra y `Back` = definición, más `WordType`, `UsageContext`, `Origin`. |
 | `Nature` | Lista PERSONAL y creciente (técnica, legal, general…), UNA por entrada | `Entry.NatureId` null NO es "sin naturaleza": es "la que herede", subiendo por el árbol hasta la primera biblioteca con `DefaultNatureId`. La regla está DOS veces y tienen que coincidir: `LibraryTree.EffectiveNatureId` (memoria) y `KnowledgeStore.GetEntriesByNature` (SQL). Tampoco es Espacio/Contexto. |
 | `Language` / `Translation` | Idiomas dinámicos; a lo sumo una traducción por término+idioma | Un idioma es además un LADO jugable. |
-| `Review` | Historial de SÓLO-AGREGAR: entrada + lado MOSTRADO + `Grade` (1..4) + fecha UTC | `Side` es el lado que se mostró como pregunta: `front`, `back` o `lang:<id>` (`ReviewSide`). Cada lado lleva su propia solidez: reconocer una palabra no es evocarla desde la definición. Los números de `Grade` SE PERSISTEN: no reordenar el enum. |
+| `GlossaryItem` | El GLOSARIO de una card: palabra difícil + definición breve. Es la ayuda del quiz (`H`) | **Sólo las CARDS** lo llevan, y a lo sumo `Glossary.MaxGlossaryItems` (5: es una ayuda para LEER la pregunta, no un segundo diccionario, y tiene que entrar en pantalla sin scroll). Un término NO lleva glosario: su ayuda es `Entry.Origin` (etimología y composición). Las reglas (recortar, descartar renglones a medias, sin repetidas) viven solas en `Glossary.Normalize` porque las aplican el store, el lector del archivo y el diálogo. |
+| `Review` | Historial de SÓLO-AGREGAR: entrada + lado MOSTRADO + `Grade` (1..4) + fecha UTC + `Helped` | `Side` es el lado que se mostró como pregunta: `front`, `back` o `lang:<id>` (`ReviewSide`). Cada lado lleva su propia solidez: reconocer una palabra no es evocarla desde la definición. Los números de `Grade` SE PERSISTEN: no reordenar el enum. `Helped` (`reviews.helped`) = se abrió la ayuda ANTES de revelar; es un dato para mirar después y **no entra en la solidez ni cambia la nota**. |
 
 Las operaciones devuelven `KnowledgeOpResult` (un motivo), por lo mismo que `ScopeOpResult`.
 
@@ -412,7 +413,7 @@ pueden contar dos historias. Con las constantes de hoy:
   falta tres «Un espectáculo» seguidos para pasarlo y el desgaste lo baja). La evolución son 26
   muestras semanales y se dibuja recién con 14 días de historia.
 
-**El playbooker (`PlaybookWindow`, partials `.Browse` / `.Ficha` / `.Stats`)**: una ventana, seis
+**El playbooker (`PlaybookWindow`, partials `.Browse` / `.Ficha` / `.Stats` / `.Helper`)**: una ventana, seis
 vistas alternadas por `Visibility`. Carga TODO una vez al abrir (`LoadData`) y arma conteos y solidez
 en memoria. Teclado primero, pero cada tecla tiene su botón a la vista.
 
@@ -420,11 +421,18 @@ en memoria. Teclado primero, pero cada tecla tiene su botón a la vista.
 |---|---|
 | Búsqueda | tipear filtra · `↑ ↓` · `Enter` JUEGA una biblioteca/naturaleza/«Vocabulario», LEE una entrada (ficha), o CARGA lo tipeado si no existía (`KnowledgeEntryWindow.ShowCapture`) · `F2` estadísticas · `Esc` limpia el texto y, vacío, cierra |
 | Armado | `← →` o `1..n` eligen qué lado se muestra (frente, dorso, mezclado o un idioma) · `F` filtra términos/cards · `Enter` arranca · `Esc` vuelve |
-| Quiz | `Espacio` revela (y, ya revelada, salta sin anotar) · `1..4` responden, SÓLO con la respuesta a la vista (fila superior o numpad) · `Esc` corta la ronda |
+| Quiz | `Espacio` revela (y, ya revelada, salta sin anotar) · `1..4` responden, SÓLO con la respuesta a la vista (fila superior o numpad) · `H` abre / cierra la ayuda · `Esc` cierra la ayuda si está abierta y, si no, corta la ronda |
 | Resumen | `Enter` otra ronda · `Esc` vuelve a la búsqueda |
 | Ficha | `E` edita · `← →` entrada anterior/siguiente · `Esc` vuelve. Leer NO anota nada |
 | Estadísticas | `Enter` juega la fila enfocada · `← →` cambian de lista · `Esc`/`F2` vuelven |
 
+- **⚠ La ayuda NUNCA regala la respuesta** (`PlaybookWindow.Helper.cs`). Muestra lo que la entrada
+  trae CARGADO —el glosario de una card, el origen de un término—; no se genera nada en vivo. Antes de
+  revelar se abre SÓLO si el lado mostrado es el FRENTE: con el dorso o una traducción a la vista lo
+  que hay que evocar es justamente el frente, y el glosario está escrito sobre sus palabras (el origen
+  de un término deletrea la palabra misma). Ahí el botón queda apagado con el motivo ESCRITO al lado
+  y se habilita al revelar. Va dentro de la tarjeta, debajo de la pregunta, y **la pregunta no se
+  mueve** al abrirla: el lugar se prevé al mostrar la tarjeta (`ReserveHelpRoom`).
 - **Tamaño**: 90% × 90% del área de trabajo del monitor primario (`WorkAreaRatio`), con TODO el
   contenido escalado por `LayoutTransform` según el alto (`ReferenceHeight` 972, entre `MinScale`
   0.82 y `MaxScale` 1.6). Requisito del usuario, no estética: **una entrada revelada tiene que entrar
@@ -451,10 +459,17 @@ con su mensaje en vez de importarse "como se pueda".
 - Viaja el CONTENIDO **por NOMBRE**: sin ids, sin repasos, sin solidez. Naturalezas e idiomas se
   buscan por nombre en el destino y se crean los que falten. La naturaleza de una entrada viaja sólo
   si es PROPIA (escribir la heredada la congelaría).
+- El glosario viaja como `glossary` en las cards (`[{ "term", "definition" }]`), **opcional, y la
+  versión sigue en 1**: un lector anterior ignora la clave que no conoce e importa la card sin su
+  ayuda; subir la versión le habría hecho rechazar el archivo entero.
 - Ante un choque de nombre en el destino (`ImportCollisionMode`): **`Copy`** crea una biblioteca
   nueva con nombre sufijado ("Nombre (2)") y no toca lo existente; **`Merge`** suma a la existente lo
   que falte, emparejando sub-bibliotecas por nombre y salteando entradas idénticas (tipo + frente +
   dorso). En ningún modo se modifica ni se borra una entrada o un repaso que ya estaba.
+- **La ÚNICA excepción** (`ImportRun.CompleteHelp`): al combinar, a una entrada idéntica que NO tiene
+  ayuda se le COMPLETA la del archivo (glosario a la card, origen al término). Existe para que lo
+  importado antes de que hubiera ayuda la reciba re-importando un archivo regenerado. La ayuda que ya
+  hay nunca se pisa, ningún otro campo cambia, y la vista previa lo cuenta aparte.
 - **Todo o nada**: `ImportLibraries` es UNA transacción. La vista previa (`PreviewImport`) es el MISMO
   recorrido sin escribir, así que los números que se confirman son los que ocurren.
 - **El archivo es ENTRADA NO CONFIABLE** (lo mandó otro, o se editó a mano): se valida ENTERO antes
@@ -483,7 +498,7 @@ legacy guardaba en `A_ScriptDir`; esto se modernizó para que la app sea compart
 | `dynamic_desks.json` | JSON | `DynamicDeskStore`: los escritorios DINÁMICOS vivos que abrió el launcher (`Win+NumpadEnter`), indexados por GUID del desktop (`id` + `project` + `module` + `key`). Al cargar se descarta cualquier entrada cuyo GUID ya no resuelva a un desktop real (Windows lo cerró). Separado del catálogo de espacios (`desk_project_data.json`, que es durable aunque nadie lo tenga abierto): esto es la lista de "qué desk vivo ES cada asignación", en la práctica vive y muere con la app: `OnExit` cierra los dinámicos y `OnStartup` barre los que dejó una sesión que terminó mal. |
 | `apps.json` | JSON | `AppsConfig`: apps de usuario (`name`, `exePath`, `args` con `{path}`). |
 | `widgets.json` | JSON | `WidgetSettings`: qué widgets de la barra están activos (defaults: Clock + Ram + Ip). |
-| `knowledge.db` | SQLite | `KnowledgeStore`: biblioteca de conocimiento — tablas `libraries`, `entries`, `natures`, `languages`, `translations`, `reviews` (esquema versionado por `PRAGMA user_version`). El ÚNICO dato que no es JSON/INI; ver la ⚠ de abajo. Un archivo ilegible se aparta como `knowledge.db.corrupt-<fecha>`. |
+| `knowledge.db` | SQLite | `KnowledgeStore`: biblioteca de conocimiento — tablas `libraries`, `entries`, `natures`, `languages`, `translations`, `glossary`, `reviews` (esquema versionado por `PRAGMA user_version`, hoy **v2**: la v1→v2 sumó `glossary` y `reviews.helped`, sólo agregando). El ÚNICO dato que no es JSON/INI; ver la ⚠ de abajo. Un archivo ilegible se aparta como `knowledge.db.corrupt-<fecha>`. |
 | ~~`ports.json`~~ | JSON | **MIGRADO** a `services` del catálogo (ver arriba). `PortStore` queda como legacy de sólo-lectura para `ServiceMigration`; al migrar, el archivo se renombra a `ports.json.migrated`. |
 | `ampz-crash.log` | texto | Junto al **exe** (no en APPDATA). Log de excepciones no manejadas. |
 
@@ -598,7 +613,7 @@ cambio de desk), `ConfigWindow` (config, instancia única), `ProjectSetterWindow
 `ShortcutsHelperWindow` (`Win+/`), `TaskPickerWindow` + `TaskDetailWindow` (tareas),
 `ServicesWindow` (servicios del scope) + `ServiceEditWindow` (título, comando, directorio, puerto,
 URL + los flags "levantar todo" y "cerrar la terminal al terminar"), `PlaybookWindow` (el playbooker,
-partials `.Browse` / `.Ficha` / `.Stats`), `KnowledgeEntryWindow` (alta/edición de una card o un
+partials `.Browse` / `.Ficha` / `.Stats` / `.Helper`), `KnowledgeEntryWindow` (alta/edición de una card o un
 término; también la captura rápida del playbooker) y `KnowledgeImportWindow` (vista previa y
 confirmación de una importación), `PromptDialog`, `ToastWindow`. `PinManagerWindow` y
 `DeskRestrictionsWindow` YA NO EXISTEN: su gestión vive en las pestañas Anclajes y Protecciones de

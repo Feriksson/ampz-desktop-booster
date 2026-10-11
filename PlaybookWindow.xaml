@@ -555,12 +555,20 @@
                     </ScrollViewer>
                 </Border>
 
-                <!-- Bajo la tarjeta: solidez de este lado (recién tras revelar) y el aviso de guardado.
-                     Alto fijo: aparecer o desaparecer no hace saltar los botones de abajo. -->
+                <!-- Bajo la tarjeta: solidez de este lado (recién tras revelar), el aviso de guardado
+                     y la AYUDA (H). Alto fijo: aparecer o desaparecer no hace saltar los botones de abajo.
+
+                     El botón de ayuda está SIEMPRE a la vista, en el mismo lugar. Cuando no se puede
+                     usar queda apagado con el motivo escrito a su izquierda (HelpReasonText): que la
+                     entrada no tiene ayuda cargada, o que con este lado a la vista delataría la
+                     respuesta y se habilita al revelarla. Lo que muestra va DENTRO de la tarjeta,
+                     debajo de la pregunta (lo arma el code-behind: PlaybookWindow.Helper.cs). -->
                 <Grid Grid.Row="2" Height="36" Margin="0,8,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock x:Name="CardSolidityText" Grid.Column="0" FontSize="15"
                                Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
@@ -569,6 +577,18 @@
                             BorderBrush="{StaticResource DangerBrush}" BorderThickness="3,0,0,0">
                         <TextBlock Text="{loc:Translate Playbook.SaveFailed}" FontSize="14" />
                     </Border>
+                    <TextBlock x:Name="HelpReasonText" Grid.Column="2" FontSize="14" Margin="16,0,10,0"
+                               Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                    <Button x:Name="HelpBtn" Grid.Column="3" Height="36" Padding="12,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="HelpBtnText" Text="{loc:Translate Playbook.Help}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <Border x:Name="HelpKeycap" Style="{StaticResource Keycap}">
+                                <TextBlock Style="{StaticResource KeycapText}" Text="H" />
+                            </Border>
+                        </StackPanel>
+                    </Button>
                 </Grid>
 
                 <!-- Acciones. Antes de revelar: un solo botón. Después: las cuatro respuestas, todas

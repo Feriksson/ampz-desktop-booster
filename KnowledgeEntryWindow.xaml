@@ -214,6 +214,38 @@
                     <TextBox x:Name="BackBox" Style="{StaticResource MultiField}" MinHeight="96" MaxHeight="220" />
                     <TextBlock x:Name="BackError" Style="{StaticResource Err}" />
 
+                    <!-- La AYUDA de una card: su glosario (un término no lo lleva: lo suyo es el
+                         origen). Hasta cinco renglones de palabra + definición, que arma el
+                         code-behind; arranca sin ninguno para no agrandar el diálogo de quien no lo
+                         usa. Los rótulos de columna aparecen con el primer renglón, y el botón de
+                         sumar se apaga al llegar al tope CON el motivo escrito al lado. -->
+                    <StackPanel x:Name="GlossaryPanel" Visibility="Collapsed">
+                        <TextBlock Style="{StaticResource Lbl}" Margin="0,14,0,0" FontWeight="SemiBold"
+                                   Text="{loc:Translate KnowledgeEntry.FldGlossary}" />
+                        <TextBlock x:Name="GlossaryHint" Style="{StaticResource Hint}" Margin="0,1,0,6" />
+                        <Grid x:Name="GlossaryHeaders" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="180" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="86" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource Lbl}"
+                                       Text="{loc:Translate KnowledgeEntry.GlossaryTermHeader}" />
+                            <TextBlock Grid.Column="2" Style="{StaticResource Lbl}"
+                                       Text="{loc:Translate KnowledgeEntry.GlossaryDefinitionHeader}" />
+                        </Grid>
+                        <StackPanel x:Name="GlossaryRows" />
+                        <TextBlock x:Name="GlossaryError" Style="{StaticResource Err}" Margin="0,0,0,6" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="AddGlossaryBtn" Padding="10,4"
+                                    Content="{loc:Translate KnowledgeEntry.GlossaryAdd}" />
+                            <!-- Cuántas van, y —con el botón apagado— por qué no se puede sumar otra. -->
+                            <TextBlock x:Name="GlossaryCountText" Style="{StaticResource Hint}" FontSize="12"
+                                       Margin="10,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </StackPanel>
+
                     <!-- El resto de la ficha de un término. -->
                     <StackPanel x:Name="TermPanel" Visibility="Collapsed">
                         <TextBlock Style="{StaticResource Lbl}" Margin="0,14,0,5" FontWeight="SemiBold"
@@ -235,6 +267,7 @@
                                    Text="{loc:Translate KnowledgeEntry.FldOrigin}" />
                         <TextBox x:Name="OriginBox" Style="{StaticResource MultiField}"
                                  AutomationProperties.Name="{loc:Translate KnowledgeEntry.FldOrigin}" />
+                        <TextBlock Style="{StaticResource Hint}" Text="{loc:Translate KnowledgeEntry.OriginHint}" />
                     </StackPanel>
 
                     <!-- Naturaleza: la primera opción es "heredar", con el valor que REALMENTE hereda. -->
