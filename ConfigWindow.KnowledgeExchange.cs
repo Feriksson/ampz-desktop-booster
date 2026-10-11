@@ -193,8 +193,12 @@ public partial class ConfigWindow
         // Queda elegida la biblioteca importada (o la que recibió lo combinado): es lo que se vino a ver.
         RefreshKnowledge(selectLibraryId: outcome.RootLibraryIds.Count > 0 ? outcome.RootLibraryIds[0] : null,
             selectEntryIds: Array.Empty<long>());
-        ShowKnExchangeNotice(string.Format(Loc.T("Config.KnowledgeImportDone"), fileName, result.DestinationLabel,
-            outcome.LibrariesCreated, outcome.CardsAdded, outcome.TermsAdded, outcome.EntriesSkipped), error: false);
+        string done = string.Format(Loc.T("Config.KnowledgeImportDone"), fileName, result.DestinationLabel,
+            outcome.LibrariesCreated, outcome.CardsAdded, outcome.TermsAdded, outcome.EntriesSkipped);
+        // Sólo al combinar puede haber: entradas que ya estaban y recibieron la ayuda que no tenían.
+        if (outcome.HelpCompleted > 0)
+            done = string.Format(Loc.T("Config.KnowledgeImportDoneHelp"), done, outcome.HelpCompleted);
+        ShowKnExchangeNotice(done, error: false);
         KnLibList.Focus();
     }
 

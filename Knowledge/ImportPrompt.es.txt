@@ -1,7 +1,8 @@
 Necesito que generes un archivo JSON para importar en mi aplicación de estudio. La app tiene
 bibliotecas (carpetas anidables) que contienen dos tipos de entrada: "card" (pregunta y respuesta)
 y "term" (ficha de vocabulario). Las juego como un quiz: veo un lado, intento responder de
-memoria, revelo el otro y me califico.
+memoria, revelo el otro y me califico. Mientras leo la pregunta puedo abrir una ayuda: en una card
+muestra su glosario y en un término muestra su origen.
 
 ## Lo que quiero
 
@@ -28,9 +29,13 @@ Un único objeto JSON con esta forma:
     "entries": [
       {
         "kind": "card",
-        "front": "¿Pregunta?",
-        "back": "Respuesta.",
-        "nature": null
+        "front": "¿Por qué conviene que un webhook de pagos sea idempotente?",
+        "back": "Porque el proveedor reintenta el aviso cuando no recibe la confirmación a tiempo: el mismo evento puede llegar más de una vez y no debe cobrarse dos veces.",
+        "nature": null,
+        "glossary": [
+          { "term": "webhook", "definition": "Aviso automático que un sistema le envía a otro por internet cuando ocurre un evento." },
+          { "term": "idempotente", "definition": "Dicho de una operación: que puede repetirse dejando el mismo resultado que la primera vez." }
+        ]
       },
       {
         "kind": "term",
@@ -39,7 +44,7 @@ Un único objeto JSON con esta forma:
         "nature": "General",
         "wordType": "sustantivo masculino",
         "usageContext": "El entregable de esta etapa es el prototipo navegable.",
-        "origin": "Derivado de «entregar»; calco del inglés deliverable, de uso en gestión de proyectos.",
+        "origin": "De «entregar» + el sufijo «-ble» (que puede o debe ser): lo que debe entregarse. Calco del inglés deliverable.",
         "translations": { "Inglés": "Deliverable", "Francés": "Livrable" }
       }
     ],
@@ -59,6 +64,9 @@ Reglas del formato:
 - En un "term", "front" es la palabra o expresión y "back" es su definición.
 - "wordType", "usageContext", "origin" y "translations" solo existen en los "term". No los pongas
   en las cards.
+- "glossary" solo existe en las "card" y es opcional. Es una lista de hasta 5 objetos, cada uno
+  con "term" (la palabra o expresión) y "definition" (su explicación), los dos con texto. Si la
+  card no lo necesita, omite el campo. No lo pongas en los "term".
 - "translations" es un objeto cuya clave es el nombre del idioma, escrito exactamente como lo
   indiqué arriba (con mayúscula inicial y tildes), y cuyo valor es un texto.
 - "nature" usa solo los nombres de la lista de naturalezas, escritos exactamente igual. Pon null
@@ -77,6 +85,17 @@ Cards:
 - Prefiere preguntas de comprensión y de criterio (por qué, cuándo conviene, qué diferencia hay
   entre A y B, qué pasa si) antes que definiciones de memoria; esas van como términos.
 
+Glosario de una card (la ayuda que abro mientras leo la pregunta, antes de responder):
+- Lista las palabras o expresiones de la card en las que tropezaría alguien que no es especialista:
+  términos técnicos, siglas, jerga, palabras en otro idioma. Tómalas sobre todo del frente.
+- Como máximo 5. Si la card no tiene palabras difíciles, no lleva glosario: no lo rellenes con
+  palabras comunes.
+- Cada definición es una sola frase corta, en lenguaje llano.
+- Explica la PALABRA, nunca responde la card: ninguna definición puede contener ni parafrasear lo
+  que dice el dorso.
+- No definas el concepto mismo por el que pregunta la card. Si esa es su única palabra difícil, la
+  card no lleva glosario.
+
 Términos:
 - La definición no puede contener el término ni una palabra de su misma raíz, porque a veces veo
   solo la definición y tengo que recordar la palabra.
@@ -85,8 +104,11 @@ Términos:
 - "wordType": categoría gramatical en español, por ejemplo "sustantivo femenino", "verbo
   transitivo", "locución nominal", "sigla", "anglicismo".
 - "usageContext": una frase realista de mi ámbito profesional que use el término tal cual.
-- "origin": etimología o procedencia en una o dos frases. Si no la conoces con seguridad, omite
-  el campo. No inventes fechas ni autores.
+- "origin": es lo que muestra la ayuda de un término como pista, antes de revelar la definición.
+  En una o dos frases: la descomposición de la palabra cuando la tiene (prefijo, raíz y sufijo,
+  cada uno con su significado; por ejemplo «bi-» (dos) + «carbonato»), la lengua de la que
+  procede y, si existe uno fiable, un dato curioso. No puede repetir ni parafrasear la definición.
+  Si no lo conoces con seguridad, omite el campo. No inventes fechas ni autores.
 - Traducciones: el equivalente que usa de verdad un profesional de ese idioma, no una traducción
   literal. Solo el término, sin explicaciones ni paréntesis, con mayúscula inicial. Si el término
   se usa sin traducir en ese idioma, repítelo igual. Si no existe un equivalente establecido,

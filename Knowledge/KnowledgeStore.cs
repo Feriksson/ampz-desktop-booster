@@ -10,7 +10,7 @@ namespace AmpzDesktopBooster.Knowledge;
 
 /// <summary>
 /// La biblioteca de conocimiento en disco: bibliotecas (árbol), entradas (tarjetas y términos),
-/// naturalezas, idiomas, traducciones e historial de repasos. Es la ÚNICA clase que toca SQLite — el
+/// naturalezas, idiomas, traducciones, glosarios e historial de repasos. Es la ÚNICA clase que toca SQLite — el
 /// resto de la app habla en records (<see cref="Library"/>, <see cref="Entry"/>…) y no ve ni una
 /// conexión.
 ///
@@ -31,7 +31,7 @@ namespace AmpzDesktopBooster.Knowledge;
 /// </summary>
 public sealed partial class KnowledgeStore
 {
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
 
     // Códigos primarios de SQLite que significan "esto no es (o ya no es) una base sana". Cualquier
     // otro error (archivo tomado, sin permisos, disco lleno) NO es corrupción: apartar el archivo por
@@ -348,16 +348,24 @@ public sealed partial class KnowledgeStore
     public bool UpdateEntry(long id, EntryDraft draft)
     {
         if (draft is null || string.IsNullOrWhiteSpace(draft.Front)) return false;
-        return Write(false, (c, tx) => Execute(c, tx,
-            "UPDATE entries SET kind = $k, front = $f, back = $b, nature_id = $n, word_type = $w, " +
-            "usage_context = $u, origin = $o, updated_at = $now WHERE id = $id",
-            ("$k", KindToDb(draft.Kind)), ("$f", draft.Front.Trim()), ("$b", (draft.Back ?? "").Trim()),
-            ("$n", ExistingOrNull(c, tx, "natures", draft.NatureId)), ("$w", (draft.WordType ?? "").Trim()),
-            ("$u", (draft.UsageContext ?? "").Trim()), ("$o", (draft.Origin ?? "").Trim()),
-            ("$now", UtcNow()), ("$id", id)) > 0);
+        return Write(false, (c, tx) =>
+        {
+            bool updated = Execute(c, tx,
+                "UPDATE entries SET kind = $k, front = $f, back = $b, nature_id = $n, word_type = $w, " +
+                "usage_context = $u, origin = $o, updated_at = $now WHERE id = $id",
+                ("$k", KindToDb(draft.Kind)), ("$f", draft.Front.Trim()), ("$b", (draft.Back ?? "").Trim()),
+                ("$n", ExistingOrNull(c, tx, "natures", draft.NatureId)), ("$w", (draft.WordType ?? "").Trim()),
+                ("$u", (draft.UsageContext ?? "").Trim()), ("$o", (draft.Origin ?? "").Trim()),
+                ("$now", UtcNow()), ("$id", id)) > 0;
+            // El glosario es de las cards (ver SetGlossary). Si la entrada pasa a ser un término, el
+            // suyo se va en la misma transacción: no puede quedar colgando donde nadie lo ve ni lo edita.
+            if (updated && draft.Kind == EntryKind.Term)
+                Execute(c, tx, "DELETE FROM glossary WHERE entry_id = $id", ("$id", id));
+            return updated;
+        });
     }
 
-    /// <summary>Borra la entrada y, en cascada, sus traducciones y su historial de repasos.</summary>
+    /// <summary>Borra la entrada y, en cascada, sus traducciones, su glosario y su historial de repasos.</summary>
     public bool DeleteEntry(long id) => Write(false, (c, tx) =>
         Execute(c, tx, "DELETE FROM entries WHERE id = $id", ("$id", id)) > 0);
 
@@ -458,6 +466,67 @@ public sealed partial class KnowledgeStore
         return true;
     });
 
+    // ── Glosario (la ayuda de una card) ──────────────────────────────────────────────────────
+
+    public IReadOnlyList<GlossaryItem> GetGlossary(long entryId) =>
+        GetGlossaries(new[] { entryId }).TryGetValue(entryId, out var list) ? list : Array.Empty<GlossaryItem>();
+
+    /// <summary>Glosarios de MUCHAS entradas en una sola consulta, cada uno en su orden. La entrada
+    /// sin glosario no aparece en el resultado.</summary>
+    public IReadOnlyDictionary<long, IReadOnlyList<GlossaryItem>> GetGlossaries(IEnumerable<long> entryIds)
+    {
+        string ids = IdsJson(entryIds);
+        return Read(NoGlossaries(), c => GroupGlossaries(Query(c, null,
+            "SELECT entry_id, term, definition FROM glossary " +
+            "WHERE entry_id IN (SELECT value FROM json_each($ids)) ORDER BY entry_id, sort, id",
+            ReadGlossaryRow, ("$ids", ids))));
+    }
+
+    /// <summary>TODOS los glosarios, en una consulta: lo que carga el playbooker al abrir, junto con
+    /// las entradas y el historial, para no preguntarle a la base una vez por card del quiz.</summary>
+    public IReadOnlyDictionary<long, IReadOnlyList<GlossaryItem>> GetAllGlossaries() =>
+        Read(NoGlossaries(), c => GroupGlossaries(Query(c, null,
+            "SELECT entry_id, term, definition FROM glossary ORDER BY entry_id, sort, id", ReadGlossaryRow)));
+
+    /// <summary>
+    /// Deja el glosario de la card EXACTAMENTE como <paramref name="items"/>, ya pasado por
+    /// <see cref="Glossary.Normalize"/> (reemplazo total, igual que <see cref="SetTranslations"/> y por
+    /// lo mismo: el diálogo guarda la ficha entera, y "saqué el renglón" significa "ya no lo tiene").
+    /// false si la entrada no existe, falló la base, o es un TÉRMINO: un término no lleva glosario —
+    /// su ayuda es <see cref="Entry.Origin"/> — y guardárselo sería dejar un dato que nada muestra.
+    /// </summary>
+    public bool SetGlossary(long entryId, IEnumerable<GlossaryItem>? items)
+    {
+        var clean = Glossary.Normalize(items);
+        return Write(false, (c, tx) =>
+        {
+            if (Scalar(c, tx, "SELECT kind FROM entries WHERE id = $e", ("$e", entryId)) is not string kind
+                || KindFromDb(kind) != EntryKind.Card) return false;
+            Execute(c, tx, "DELETE FROM glossary WHERE entry_id = $e", ("$e", entryId));
+            InsertGlossary(c, tx, entryId, clean);
+            Execute(c, tx, "UPDATE entries SET updated_at = $now WHERE id = $e", ("$now", UtcNow()), ("$e", entryId));
+            return true;
+        });
+    }
+
+    private static void InsertGlossary(SqliteConnection c, SqliteTransaction? tx, long entryId, IReadOnlyList<GlossaryItem> items)
+    {
+        for (int i = 0; i < items.Count; i++)
+            Execute(c, tx, "INSERT INTO glossary(entry_id, term, definition, sort) VALUES ($e, $t, $d, $s)",
+                ("$e", entryId), ("$t", items[i].Term), ("$d", items[i].Definition), ("$s", i));
+    }
+
+    private static (long EntryId, GlossaryItem Item) ReadGlossaryRow(SqliteDataReader r) =>
+        (r.GetInt64(0), new GlossaryItem(r.GetString(1), r.GetString(2)));
+
+    private static IReadOnlyDictionary<long, IReadOnlyList<GlossaryItem>> GroupGlossaries(
+        List<(long EntryId, GlossaryItem Item)> rows) =>
+        rows.GroupBy(x => x.EntryId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<GlossaryItem>)g.Select(x => x.Item).ToList());
+
+    private static IReadOnlyDictionary<long, IReadOnlyList<GlossaryItem>> NoGlossaries() =>
+        new Dictionary<long, IReadOnlyList<GlossaryItem>>();
+
     // ── Naturalezas e idiomas (dos listas con nombre único: misma mecánica) ───────────────────
 
     public IReadOnlyList<Nature> GetNatures() => Read<IReadOnlyList<Nature>>(Array.Empty<Nature>(), c =>
@@ -548,16 +617,17 @@ public sealed partial class KnowledgeStore
     /// Anota un repaso. <paramref name="side"/> es el lado que se MOSTRÓ como pregunta (ver
     /// <see cref="ReviewSide"/>). <paramref name="reviewedAtUtc"/> null = ahora. El historial es de
     /// sólo-agregar: nunca se edita ni se resume, porque la solidez se recalcula entera desde él.
+    /// <paramref name="helped"/> = se abrió la ayuda antes de revelar (ver <see cref="Review.Helped"/>).
     /// </summary>
-    public bool AddReview(long entryId, string side, Grade grade, DateTime? reviewedAtUtc = null)
+    public bool AddReview(long entryId, string side, Grade grade, DateTime? reviewedAtUtc = null, bool helped = false)
     {
         if (!ReviewSide.IsValid(side) || (int)grade is < 1 or > 4) return false;
         string at = ToDb(reviewedAtUtc ?? DateTime.UtcNow);
         return Write(false, (c, tx) =>
         {
             if (!Exists(c, tx, "entries", entryId)) return false;
-            Execute(c, tx, "INSERT INTO reviews(entry_id, side, grade, reviewed_at) VALUES ($e, $s, $g, $at)",
-                ("$e", entryId), ("$s", side), ("$g", (int)grade), ("$at", at));
+            Execute(c, tx, "INSERT INTO reviews(entry_id, side, grade, reviewed_at, helped) VALUES ($e, $s, $g, $at, $h)",
+                ("$e", entryId), ("$s", side), ("$g", (int)grade), ("$at", at), ("$h", helped ? 1 : 0));
             return true;
         });
     }
@@ -571,14 +641,14 @@ public sealed partial class KnowledgeStore
     {
         string ids = IdsJson(entryIds);
         return Read<IReadOnlyList<Review>>(Array.Empty<Review>(), c => Query(c, null,
-            "SELECT id, entry_id, side, grade, reviewed_at FROM reviews " +
+            "SELECT id, entry_id, side, grade, reviewed_at, helped FROM reviews " +
             "WHERE entry_id IN (SELECT value FROM json_each($ids)) ORDER BY reviewed_at, id",
             ReadReview, ("$ids", ids)));
     }
 
     /// <summary>El historial completo (estadísticas y evolución en el tiempo).</summary>
     public IReadOnlyList<Review> GetAllReviews() => Read<IReadOnlyList<Review>>(Array.Empty<Review>(), c =>
-        Query(c, null, "SELECT id, entry_id, side, grade, reviewed_at FROM reviews ORDER BY reviewed_at, id", ReadReview));
+        Query(c, null, "SELECT id, entry_id, side, grade, reviewed_at, helped FROM reviews ORDER BY reviewed_at, id", ReadReview));
 
     // ── Apertura, esquema y recuperación ─────────────────────────────────────────────────────
 
@@ -657,13 +727,19 @@ public sealed partial class KnowledgeStore
         // Migraciones: una por versión, en orden, todo en UNA transacción junto con el user_version.
         // Si el proceso muere en el medio no queda una base a medio migrar: o la vieja o la nueva.
         using var tx = c.BeginTransaction();
-        if (version < 1)
-        {
-            Execute(c, tx, SchemaV1);
-            // El ejemplo se siembra SÓLO en el paso 0→1, que ocurre una única vez en la vida de la
-            // base. Una biblioteca que el usuario vació sigue en versión 1: nunca se re-siembra.
-            if (seedIfNew) Seed(c, tx);
-        }
+        // ¿La base NACE en esta apertura? Se anota antes de migrar: después ya está en la versión de hoy.
+        bool born = version < 1;
+        if (version < 1) Execute(c, tx, SchemaV1);
+        // 1→2: el glosario de las cards y la marca de "se usó la ayuda" en los repasos. Sólo AGREGA
+        // (una tabla nueva y una columna con valor por defecto): ninguna fila existente se toca, y los
+        // repasos de antes quedan con helped = 0, que es la verdad — entonces no había ayuda.
+        if (version < 2) Execute(c, tx, SchemaV2);
+
+        // El ejemplo se siembra SÓLO en la apertura en que la base nace, que ocurre una única vez en
+        // su vida, y DESPUÉS de todas las migraciones (usa las tablas de hoy). Una biblioteca que el
+        // usuario vació ya tiene versión: nunca se re-siembra.
+        if (born && seedIfNew) Seed(c, tx);
+
         Execute(c, tx, $"PRAGMA user_version = {SchemaVersion}");
         tx.Commit();
     }
@@ -717,6 +793,20 @@ public sealed partial class KnowledgeStore
             grade       INTEGER NOT NULL CHECK(grade BETWEEN 1 AND 4),
             reviewed_at TEXT NOT NULL);
         CREATE INDEX ix_reviews_entry ON reviews(entry_id);
+        """;
+
+    // `sort` es la posición del renglón dentro del glosario de su card (el orden en que se cargó).
+    // helped: 1 = en esa pregunta se abrió la ayuda antes de revelar la respuesta.
+    private const string SchemaV2 = """
+        CREATE TABLE glossary(
+            id         INTEGER PRIMARY KEY,
+            entry_id   INTEGER NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+            term       TEXT NOT NULL,
+            definition TEXT NOT NULL,
+            sort       INTEGER NOT NULL);
+        CREATE INDEX ix_glossary_entry ON glossary(entry_id);
+
+        ALTER TABLE reviews ADD COLUMN helped INTEGER NOT NULL DEFAULT 0;
         """;
 
     /// <summary>La base abre pero <c>quick_check</c> encontró páginas rotas.</summary>
@@ -1015,7 +1105,7 @@ public sealed partial class KnowledgeStore
         r.GetString(6), r.GetString(7), r.GetString(8), FromDb(r.GetString(9)), FromDb(r.GetString(10)));
 
     private static Review ReadReview(SqliteDataReader r) => new(
-        r.GetInt64(0), r.GetInt64(1), r.GetString(2), (Grade)r.GetInt32(3), FromDb(r.GetString(4)));
+        r.GetInt64(0), r.GetInt64(1), r.GetString(2), (Grade)r.GetInt32(3), FromDb(r.GetString(4)), r.GetInt32(5) != 0);
 
     private static long? NullableLong(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : r.GetInt64(i);
 

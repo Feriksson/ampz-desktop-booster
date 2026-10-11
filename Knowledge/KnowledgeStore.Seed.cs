@@ -11,8 +11,8 @@ namespace AmpzDesktopBooster.Knowledge;
 //
 // Se siembra UNA sola vez: dentro de la migración 0→1 (ver Initialize). Si el usuario la borra, no
 // vuelve. Muestra a propósito las tres cosas no obvias del modelo: bibliotecas anidadas, naturaleza
-// heredada (de la biblioteca, y de la biblioteca madre) vs. fijada en la entrada, y términos con
-// ficha completa.
+// heredada (de la biblioteca, y de la biblioteca madre) vs. fijada en la entrada, términos con
+// ficha completa, y cards con GLOSARIO (la ayuda del quiz, tecla H).
 public sealed partial class KnowledgeStore
 {
     private static void Seed(SqliteConnection c, SqliteTransaction tx)
@@ -36,8 +36,11 @@ public sealed partial class KnowledgeStore
         string now = UtcNow();
 
         // ── Tarjetas (frente = pregunta, dorso = respuesta). Sin naturaleza = heredan "General". ──
-        void Card(string front, string back, long? nature = null) =>
-            InsertEntry(c, tx, example, new EntryDraft(EntryKind.Card, front, back, nature), now);
+        void Card(string front, string back, long? nature = null, params GlossaryItem[] glossary)
+        {
+            long id = InsertEntry(c, tx, example, new EntryDraft(EntryKind.Card, front, back, nature), now);
+            InsertGlossary(c, tx, id, Glossary.Normalize(glossary));
+        }
 
         Card("¿Qué es una API?",
             "Interfaz de programación de aplicaciones: el contrato por el que un software expone sus " +
@@ -78,6 +81,49 @@ public sealed partial class KnowledgeStore
             "El crecimiento no controlado del alcance de un proyecto: pedidos que se van sumando sin " +
             "ajustar ni el plazo ni el presupuesto. Se previene con un alcance escrito y un proceso " +
             "explícito para aprobar cambios.");
+
+        // Cards con glosario. Sus preguntas son de criterio y usan jerga AL PASAR: el glosario explica
+        // esas palabras para poder leer la pregunta, y nunca la contesta — es la misma regla que se
+        // le pide a quien genera un archivo (ver ImportPrompt.es.txt). Una card de «¿Qué es X?» no
+        // lleva glosario: su única palabra difícil es justo lo que pregunta.
+        Card("¿Por qué conviene que un webhook de pagos sea idempotente?",
+            "Porque el proveedor de pagos reintenta el aviso cuando no recibe la confirmación a " +
+            "tiempo, así que un mismo evento puede llegar más de una vez. Si procesarlo de nuevo no " +
+            "cambia nada, un reintento nunca termina en un cobro o una entrega duplicados.",
+            technical,
+            new GlossaryItem("webhook",
+                "Aviso automático que un sistema le envía a otro por internet cuando ocurre un evento."),
+            new GlossaryItem("idempotente",
+                "Dicho de una operación: que puede repetirse dejando el mismo resultado que la primera vez."));
+        Card("¿Qué riesgo corre un proveedor de SaaS que firma un SLA sin haber medido antes sus SLO?",
+            "Comprometerse por contrato a un nivel que no sabe si puede sostener. Sin objetivos " +
+            "internos medidos no hay margen ni alerta temprana: el primer incumplimiento se descubre " +
+            "cuando ya corresponde una penalidad.",
+            technical,
+            new GlossaryItem("SaaS",
+                "Software como servicio: programa que se usa por internet pagando un abono, sin instalarlo."),
+            new GlossaryItem("SLA",
+                "Acuerdo de nivel de servicio: la calidad que el proveedor le garantiza al cliente por contrato."),
+            new GlossaryItem("SLO",
+                "Objetivo de nivel de servicio: la meta interna que un equipo se fija para un indicador."));
+        Card("¿Qué problema resuelve el «rate limiting» en una API pública?",
+            "Evita que un solo cliente —por error o por abuso— consuma la capacidad de todos. Con un " +
+            "tope de pedidos por unidad de tiempo el servicio sigue respondiendo a los demás y el " +
+            "costo de operarlo queda acotado.",
+            technical,
+            new GlossaryItem("API pública",
+                "Interfaz de programación abierta a desarrolladores de fuera de la organización que la ofrece."));
+        Card("¿Por qué el «scope creep» pesa más en un contrato de precio fijo que en uno por tiempo y materiales?",
+            "Porque en precio fijo cada pedido extra lo absorbe el proveedor: el ingreso no cambia y " +
+            "el trabajo sí. En tiempo y materiales el cliente paga las horas adicionales, así que el " +
+            "desvío aparece en la factura y se discute antes.",
+            null,
+            new GlossaryItem("scope creep",
+                "Expresión inglesa: crecimiento no controlado del alcance de un proyecto."),
+            new GlossaryItem("precio fijo",
+                "Modalidad de contrato en la que se acuerda un monto total por un resultado definido."),
+            new GlossaryItem("tiempo y materiales",
+                "Modalidad de contrato en la que se facturan las horas trabajadas y los gastos, sin un total cerrado."));
 
         // ── Términos (frente = palabra, dorso = definición) con su ficha y traducciones. ──
         void Term(string word, string wordType, string definition, string usage, string origin,

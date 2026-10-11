@@ -202,6 +202,10 @@
                            AutomationProperties.LiveSetting="Polite" />
                 <TextBlock x:Name="MergeSummaryText" Style="{StaticResource Body}" Margin="0,2,0,0"
                            Visibility="Collapsed" />
+                <!-- La única escritura sobre algo que YA estaba: completar la ayuda que le falta a
+                     una entrada idéntica. Se cuenta aparte y por escrito, antes de confirmar. -->
+                <TextBlock x:Name="HelpSummaryText" Style="{StaticResource Body}" Margin="0,2,0,0"
+                           Visibility="Collapsed" />
             </StackPanel>
 
             <!-- El árbol del archivo, con lo que le pasa a cada biblioteca. Es la única parte que

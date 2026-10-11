@@ -10,7 +10,8 @@ public enum ImportCollisionMode
 {
     /// <summary>Crear una biblioteca nueva con el nombre sufijado ("Nombre (2)"). Lo existente no se toca.</summary>
     Copy,
-    /// <summary>Sumar a la existente lo que falte, emparejando las sub-bibliotecas por nombre.</summary>
+    /// <summary>Sumar a la existente lo que falte, emparejando las sub-bibliotecas por nombre. Además
+    /// completa la ayuda (glosario / origen) de las entradas idénticas que no la tienen.</summary>
     Merge,
 }
 
@@ -28,7 +29,10 @@ public enum ImportLibraryState
 }
 
 /// <summary>Una biblioteca del archivo y qué le pasa al importar. En orden de árbol, con su profundidad.</summary>
-public sealed record ImportLibraryLine(int Depth, string Name, ImportLibraryState State, int Cards, int Terms, int Skipped);
+/// <summary><see cref="HelpCompleted"/> = entradas que ya estaban y a las que se les completa la ayuda
+/// (sólo al combinar; ver <see cref="ImportOutcome.HelpCompleted"/>). No se cuentan en <see cref="Skipped"/>.</summary>
+public sealed record ImportLibraryLine(
+    int Depth, string Name, ImportLibraryState State, int Cards, int Terms, int Skipped, int HelpCompleted = 0);
 
 public enum ImportStatus
 {
@@ -43,20 +47,25 @@ public enum ImportStatus
 /// El resultado de una importación — o de su vista previa, que es el MISMO recorrido sin escribir.
 /// Por eso los números que muestra el diálogo antes de confirmar son exactamente los que después
 /// ocurren: no hay una cuenta "estimada" que pueda discrepar de la real.
+///
+/// <see cref="HelpCompleted"/> = entradas que YA estaban (idénticas) y no tenían ayuda, a las que al
+/// combinar se les carga la del archivo. Va aparte de <see cref="EntriesSkipped"/>, que son las que
+/// ya estaban y quedan exactamente como estaban: una entrada cae en una cuenta o en la otra.
 /// </summary>
 public sealed record ImportOutcome(
     ImportStatus Status, string FailureDetail,
     IReadOnlyList<ImportLibraryLine> Lines,
     int LibrariesCreated, int LibrariesMerged, int CardsAdded, int TermsAdded, int EntriesSkipped,
+    int HelpCompleted,
     IReadOnlyList<string> NewNatures, IReadOnlyList<string> ExistingNatures,
     IReadOnlyList<string> NewLanguages, IReadOnlyList<string> ExistingLanguages,
     int Collisions, IReadOnlyList<long> RootLibraryIds)
 {
-    /// <summary>¿Cambiaría algo en la base? false = todo lo del archivo ya está.</summary>
-    public bool AddsAnything => LibrariesCreated + CardsAdded + TermsAdded > 0;
+    /// <summary>¿Cambiaría algo en la base? false = todo lo del archivo ya está, ayuda incluida.</summary>
+    public bool AddsAnything => LibrariesCreated + CardsAdded + TermsAdded + HelpCompleted > 0;
 
     internal static ImportOutcome Failure(ImportStatus status, string detail = "") => new(
-        status, detail, Array.Empty<ImportLibraryLine>(), 0, 0, 0, 0, 0,
+        status, detail, Array.Empty<ImportLibraryLine>(), 0, 0, 0, 0, 0, 0,
         Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(),
         0, Array.Empty<long>());
 }
@@ -65,6 +74,14 @@ public sealed record ImportOutcome(
 //   • Exportar es de sólo lectura y NO incluye progreso: ni repasos ni solidez salen de la base.
 //   • Importar es UNA transacción: o entra todo el archivo o no entra nada. Y sólo AGREGA: ninguna
 //     entrada existente se modifica ni se borra, y el historial de repasos no se toca.
+//
+//     ÚNICA EXCEPCIÓN, deliberada: al COMBINAR, a una entrada idéntica que ya estaba y NO tiene ayuda
+//     se le COMPLETA la del archivo — el glosario a una card que no tiene ninguno, el origen a un
+//     término que lo tiene vacío. Existe para que las cards importadas antes de que hubiera ayuda la
+//     puedan recibir: se regenera el archivo (ahora con glosarios) y se vuelve a importar combinando.
+//     Sin esto, la única salida era importarlas como copia y perder el historial de las originales.
+//     Los límites no se negocian: la ayuda que ya hay NUNCA se pisa, ningún otro campo cambia (ni
+//     siquiera la fecha de modificación), y la vista previa lo cuenta aparte. Ver ImportRun.CompleteHelp.
 public sealed partial class KnowledgeStore
 {
     // ── Exportar ─────────────────────────────────────────────────────────────────────────────
@@ -91,6 +108,9 @@ public sealed partial class KnowledgeStore
                 "SELECT entry_id, language_id, text FROM translations ORDER BY entry_id, language_id",
                 r => new Translation(r.GetInt64(0), r.GetInt64(1), r.GetString(2)))
             .ToLookup(t => t.EntryId);
+        var glossaries = Query(c, null,
+                "SELECT entry_id, term, definition FROM glossary ORDER BY entry_id, sort, id", ReadGlossaryRow)
+            .ToLookup(g => g.EntryId, g => g.Item);
 
         // Una base tocada a mano puede tener un ciclo (A hija de B, B hija de A): cada biblioteca
         // se exporta una sola vez y el recorrido termina.
@@ -107,7 +127,9 @@ public sealed partial class KnowledgeStore
                 translations[e.Id]
                     .Where(t => languages.ContainsKey(t.LanguageId) && t.Text.Trim() != "")
                     .Select(t => new KeyValuePair<string, string>(languages[t.LanguageId], t.Text))
-                    .ToList())).ToList(),
+                    .ToList(),
+                // Sólo las cards lo llevan; una fila suelta en un término (base tocada a mano) no viaja.
+                e.Kind == EntryKind.Card ? glossaries[e.Id].ToList() : Array.Empty<GlossaryItem>())).ToList(),
             children[library.Id].Where(child => seen.Add(child.Id)).Select(Build).ToList());
 
         var roots = rootId is { } id ? libraries.Where(l => l.Id == id) : children[null];
@@ -217,10 +239,12 @@ public sealed partial class KnowledgeStore
 
         private readonly List<ImportLibraryLine> _lines = new();
         private readonly List<long> _rootIds = new();
-        private int _created, _merged, _cards, _terms, _skipped, _collisions;
+        private int _created, _merged, _cards, _terms, _skipped, _helpCompleted, _collisions;
 
         private SqliteCommand? _insertEntry;
         private SqliteCommand? _insertTranslation;
+        private SqliteCommand? _insertGlossary;
+        private SqliteCommand? _fillOrigin;
 
         public ImportRun(SqliteConnection c, SqliteTransaction? tx, bool apply)
         {
@@ -278,6 +302,7 @@ public sealed partial class KnowledgeStore
                 }
 
                 return new ImportOutcome(ImportStatus.Ok, "", _lines, _created, _merged, _cards, _terms, _skipped,
+                    _helpCompleted,
                     Sorted(_newNatures.Keys), Sorted(_usedNatures.Where(n => !_newNatures.ContainsKey(n))),
                     Sorted(_newLanguages.Keys), Sorted(_usedLanguages.Where(l => !_newLanguages.ContainsKey(l))),
                     _collisions, _apply ? _rootIds : Array.Empty<long>());
@@ -322,34 +347,112 @@ public sealed partial class KnowledgeStore
         /// <summary>
         /// Suma a una biblioteca que YA existe lo que le falte. Su nombre, su naturaleza por defecto
         /// y sus entradas quedan como estaban: sólo se agregan entradas que no tenía y se baja por
-        /// las sub-bibliotecas (la que ya existe se combina, la que no se crea).
+        /// las sub-bibliotecas (la que ya existe se combina, la que no se crea). La única escritura
+        /// sobre algo existente es completar la ayuda que le falte (<see cref="CompleteHelp"/>).
         /// </summary>
         private void MergeInto(long existingId, string existingName, ExchangeLibrary node, int depth)
         {
             _merged++;
             // La foto de lo que tenía ANTES de esta importación: dos entradas iguales dentro del
             // propio archivo no se saltean entre sí (se agregan las dos, como al importar una copia).
-            var present = new HashSet<(EntryKind, string, string)>(Query(_c, _tx,
-                "SELECT kind, front, back FROM entries WHERE library_id = $l",
-                r => EntryKey(KindFromDb(r.GetString(0)), r.GetString(1), r.GetString(2)), ("$l", existingId)));
+            // Por cada clave se guarda la PRIMERA entrada que la tiene (la de id más bajo) y si le
+            // falta la ayuda: es la que la recibe. Una sola consulta por biblioteca, como antes.
+            var present = new Dictionary<(EntryKind, string, string), ExistingEntry>();
+            foreach (var row in Query(_c, _tx,
+                         "SELECT e.id, e.kind, e.front, e.back, e.origin, " +
+                         "  EXISTS(SELECT 1 FROM glossary g WHERE g.entry_id = e.id) " +
+                         "FROM entries e WHERE e.library_id = $l ORDER BY e.id",
+                         r => (Key: EntryKey(KindFromDb(r.GetString(1)), r.GetString(2), r.GetString(3)),
+                               Entry: new ExistingEntry(r.GetInt64(0),
+                                   KindFromDb(r.GetString(1)) == EntryKind.Term
+                                       ? r.GetString(4).Trim() == ""
+                                       : r.GetInt64(5) == 0)),
+                         ("$l", existingId)))
+                present.TryAdd(row.Key, row.Entry);
 
             int line = _lines.Count;
             _lines.Add(new ImportLibraryLine(depth, existingName, ImportLibraryState.Merged, 0, 0, 0));
-            int cards = 0, terms = 0, skipped = 0;
+            int cards = 0, terms = 0, skipped = 0, completed = 0;
             foreach (var entry in node.Entries)
             {
-                if (present.Contains(EntryKey(entry.Kind, entry.Front, entry.Back))) { skipped++; continue; }
+                if (present.TryGetValue(EntryKey(entry.Kind, entry.Front, entry.Back), out var existing))
+                {
+                    if (CompleteHelp(existing, entry)) completed++; else skipped++;
+                    continue;
+                }
                 AddEntry(existingId, entry);
                 if (entry.Kind == EntryKind.Term) terms++; else cards++;
             }
             _skipped += skipped;
-            _lines[line] = _lines[line] with { Cards = cards, Terms = terms, Skipped = skipped };
+            _helpCompleted += completed;
+            _lines[line] = _lines[line] with { Cards = cards, Terms = terms, Skipped = skipped, HelpCompleted = completed };
 
             var siblings = ChildrenOf(existingId);
             foreach (var child in node.Libraries)
             {
                 if (FindByName(siblings, child.Name) is { } match) MergeInto(match.Id, match.Name, child, depth + 1);
                 else Create(child, existingId, child.Name, ImportLibraryState.Created, depth + 1);
+            }
+        }
+
+        /// <summary>Una entrada que ya estaba en la biblioteca que se combina, y si le falta la ayuda.
+        /// Es una clase (y no un record de valor) porque <see cref="CompleteHelp"/> apaga la marca
+        /// en el lugar: la misma entrada no se completa dos veces en una importación.</summary>
+        private sealed class ExistingEntry
+        {
+            public ExistingEntry(long id, bool lacksHelp) { Id = id; LacksHelp = lacksHelp; }
+            public long Id { get; }
+            public bool LacksHelp { get; set; }
+        }
+
+        /// <summary>
+        /// LA excepción a "importar no modifica lo existente" (el porqué está arriba, en el encabezado
+        /// de esta parte): si la entrada que ya estaba no tiene ayuda y la del archivo sí, se la
+        /// carga. Card → su glosario; término → su origen. Devuelve si la completó.
+        ///
+        /// Lo que NO hace, a propósito: pisar ayuda que ya hay (la del usuario gana siempre, aunque la
+        /// del archivo sea "mejor"), tocar cualquier otro campo, ni mover la fecha de modificación —
+        /// la entrada no fue editada, recibió algo que le faltaba.
+        /// </summary>
+        private bool CompleteHelp(ExistingEntry existing, ExchangeEntry entry)
+        {
+            if (!existing.LacksHelp) return false;
+
+            if (entry.Kind == EntryKind.Term)
+            {
+                string origin = entry.Origin.Trim();
+                if (origin == "") return false;
+                if (_apply)
+                {
+                    // `AND origin = ''` de nuevo en el SQL: aunque la foto dijera que estaba vacío,
+                    // la escritura misma no puede pisar un origen.
+                    _fillOrigin ??= Prepare(
+                        "UPDATE entries SET origin = $o WHERE id = $id AND kind = 'term' AND trim(origin) = ''", "$o", "$id");
+                    Set(_fillOrigin, origin, existing.Id);
+                    _fillOrigin.ExecuteNonQuery();
+                }
+            }
+            else
+            {
+                if (entry.Glossary.Count == 0) return false;
+                if (_apply) AddGlossary(existing.Id, entry.Glossary);
+            }
+
+            existing.LacksHelp = false;
+            return true;
+        }
+
+        private void AddGlossary(long entryId, IReadOnlyList<GlossaryItem> glossary)
+        {
+            // Normalizado otra vez acá: el documento puede no venir del lector (una prueba, otro
+            // origen futuro), y a la base sólo entra un glosario que cumple las reglas.
+            var items = Glossary.Normalize(glossary);
+            for (int i = 0; i < items.Count; i++)
+            {
+                _insertGlossary ??= Prepare(
+                    "INSERT INTO glossary(entry_id, term, definition, sort) VALUES ($e, $t, $d, $s)", "$e", "$t", "$d", "$s");
+                Set(_insertGlossary, entryId, items[i].Term, items[i].Definition, i);
+                _insertGlossary.ExecuteNonQuery();
             }
         }
 
@@ -376,6 +479,7 @@ public sealed partial class KnowledgeStore
                 Set(_insertTranslation, id, language, text.Trim());
                 _insertTranslation.ExecuteNonQuery();
             }
+            if (entry.Kind == EntryKind.Card) AddGlossary(id, entry.Glossary);
         }
 
         /// <summary>
@@ -436,6 +540,8 @@ public sealed partial class KnowledgeStore
         {
             _insertEntry?.Dispose();
             _insertTranslation?.Dispose();
+            _insertGlossary?.Dispose();
+            _fillOrigin?.Dispose();
         }
     }
 }

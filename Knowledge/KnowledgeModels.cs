@@ -127,6 +127,47 @@ public sealed record EntryDraft(
     EntryKind Kind, string Front, string Back, long? NatureId = null,
     string WordType = "", string UsageContext = "", string Origin = "");
 
+/// <summary>
+/// Un renglón del GLOSARIO de una card: una palabra difícil del texto y su definición breve. Es lo que
+/// muestra la ayuda del quiz (tecla H) para que una pregunta con jerga no mande a buscar afuera.
+/// Sólo las CARDS llevan glosario: un término ya trae <see cref="Entry.Origin"/> (etimología y
+/// composición), que es lo que su ayuda muestra.
+/// </summary>
+public sealed record GlossaryItem(string Term, string Definition);
+
+/// <summary>
+/// Las reglas del glosario, en UN lugar: las aplican igual el store, el lector del archivo de
+/// intercambio y el diálogo de edición. Si cada uno recortara a su modo, lo que el diálogo deja
+/// cargar no sería lo que la base guarda.
+/// </summary>
+public static class Glossary
+{
+    // Cinco y no más: el glosario es una ayuda rápida para poder LEER la pregunta, no un segundo
+    // diccionario. Y tiene que entrar en pantalla al lado de la pregunta sin scrollear — con más
+    // renglones la ayuda taparía justo lo que vino a aclarar.
+    public const int MaxGlossaryItems = 5;
+
+    /// <summary>
+    /// Deja la lista como se guarda: sin espacios en las puntas, sin renglones a los que les falte la
+    /// palabra o la definición, sin palabras repetidas (sin distinguir mayúsculas; queda la primera)
+    /// y con a lo sumo <see cref="MaxGlossaryItems"/>, las primeras.
+    /// </summary>
+    public static IReadOnlyList<GlossaryItem> Normalize(IEnumerable<GlossaryItem>? items)
+    {
+        var clean = new List<GlossaryItem>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in items ?? Array.Empty<GlossaryItem>())
+        {
+            if (clean.Count == MaxGlossaryItems) break;
+            string term = (item?.Term ?? "").Trim();
+            string definition = (item?.Definition ?? "").Trim();
+            if (term == "" || definition == "" || !seen.Add(term)) continue;
+            clean.Add(new GlossaryItem(term, definition));
+        }
+        return clean;
+    }
+}
+
 /// <summary>Naturaleza: la lista personal y creciente (técnica, legal, general…). UNA por entrada.</summary>
 public sealed record Nature(long Id, string Name);
 
@@ -139,8 +180,10 @@ public sealed record Translation(long EntryId, long LanguageId, string Text);
 /// <summary>
 /// Un repaso: qué lado se MOSTRÓ como pregunta (<see cref="Side"/>, ver <see cref="ReviewSide"/>),
 /// cómo le fue y cuándo (UTC). El historial es de sólo-agregar: la solidez se DERIVA de él.
+/// <see cref="Helped"/> = se abrió la ayuda (H) ANTES de revelar la respuesta en esa pregunta. Es un
+/// dato que se guarda para poder mirarlo después; NO entra en la solidez ni cambia la nota.
 /// </summary>
-public sealed record Review(long Id, long EntryId, string Side, Grade Grade, DateTime ReviewedAt);
+public sealed record Review(long Id, long EntryId, string Side, Grade Grade, DateTime ReviewedAt, bool Helped = false);
 
 /// <summary>Las cuatro respuestas del quiz. El número ES lo que se persiste (1..4): no reordenar.</summary>
 public enum Grade
