@@ -461,6 +461,12 @@ con su mensaje en vez de importarse "como se pueda".
   de tocar la base, con topes `MaxFileBytes` (20 MB), `MaxDepth` (32 niveles) y `MaxEntries`
   (200.000). De él sólo sale texto que se guarda como texto — nunca una ruta, un comando ni una
   referencia externa. No aflojes los topes: se lee en memoria y se recorre en el thread de UI.
+- **«Copiar prompt para IA»** (botón de texto junto a Importar / Exportar): copia al portapapeles el
+  pedido para que un modelo de IA genere un archivo importable. El texto vive en
+  `Knowledge/ImportPrompt.es.txt` (lo completa `ImportPrompt`) y describe al lector de
+  `KnowledgeExchange.cs`: **si cambia el formato, se cambia el .txt en el mismo commit**. Naturalezas
+  e idiomas se inyectan con sus nombres EXACTOS porque viajan por nombre y las tildes cuentan: un
+  modelo que escribe "Ingles" no falla, crea un segundo idioma.
 
 ---
 

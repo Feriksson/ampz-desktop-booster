@@ -1,0 +1,107 @@
+Necesito que generes un archivo JSON para importar en mi aplicación de estudio. La app tiene
+bibliotecas (carpetas anidables) que contienen dos tipos de entrada: "card" (pregunta y respuesta)
+y "term" (ficha de vocabulario). Las juego como un quiz: veo un lado, intento responder de
+memoria, revelo el otro y me califico.
+
+## Lo que quiero
+
+- Tema: {{TEMA, por ejemplo "contratos de software y propiedad intelectual"}}
+- Para quién: {{PERFIL, por ejemplo "consultor digital que necesita hablar con abogados y clientes"}}
+- Nivel: {{NIVEL, por ejemplo "intermedio: doy por sabido lo básico"}}
+- Cantidad: {{N_CARDS}} cards y {{N_TERMS}} términos
+- Idioma del contenido: español
+- Idiomas de traducción de los términos: [[IDIOMAS]]
+- Biblioteca raíz: "[[BIBLIOTECA]]"
+- Sub-bibliotecas: {{ESTRUCTURA, por ejemplo "divídela en 3 a 5 subtemas" o "ninguna"}}
+- Naturalezas disponibles: [[NATURALEZAS]]
+
+## Formato exacto del archivo
+
+Un único objeto JSON con esta forma:
+
+{
+  "format": "ampz-knowledge-library",
+  "version": 1,
+  "library": {
+    "name": "Nombre de la biblioteca",
+    "defaultNature": "Legal",
+    "entries": [
+      {
+        "kind": "card",
+        "front": "¿Pregunta?",
+        "back": "Respuesta.",
+        "nature": null
+      },
+      {
+        "kind": "term",
+        "front": "Entregable",
+        "back": "Resultado concreto y verificable que un proyecto se compromete a producir.",
+        "nature": "General",
+        "wordType": "sustantivo masculino",
+        "usageContext": "El entregable de esta etapa es el prototipo navegable.",
+        "origin": "Derivado de «entregar»; calco del inglés deliverable, de uso en gestión de proyectos.",
+        "translations": { "Inglés": "Deliverable", "Francés": "Livrable" }
+      }
+    ],
+    "libraries": []
+  }
+}
+
+Los nombres de naturalezas e idiomas del ejemplo son solo ilustrativos: usa los que indiqué arriba.
+
+Reglas del formato:
+
+- "format" y "version" van exactamente como en el ejemplo. "version" es un número, sin comillas.
+- Cada biblioteca lleva "name", "defaultNature", "entries" y "libraries". Las sub-bibliotecas van
+  dentro de "libraries", con esa misma forma.
+- Dos bibliotecas hermanas no pueden tener el mismo nombre.
+- "kind" es "card" o "term". "front" es obligatorio y no puede estar vacío.
+- En un "term", "front" es la palabra o expresión y "back" es su definición.
+- "wordType", "usageContext", "origin" y "translations" solo existen en los "term". No los pongas
+  en las cards.
+- "translations" es un objeto cuya clave es el nombre del idioma, escrito exactamente como lo
+  indiqué arriba (con mayúscula inicial y tildes), y cuyo valor es un texto.
+- "nature" usa solo los nombres de la lista de naturalezas, escritos exactamente igual. Pon null
+  cuando la entrada tenga la misma naturaleza que el "defaultNature" de su biblioteca, y el nombre
+  solo cuando sea distinta.
+- No agregues ningún otro campo: ni ids, ni fechas, ni puntajes.
+
+## Cómo escribir el contenido
+
+Cada lado se usa como pregunta en algún momento, así que tiene que funcionar solo.
+
+Cards:
+- Una idea por card. Si la respuesta necesita "y además", son dos cards.
+- El frente es una pregunta concreta con una única respuesta correcta. Evita "¿Qué sabes de X?".
+- El dorso responde en una a tres frases. Tiene que leerse entero de un vistazo.
+- Prefiere preguntas de comprensión y de criterio (por qué, cuándo conviene, qué diferencia hay
+  entre A y B, qué pasa si) antes que definiciones de memoria; esas van como términos.
+
+Términos:
+- La definición no puede contener el término ni una palabra de su misma raíz, porque a veces veo
+  solo la definición y tengo que recordar la palabra.
+- La definición debe distinguir al término de sus vecinos. Si sirve igual para otro concepto,
+  está incompleta.
+- "wordType": categoría gramatical en español, por ejemplo "sustantivo femenino", "verbo
+  transitivo", "locución nominal", "sigla", "anglicismo".
+- "usageContext": una frase realista de mi ámbito profesional que use el término tal cual.
+- "origin": etimología o procedencia en una o dos frases. Si no la conoces con seguridad, omite
+  el campo. No inventes fechas ni autores.
+- Traducciones: el equivalente que usa de verdad un profesional de ese idioma, no una traducción
+  literal. Solo el término, sin explicaciones ni paréntesis, con mayúscula inicial. Si el término
+  se usa sin traducir en ese idioma, repítelo igual. Si no existe un equivalente establecido,
+  omite ese idioma en esa entrada.
+- En las siglas, "front" es la forma desarrollada si es la que se usa al hablar, o la sigla si es
+  la habitual. La otra forma va al comienzo de la definición.
+
+General:
+- No repitas el mismo concepto en dos entradas, ni como card y término a la vez.
+- Ordena las entradas de lo fundamental a lo específico.
+- Exactitud ante todo: si dudas de un dato, déjalo fuera. Prefiero menos entradas y correctas.
+
+## Entrega
+
+Devuelve únicamente el JSON, en un solo bloque de código, completo y válido: comillas dobles,
+sin comentarios, sin puntos suspensivos y sin texto antes ni después. Si la cantidad pedida no
+entra en una sola respuesta, dímelo antes de empezar y propón partirlo en varios archivos, cada
+uno completo y con el mismo nombre de biblioteca raíz.

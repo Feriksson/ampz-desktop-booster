@@ -49,6 +49,14 @@
     <Resource Include="Localization\*.json" />
   </ItemGroup>
 
+  <!-- El pedido para un modelo de IA que genera bibliotecas importables (Config → Conocimiento →
+       «Copiar prompt para IA»). Embebido como Resource, igual que los diccionarios: lo lee
+       Knowledge/ImportPrompt.cs. -->
+  <ItemGroup>
+    <None Remove="Knowledge\ImportPrompt.es.txt" />
+    <Resource Include="Knowledge\ImportPrompt.es.txt" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- DLL nativa reutilizada del .ahk original (x64). Se copia junto al .exe. -->
     <None Update="VirtualDesktopAccessor.dll">
