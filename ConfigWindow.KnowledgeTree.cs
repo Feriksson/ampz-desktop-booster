@@ -345,7 +345,14 @@ public partial class ConfigWindow
         if (item is null) return (null, KnDropZone.Inside);
         // El cuarto de arriba y el de abajo de la fila son "entre"; el medio, "adentro".
         double y = e.GetPosition(item).Y, height = Math.Max(1, item.ActualHeight);
-        return (item, y < height * 0.28 ? KnDropZone.Before : y > height * 0.72 ? KnDropZone.After : KnDropZone.Inside);
+        var zone = y < height * 0.28 ? KnDropZone.Before : y > height * 0.72 ? KnDropZone.After : KnDropZone.Inside;
+        // "Después de" una biblioteca DESPLEGADA es ambiguo: la línea se dibuja bajo su fila, o sea
+        // arriba de sus hijas, pero la arrastrada caía después de TODO el subárbol. Esa franja pasa
+        // a ser "adentro" —que es lo que se está señalando—; para dejarla después, se suelta bajo la
+        // última hija o se pliega la madre.
+        if (zone == KnDropZone.After && item.Tag is Library { Collapsed: false } parent && _knChildren[parent.Id].Any())
+            zone = KnDropZone.Inside;
+        return (item, zone);
     }
 
     private static long? KnDraggedId(DragEventArgs e) =>

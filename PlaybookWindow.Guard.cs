@@ -36,6 +36,8 @@ public partial class PlaybookWindow
 
     private GuardKind _guard = GuardKind.None;
     private Button? _guardButton;   // el botón que también confirma la guarda en curso (si tiene uno)
+    private long? _guardEntryId;    // sobre QUÉ entrada se armó (eliminar): sólo esa la confirma
+    private bool _closed;           // la ventana ya se cerró (por el camino que sea)
     private bool _guardKept;        // la tecla en curso armó o confirmó una guarda: no la desarma
     private bool _closeConfirmed;   // el cierre ya pasó su confirmación: Closing lo deja seguir
     private DispatcherTimer? _guardTimer;
@@ -55,25 +57,38 @@ public partial class PlaybookWindow
         // "Cualquier otra cosa lo desarma": un click fuera del botón que confirma, e irse a otra ventana.
         PreviewMouseDown += OnGuardMouseDown;
         Deactivated += (_, _) => ClearGuard();
-        Closed += (_, _) => _guardTimer.Stop();
+        Closed += (_, _) =>
+        {
+            _closed = true;
+            _guardTimer.Stop();
+            // La ÚLTIMA red de un problema a medio anotar: hay cierres que no pasan por la
+            // confirmación — al apagarse la app WPF ignora la cancelación de Closing, así que la
+            // ventana se va en el primer intento, que sólo había armado la guarda. No hace nada si
+            // el campo ya estaba cerrado.
+            CommitIssueIfOpen();
+        };
     }
 
     /// <summary>
     /// El corazón de la mecánica. La PRIMERA vez arma la guarda (muestra el aviso, arranca el reloj) y
     /// devuelve false; la SEGUNDA, con la misma guarda todavía armada, devuelve true: confirmado.
     /// Pedir una guarda distinta de la que estaba armada cuenta como "otra cosa": desarma la anterior
-    /// y arma la nueva.
+    /// y arma la nueva. Y "la misma" incluye SOBRE QUÉ: un eliminar se arma para una entrada
+    /// (<paramref name="entryId"/>) y sólo lo confirma el segundo gesto sobre ESA entrada — pedirlo
+    /// sobre otra vuelve a empezar. Es la segunda traba de lo mismo que hace <see cref="ShowCard"/>
+    /// al desarmar todo cuando cambia la tarjeta: ninguna de las dos depende de la otra.
+    /// (La auto-repetición de una tecla mantenida ni llega acá: ver OnPreviewKeyDown.)
     /// </summary>
-    private bool ConfirmTwice(GuardKind kind, string notice, Button? button = null)
+    private bool ConfirmTwice(GuardKind kind, string notice, Button? button = null, long? entryId = null)
     {
         _guardKept = true;
-        if (_guard == kind)
+        if (_guard == kind && _guardEntryId == entryId)
         {
             ClearGuard();
             return true;
         }
 
-        ShowGuardNotice(kind, notice, button);
+        ShowGuardNotice(kind, notice, button, entryId);
         return false;
     }
 
@@ -87,11 +102,12 @@ public partial class PlaybookWindow
         ShowGuardNotice(GuardKind.Message, text, null);
     }
 
-    private void ShowGuardNotice(GuardKind kind, string notice, Button? button)
+    private void ShowGuardNotice(GuardKind kind, string notice, Button? button, long? entryId = null)
     {
         ClearGuard();
         _guard = kind;
         _guardButton = button;
+        _guardEntryId = entryId;
         GuardNoticeText.Text = notice;
         GuardNotice.Visibility = Visibility.Visible;
         HintText.Visibility = Visibility.Hidden; // Hidden: conserva su lugar, nada se mueve
@@ -110,6 +126,7 @@ public partial class PlaybookWindow
         if (_guard == GuardKind.None) return;
         _guard = GuardKind.None;
         _guardButton = null;
+        _guardEntryId = null;
         _guardTimer?.Stop();
         GuardNotice.Visibility = Visibility.Collapsed;
         HintText.Visibility = Visibility.Visible;
@@ -130,8 +147,11 @@ public partial class PlaybookWindow
         // cierre en sí lo decide Closing, no esta tecla.
         if (e.Key is Key.LeftShift or Key.RightShift or Key.LeftCtrl or Key.RightCtrl
             or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin or Key.System) return;
-        // Enter / Espacio sobre el botón que confirma van a ser su Click: lo decide el Click.
-        if (e.Key is Key.Enter or Key.Space && FocusIsOn(_guardButton)) return;
+        // Enter / Espacio sobre el botón que confirma van a ser su Click: lo decide el Click. Sólo
+        // si el paso NO se quedó con la tecla: en el quiz Espacio es siempre «saltar» y nunca llega
+        // al botón — ahí es "otra cosa" como cualquier tecla, y dejar la guarda armada la pasaba a
+        // la tarjeta siguiente.
+        if (!e.Handled && e.Key is Key.Enter or Key.Space && FocusIsOn(_guardButton)) return;
         ClearGuard();
     }
 
@@ -188,5 +208,18 @@ public partial class PlaybookWindow
             return;
         }
         e.Cancel = true;
+
+        // El cierre pudo venir de donde el aviso NO se ve: la X de la miniatura de la barra de
+        // tareas o «Cerrar ventana» con el playbook minimizado o detrás de otra. Cancelarlo ahí se
+        // lee como "no hizo nada". Se trae la ventana al frente (restaurada si hacía falta) y el
+        // aviso se vuelve a armar ya a la vista, con su tiempo entero. Diferido: desde adentro de
+        // Closing no se le cambia el estado a la ventana.
+        if (WindowState == WindowState.Minimized || !IsActive)
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (_closed || _closeConfirmed) return; // se cerró igual (apagado de la app)
+                this.BringToFront();
+                ShowGuardNotice(GuardKind.Close, Loc.T("Playbook.ConfirmClose"), CloseBtn);
+            }, DispatcherPriority.Input);
     }
 }

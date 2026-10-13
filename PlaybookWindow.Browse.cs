@@ -410,7 +410,7 @@ public partial class PlaybookWindow
 
             // ← → en la LISTA pliegan y despliegan una biblioteca del árbol. En el buscador siguen
             // siendo del cursor del texto.
-            case Key.Left or Key.Right when inList && Keyboard.Modifiers == ModifierKeys.None && OnTreeArrow(e.Key):
+            case Key.Left or Key.Right when inList && _keyModifiers == ModifierKeys.None && OnTreeArrow(e.Key):
                 e.Handled = true;
                 break;
 
@@ -481,7 +481,7 @@ public partial class PlaybookWindow
             // Las que tienen un problema anotado se abren como FICHAS y no como ronda: lo que hay
             // que hacer con ellas es leer la nota y arreglarlas (E), no responderlas.
             case PickRow { Kind: PickKind.Issues } issues:
-                OpenFicha(issues.EntryIds.Where(_entries.ContainsKey).Select(id => _entries[id]).ToList(), 0);
+                OpenFicha(issues.EntryIds.Where(_entries.ContainsKey).Select(id => _entries[id]).ToList(), 0, fromIssues: true);
                 break;
             case PickRow pick:
                 EnterSetup(pick);
@@ -522,6 +522,9 @@ public partial class PlaybookWindow
     /// </summary>
     private void BackToSearch(bool reload, long? selectEntryId = null)
     {
+        // ANTES de releer: un problema a medio anotar se guarda primero, o la fila «Con un problema
+        // anotado» se arma con la foto de antes y queda vieja (ShowStage lo guardaba, pero después).
+        CommitIssueIfOpen();
         if (reload || _staleRows) LoadData();
         _staleRows = false;
         _picked = null;

@@ -31,6 +31,9 @@ public partial class PlaybookWindow
     // Lo que se está leyendo: los resultados de la búsqueda de la que se vino, y cuál de ellos.
     private List<Entry> _fichaEntries = new();
     private int _fichaIndex;
+    // Se vino de la fila «Con un problema anotado»: eliminar una sigue con la siguiente de esa
+    // lista en vez de volver a la búsqueda (ver DeleteFichaEntry).
+    private bool _fichaFromIssues;
 
     private void InitFicha()
     {
@@ -41,9 +44,10 @@ public partial class PlaybookWindow
         AutomationProperties.SetName(FichaEditBtn, Loc.T("Playbook.FichaEdit"));
     }
 
-    private void OpenFicha(IReadOnlyList<Entry> results, int index)
+    private void OpenFicha(IReadOnlyList<Entry> results, int index, bool fromIssues = false)
     {
         if (results.Count == 0) return;
+        _fichaFromIssues = fromIssues;
         _fichaEntries = results.ToList();
         _fichaIndex = Math.Clamp(index, 0, _fichaEntries.Count - 1);
         ShowStage(Stage.Ficha);
@@ -137,6 +141,8 @@ public partial class PlaybookWindow
 
     private void RenderFicha()
     {
+        // Otra ficha (o la misma, releída) es "otra cosa": un «Eliminar» armado no la sobrevive.
+        ClearGuard();
         var entry = _fichaEntries[_fichaIndex];
         bool term = entry.Kind == EntryKind.Term;
 

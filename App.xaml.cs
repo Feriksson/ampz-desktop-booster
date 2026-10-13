@@ -330,8 +330,16 @@ public partial class App : Application
         // del hook no se puede bloquear. Tras minimizar todo, el foreground puede quedar HUÉRFANO
         // (mismo mecanismo que cerrar la última ventana de un desk) → aplicamos la MISMA red de
         // OnUtilityWindowClosed: ~80ms a que se asiente, foco al escritorio y ReinstallHook.
+        //
+        // "Todo menos lo nuestro" era cierto mientras lo nuestro eran la barra y popups efímeros. Las
+        // ventanas de trabajo largo (playbooker, Notas, Config) son ventanas NORMALES: si quedaran a
+        // la vista, el foco se iría al escritorio 80ms después y estarían visibles pero muertas de
+        // teclado. Se minimizan PRIMERO, por su camino normal (ver MinimizeLongLivedWindows); la red
+        // de abajo no lleva el guard de HasFocusedUtilityWindow a propósito: después de un "mostrar
+        // escritorio" no tiene que quedar ninguna ventana nuestra con el foco.
         _hotkeys.ShowDesktopRequested += () => Dispatcher.BeginInvoke(() =>
         {
+            WindowActivation.MinimizeLongLivedWindows();
             Interop.WindowMethods.MinimizeForeignTopLevel("AmpzDesktopBooster.exe");
             var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
             t.Tick += (_, _) =>

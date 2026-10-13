@@ -454,6 +454,15 @@ foco en un campo de texto (`LetterAllowed`).
   es un diálogo modal a propósito (sería otra cosa que mirar en medio de un quiz). El aviso ocupa el
   lugar de la pista y no mueve nada. `Application.Shutdown` ignora la cancelación: salir de la app
   no queda trabado.
+- **⚠ Esas confirmaciones IGNORAN la auto-repetición y están atadas a la ENTRADA.** `OnPreviewKeyDown`
+  descarta `e.IsRepeat` de toda tecla de acción ANTES de las guardas (`IsRepeatSwallowed`): una tecla
+  mantenida no es "apretarla otra vez" — sin eso, dejar el dedo en la `X` armaba, confirmaba y seguía
+  borrando las cards que venían, y `Esc` mantenido cortaba la ronda y cerraba la ventana. La
+  repetición vale sólo donde es inofensiva (flechas, escribir). Y un eliminar armado lo confirma
+  únicamente el segundo gesto sobre ESA entrada (`_guardEntryId`), además de desarmarse al cambiar de
+  tarjeta o de ficha: armado sobre una card y saltada con Espacio, la siguiente se iba con una sola
+  `X`. Los atajos piden tecla pelada (`PlainKey`); ojo que `Keyboard.Modifiers` de WPF NUNCA informa
+  la tecla Windows — se lee aparte (`ModifiersOf`).
 - **`NumpadClear` ya NO la cierra nunca** (`App.ShowPlaybook`): la abre o la trae al frente —
   restaurándola si estaba minimizada y MUDÁNDOLA al escritorio actual si vivía en otro
   (`DesktopService.SendWindowTo`, sin seguirla). Antes cerraba desde la búsqueda (`CanCloseOnRepress`,
@@ -825,12 +834,23 @@ por acá, y con log (la regla transversal).
    iconizado; minimizar la ventana en ese tramo la hacía reaparecer sola. → corta si
    `WindowState == Minimized`. (El re-press de una minimizada no se rompe: el primer
    `ForceForeground`, inmediato, ya la restauró.)
+5. **Un modal efímero no se cerraba al VOLVER a una de ellas** (click, Alt+Tab, barra de tareas): la
+   misma guarda las contaba como "hija". → `ShowFocused(closeOnDeactivate: false)` anota la ventana
+   como de trabajo largo y `FocusWentToOwnWindow` no la cuenta (tampoco a la Config, que ya tenía el
+   problema). El criterio es CÓMO se abrió, no qué tipo es; un diálogo hijo o un picker encadenado
+   no se abren así, y siguen dejando abierto a su padre.
+6. **`Win+D` las dejaba a la vista y sin teclado**: `MinimizeForeignTopLevel` saltea todo lo nuestro
+   y 80ms después el foco se iba al escritorio. → el handler llama antes a
+   `WindowActivation.MinimizeLongLivedWindows` (las de trabajo largo, no Topmost, del escritorio
+   actual — Config incluida), por su `WindowState` normal. `MinimizeForeignTopLevel` no cambió.
 
 Lo que NO cambió, a propósito: `RestoreForegroundOrDesktop` sigue excluyendo TODO lo de nuestro
 proceso, así que con el foco huérfano se lo da a otra app o al escritorio aunque el playbooker esté
-visible detrás (queda a la vista y sin foco; el atajo o un click se lo devuelven). Y `Win+D`
-(`MinimizeForeignTopLevel`) sigue salteando nuestras ventanas: NO minimiza el playbooker ni Notas,
-igual que nunca minimizó la Config.
+visible detrás (queda a la vista y sin foco; el atajo o un click se lo devuelven).
+
+**Notas abierta mientras se reorganiza el catálogo**: `ProjectStore.ScopeKeysChanging` avisa ANTES de
+mover o borrar una key de scope y el router CIERRA Notas (guarda en `Closing`, bajo la key que todavía
+existe, y el texto viaja con ella). Si agregás una operación que mueva keys, tiene que avisar igual.
 
 **Otro escritorio**: una ventana normal vive en el desk donde se abrió, y activarla desde otro hace
 que Windows SALTE a ese desk (le pasa a la Config). El playbooker se MUDA al desk actual

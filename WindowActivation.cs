@@ -59,6 +59,7 @@ internal static class WindowActivation
         window.Closed += (_, _) => OnUtilityWindowClosed?.Invoke();
         // ANTES del Show(): CloseOnDeactivate arranca su timer en Loaded, que dispara dentro del Show.
         if (closeOnDeactivate) window.CloseOnDeactivate();
+        else TrackLongLived(window);
         window.Show();
         if (closeOnDeactivate) CloseOtherUtilityWindows(window);
         // Show() es síncrono: al volver, el HWND ya existe y la ventana está visible.
@@ -89,6 +90,45 @@ internal static class WindowActivation
         {
             if (window.WindowState == WindowState.Minimized) OnUtilityWindowClosed?.Invoke();
         };
+    }
+
+    // Las ventanas de trabajo LARGO: las que se abrieron con closeOnDeactivate=false (Config, el
+    // playbooker, Notas). Se anotan acá —el mismo lugar que ya anota las efímeras armadas— para que
+    // nadie tenga que nombrar tipos de ventana: el criterio es CÓMO se abrió, no QUÉ es.
+    private static readonly System.Collections.Generic.HashSet<Window> _longLived = new();
+
+    private static void TrackLongLived(Window window)
+    {
+        if (_longLived.Add(window)) window.Closed += (_, _) => _longLived.Remove(window);
+    }
+
+    private static bool IsLongLivedHandle(System.IntPtr hwnd)
+    {
+        foreach (var w in _longLived)
+            if (new WindowInteropHelper(w).Handle == hwnd) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Para nuestro "Mostrar escritorio" (Win+D): MINIMIZA las ventanas de trabajo largo que estén a
+    /// la vista en ESTE escritorio. <see cref="WindowMethods.MinimizeForeignTopLevel"/> saltea todo
+    /// lo nuestro (es lo que deja firme a la barra), y cuando lo nuestro eran sólo popups Topmost
+    /// que se cierran solos alcanzaba; el playbooker y Notas son ventanas NORMALES y quedaban a la
+    /// vista mientras el foco se iba al escritorio: visibles y muertas de teclado.
+    ///
+    /// Van por su camino normal (<c>WindowState</c>), así que cada una corre lo suyo al minimizarse
+    /// (Notas guarda, la red de <see cref="RearmHookOnMinimize"/>). No toca la barra ni el overlay
+    /// (no se abren por acá), ni un modal efímero (tampoco: se cierra solo al irse el foco), ni nada
+    /// Topmost, ni lo que esté en OTRO escritorio (figura "cloaked": Win+D es del escritorio actual).
+    /// </summary>
+    public static void MinimizeLongLivedWindows()
+    {
+        foreach (var w in new System.Collections.Generic.List<Window>(_longLived))
+        {
+            if (!w.IsLoaded || !w.IsVisible || w.Topmost || w.WindowState == WindowState.Minimized) continue;
+            if (WindowMethods.IsCloaked(new WindowInteropHelper(w).Handle)) continue;
+            w.WindowState = WindowState.Minimized;
+        }
     }
 
     /// <summary>
@@ -124,6 +164,8 @@ internal static class WindowActivation
     /// editar servicio, el prompt, el QR, un MessageBox; o la ventana encadenada, como el picker de
     /// contexto). Abrir un hijo DESACTIVA al padre, y sin esta guarda el padre se cerraría con el
     /// diálogo recién abierto encima. Se exceptúan la barra y el overlay: clickear la barra ES irse.
+    /// Y las ventanas de trabajo LARGO (Config, playbooker, Notas): irse a una de ellas —click,
+    /// Alt+Tab, barra de tareas— también ES irse; no son hijas de nadie (ver FocusWentToOwnWindow).
     /// El chequeo se DIFIERE un tick: dentro de Deactivated el foreground todavía puede no haber
     /// cambiado, y leerlo ahí daría la ventana vieja.
     ///
@@ -211,13 +253,20 @@ internal static class WindowActivation
     }
 
     /// <summary>
-    /// ¿El foreground actual es una ventana de nuestro proceso que NO sea la barra ni el overlay?
-    /// (ver la guarda de <see cref="CloseOnDeactivate"/>).
+    /// ¿El foco se fue a una ventana nuestra que cuenta como "hija" del modal efímero (un diálogo
+    /// suyo, o la ventana que encadenó)? Es decir: de nuestro proceso, y que NO sea la barra, el
+    /// overlay ni una ventana de trabajo LARGO (ver la guarda de <see cref="CloseOnDeactivate"/>).
+    ///
+    /// Las de trabajo largo quedaron afuera cuando el playbooker y Notas dejaron de ser popups: con
+    /// "cualquier ventana nuestra" Variables no se cerraba nunca al volver a ellas y, por ser
+    /// Topmost, les quedaba encima para siempre (a la Config ya le pasaba). Un diálogo hijo o un
+    /// picker encadenado NO se abren como ventana de trabajo largo, así que ese caso sigue igual.
     /// </summary>
     private static bool FocusWentToOwnWindow()
     {
         var fg = WindowMethods.GetForegroundWindow();
         if (!WindowMethods.IsOwnProcessWindow(fg)) return false;
+        if (IsLongLivedHandle(fg)) return false;
 
         foreach (Window w in Application.Current.Windows)
         {

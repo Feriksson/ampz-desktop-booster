@@ -184,7 +184,7 @@ public partial class PlaybookWindow
     {
         if (_stage != Stage.Quiz || _advancing || CurrentCard is not { } card) return;
         // Nunca un borrado mudo ni de una sola tecla: la X está entre la E y el Espacio.
-        if (!ConfirmTwice(GuardKind.Delete, DeleteNotice(card.Entry), QuizDeleteBtn)) return;
+        if (!ConfirmTwice(GuardKind.Delete, DeleteNotice(card.Entry), QuizDeleteBtn, card.Entry.Id)) return;
 
         if (!_store.DeleteEntry(card.Entry.Id))
         {
@@ -197,15 +197,23 @@ public partial class PlaybookWindow
     private void DeleteFichaEntry()
     {
         if (_stage != Stage.Ficha || ActionEntry is not { } entry) return;
-        if (!ConfirmTwice(GuardKind.Delete, DeleteNotice(entry), FichaDeleteBtn)) return;
+        if (!ConfirmTwice(GuardKind.Delete, DeleteNotice(entry), FichaDeleteBtn, entry.Id)) return;
 
         if (!_store.DeleteEntry(entry.Id))
         {
             ShowNotice(Loc.T("Playbook.DeleteFailed"));
             return;
         }
+        ForgetEntry(entry.Id); // también la saca de las fichas que se están recorriendo
+        // Repasando las que tienen un problema anotado, se sigue con la que venía: se está
+        // limpiando esa lista, y volver a la búsqueda por cada una era perder el lugar.
+        if (_fichaFromIssues && _fichaEntries.Count > 0)
+        {
+            _fichaIndex = System.Math.Min(_fichaIndex, _fichaEntries.Count - 1);
+            RenderFicha();
+            return;
+        }
         // De vuelta a la búsqueda, releída: la entrada ya no está en ninguna lista.
-        ForgetEntry(entry.Id);
         BackToSearch(reload: true);
     }
 
@@ -306,7 +314,7 @@ public partial class PlaybookWindow
             e.Handled = true;
             CloseIssue();
         }
-        else if (e.Key is Key.Enter or Key.Return && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
+        else if (e.Key is Key.Enter or Key.Return && (_keyModifiers & ModifierKeys.Control) != 0)
         {
             e.Handled = true;
             SaveIssue();

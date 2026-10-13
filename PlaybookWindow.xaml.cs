@@ -500,6 +500,23 @@ public partial class PlaybookWindow : Window
         // foco). Así Espacio jamás "clickea" el botón que quedó enfocado tras un click de mouse —
         // en el quiz eso anotaría una respuesta que nadie dio.
 
+        // Los modificadores de ESTA tecla (los del dispositivo que la mandó): los consultan
+        // PlainKey / LetterAllowed mientras dura su despacho.
+        _keyModifiers = ModifiersOf(e.KeyboardDevice);
+
+        // ⚠ AUTO-REPETICIÓN: una tecla MANTENIDA no es "apretarla otra vez". Sin este corte, dejar
+        // el dedo en la X armaba y confirmaba el borrado sola, y seguía borrando las tarjetas que
+        // venían; Esc mantenido cortaba la ronda, salía del resumen y cerraba la ventana en menos de
+        // un segundo; Espacio / Enter arrancaban una ronda y la pasaban entera. Va ANTES de todo
+        // (también de las guardas): una repetición no confirma, no desarma y no llega al botón con
+        // foco (por eso se marca Handled: Enter repetido sobre «Eliminar» serían clicks seguidos).
+        // La repetición sigue valiendo donde es inofensiva y se espera: las flechas y escribir.
+        if (e.IsRepeat && IsRepeatSwallowed(e.Key, TextKeysAreTyped, EnterIsTyped))
+        {
+            e.Handled = true;
+            return;
+        }
+
         // Con el campo de "anotar un problema" abierto, el teclado es SUYO: ahí las letras son
         // texto y no puede dispararse ningún atajo del paso de atrás.
         if (_issueOpen)
@@ -525,14 +542,66 @@ public partial class PlaybookWindow : Window
     private static bool FocusIsOn(params Button?[] buttons) =>
         buttons.Any(b => b is not null && ReferenceEquals(Keyboard.FocusedElement, b));
 
+    private ModifierKeys _keyModifiers; // los de la tecla en curso (ver OnPreviewKeyDown)
+
+    /// <summary>
+    /// Los modificadores apretados, CON la tecla Windows. <c>Keyboard.Modifiers</c> de WPF sólo
+    /// informa Ctrl, Alt y Shift — nunca <see cref="ModifierKeys.Windows"/> —, así que preguntarle
+    /// por Win era una condición que jamás se cumplía: Win+2 calificaba igual que un 2. Se lee del
+    /// dispositivo que mandó la tecla.
+    /// </summary>
+    private static ModifierKeys ModifiersOf(KeyboardDevice keyboard)
+    {
+        var modifiers = keyboard.Modifiers;
+        if (keyboard.IsKeyDown(Key.LWin) || keyboard.IsKeyDown(Key.RWin)) modifiers |= ModifierKeys.Windows;
+        return modifiers;
+    }
+
+    /// <summary>
+    /// ¿La tecla en curso vino SIN Ctrl / Alt / Win? Con alguno apretado es otra tecla (Ctrl+Espacio,
+    /// Win+2…) y no puede responder, saltar ni empezar nada. Shift no cuenta: no cambia qué tecla es.
+    /// </summary>
+    private bool PlainKey => IsPlain(_keyModifiers);
+
+    internal static bool IsPlain(ModifierKeys modifiers) =>
+        (modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) == 0;
+
     /// <summary>
     /// ¿Una LETRA suelta puede ser un atajo ahora? No con Ctrl / Alt / Win apretados (ahí es otra
     /// tecla: Ctrl+A, Alt+E…) ni con el foco en un campo de texto (ahí es una letra que se escribe).
     /// La consultan todos los atajos de letra de la ventana: A, E, X, R, F, Q, W.
     /// </summary>
-    private static bool LetterAllowed =>
-        (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) == 0
-        && Keyboard.FocusedElement is not System.Windows.Controls.Primitives.TextBoxBase;
+    private bool LetterAllowed =>
+        PlainKey && Keyboard.FocusedElement is not System.Windows.Controls.Primitives.TextBoxBase;
+
+    // ── Auto-repetición (ver OnPreviewKeyDown) ──
+
+    /// <summary>¿Letras, números y Espacio son TEXTO ahora? En la búsqueda siempre (tipear en la
+    /// lista también escribe en el buscador), con el campo de problema abierto, o en un campo de texto.</summary>
+    private bool TextKeysAreTyped =>
+        _issueOpen || _stage == Stage.Search
+        || Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase;
+
+    /// <summary>¿Enter es un salto de línea ahora? Sólo en un campo de varios renglones (la nota de
+    /// problema) y sin Ctrl: Ctrl+Enter ahí es «Guardar».</summary>
+    private bool EnterIsTyped =>
+        (_keyModifiers & ModifierKeys.Control) == 0
+        && Keyboard.FocusedElement is TextBox { AcceptsReturn: true };
+
+    /// <summary>
+    /// ¿La REPETICIÓN de esta tecla se ignora? Sí para todo lo que en esta ventana es una ACCIÓN:
+    /// Esc, Enter, F2, Espacio, los números (respuestas, lados) y las letras (A/H, E, X, R, Q, W, F)
+    /// — salvo cuando son texto que se está escribiendo. No para lo demás: flechas, Retroceso,
+    /// Supr, Tab… se repiten como en cualquier lado. Decisión pura, aparte, para poder probarla.
+    /// </summary>
+    internal static bool IsRepeatSwallowed(Key key, bool textKeysAreTyped, bool enterIsTyped)
+    {
+        if (key is Key.Escape or Key.F2) return true;
+        if (key == Key.Enter) return !enterIsTyped;
+        bool textKey = key == Key.Space || key is >= Key.A and <= Key.Z
+            || key is >= Key.D0 and <= Key.D9 || key is >= Key.NumPad0 and <= Key.NumPad9;
+        return textKey && !textKeysAreTyped;
+    }
 
     private void OnHeaderMouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -757,7 +826,7 @@ public partial class PlaybookWindow : Window
 
             // Espacio EMPIEZA (mano izquierda); Enter sigue valiendo. Sobre un botón enfocado las dos
             // son de ese botón: Tab hasta «Volver» + Espacio tiene que ser Volver, no una ronda.
-            case Key.Space or Key.Enter when !FocusIsOn(SetupBackBtn, CloseBtn, MinimizeBtn):
+            case Key.Space or Key.Enter when PlainKey && !FocusIsOn(SetupBackBtn, CloseBtn, MinimizeBtn):
                 e.Handled = true;
                 StartRound(); // con la selección vacía no arranca: el motivo ya está en pantalla
                 break;
@@ -781,7 +850,7 @@ public partial class PlaybookWindow : Window
 
             default:
                 // 1..n: una tecla por opción de lado, sean las que sean.
-                if (DigitOf(e.Key) is { } digit && digit <= _sideRadios.Count)
+                if (PlainKey && DigitOf(e.Key) is { } digit && digit <= _sideRadios.Count)
                 {
                     e.Handled = true;
                     SelectSide(digit - 1, focus: true);
@@ -850,6 +919,9 @@ public partial class PlaybookWindow : Window
     private void ShowCard()
     {
         CommitIssueIfOpen(); // se pasó de tarjeta con el campo abierto (un click en una respuesta)
+        // Otra tarjeta es "otra cosa": un «Eliminar» armado sobre la anterior NO puede confirmarse
+        // sobre ésta (pasaba: click en «Eliminar», Espacio para saltar, X → se iba la siguiente).
+        ClearGuard();
         var card = _round[_index];
         _revealed = false;
 
@@ -1010,6 +1082,9 @@ public partial class PlaybookWindow : Window
         {
             case Key.Space:
                 e.Handled = true; // SIEMPRE: Espacio nunca llega al botón enfocado
+                // Con Ctrl / Alt / Win es otra tecla (Ctrl+Espacio): se traga igual —un botón con
+                // foco la tomaría como su click— pero no revela ni salta.
+                if (!PlainKey) break;
                 if (_revealed) Skip();
                 else Reveal();
                 break;
@@ -1054,7 +1129,8 @@ public partial class PlaybookWindow : Window
                 if (GradeFromKey(e.Key) is { } grade)
                 {
                     e.Handled = true;
-                    if (_revealed) GradeCurrent(grade);
+                    // Win+2 o Ctrl+3 no son una respuesta: misma regla que las letras.
+                    if (_revealed && PlainKey) GradeCurrent(grade);
                 }
                 break;
         }
@@ -1234,7 +1310,7 @@ public partial class PlaybookWindow : Window
                 BackToSearch(reload: true);
                 break;
 
-            case Key.Space or Key.Enter when !FocusIsOn(SummaryBackBtn, CloseBtn, MinimizeBtn):
+            case Key.Space or Key.Enter when PlainKey && !FocusIsOn(SummaryBackBtn, CloseBtn, MinimizeBtn):
                 e.Handled = true;
                 StartRound(); // lo mismo, con un orden nuevo
                 break;
