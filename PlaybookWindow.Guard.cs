@@ -28,7 +28,7 @@ namespace AmpzDesktopBooster;
 //   • ELIMINAR una entrada (X), en el quiz y en la ficha.
 public partial class PlaybookWindow
 {
-    private enum GuardKind { None, Close, EndRound, Delete }
+    private enum GuardKind { None, Close, EndRound, Delete, Message }
 
     // Cuánto dura la oportunidad de confirmar. Largo como para leer el aviso y repetir el gesto con
     // calma; corto como para que un Esc de hace un rato no deje la ventana "armada" para cerrarse.
@@ -73,6 +73,22 @@ public partial class PlaybookWindow
             return true;
         }
 
+        ShowGuardNotice(kind, notice, button);
+        return false;
+    }
+
+    /// <summary>
+    /// Un aviso suelto en el mismo lugar y con el mismo reloj, para lo que NO se pudo hacer (la base
+    /// no eliminó la entrada). No confirma nada: se va solo, o con la tecla siguiente.
+    /// </summary>
+    private void ShowNotice(string text)
+    {
+        _guardKept = true;
+        ShowGuardNotice(GuardKind.Message, text, null);
+    }
+
+    private void ShowGuardNotice(GuardKind kind, string notice, Button? button)
+    {
         ClearGuard();
         _guard = kind;
         _guardButton = button;
@@ -87,7 +103,6 @@ public partial class PlaybookWindow
             ?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
         _guardTimer?.Stop();
         _guardTimer?.Start();
-        return false;
     }
 
     private void ClearGuard()
@@ -152,6 +167,7 @@ public partial class PlaybookWindow
     private void RequestClose()
     {
         if (!ConfirmTwice(GuardKind.Close, Loc.T("Playbook.ConfirmClose"), CloseBtn)) return;
+        CommitIssueIfOpen(); // un problema a medio anotar no se pierde por cerrar
         _closeConfirmed = true;
         Close();
     }
@@ -167,6 +183,7 @@ public partial class PlaybookWindow
         if (_closeConfirmed) return;
         if (ConfirmTwice(GuardKind.Close, Loc.T("Playbook.ConfirmClose"), CloseBtn))
         {
+            CommitIssueIfOpen(); // un problema a medio anotar no se pierde por cerrar (Alt+F4 dos veces)
             _closeConfirmed = true;
             return;
         }

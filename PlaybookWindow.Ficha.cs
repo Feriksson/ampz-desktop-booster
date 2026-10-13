@@ -59,6 +59,7 @@ public partial class PlaybookWindow
 
     private void StepFicha(int delta)
     {
+        CommitIssueIfOpen(); // se pasó de ficha con el campo abierto (un click en «Siguiente»)
         int next = _fichaIndex + delta;
         if (next < 0 || next >= _fichaEntries.Count) return; // en las puntas no hay vuelta: el botón ya está apagado
         _fichaIndex = next;
@@ -85,6 +86,7 @@ public partial class PlaybookWindow
         KnowledgeEntryWindow.ShowEdit(this, _store, current);
 
         LoadData();
+        _staleRows = false; // recién releído
         // Los vecinos de ← → también se refrescan; los que ya no existan salen de la lista.
         _fichaEntries = _fichaEntries.Where(e => _entries.ContainsKey(e.Id)).Select(e => _entries[e.Id]).ToList();
         int index = _fichaEntries.FindIndex(e => e.Id == id);
@@ -108,6 +110,14 @@ public partial class PlaybookWindow
             case Key.E when LetterAllowed:
                 e.Handled = true;
                 EditFichaEntry();
+                break;
+            case Key.X when LetterAllowed:
+                e.Handled = true;
+                DeleteFichaEntry();
+                break;
+            case Key.R when LetterAllowed:
+                e.Handled = true;
+                OpenIssue();
                 break;
             // Q / W: anterior / siguiente con la mano izquierda (las flechas siguen valiendo).
             case Key.Q when LetterAllowed:
@@ -144,6 +154,9 @@ public partial class PlaybookWindow
         AddSide(FichaPanel, entry, front: false, term, question: false, topMargin: 22);
         if (term) AddTermSheet(FichaPanel, entry, translations);
         else AddGlossarySection(FichaPanel, _store.GetGlossary(entry.Id));
+        // El problema anotado, entero y al final: acá es donde se lo lee para arreglarlo.
+        AddField(FichaPanel, Loc.T("Playbook.FieldIssue"), entry.IssueNote);
+        ShowIssueMark(FichaIssueChip, entry);
 
         // ── Solidez por lado + historial ── Una consulta por la entrada que se abre (no por fila).
         var reviews = _store.GetReviews(new[] { entry.Id });

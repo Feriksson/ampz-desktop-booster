@@ -15,6 +15,7 @@ namespace AmpzDesktopBooster;
 // La lista de la búsqueda mezcla cuatro clases de fila, y cada una hace otra cosa con Enter:
 //
 //   • biblioteca / naturaleza / «Vocabulario» → se JUEGA (pasa al armado);
+//   • «Con un problema anotado»               → se REVISA (sus entradas, como fichas);
 //   • una entrada (término o card)            → se LEE (pasa a su ficha);
 //   • «Crear término / card "texto"…»         → se CARGA, con lo tipeado ya puesto;
 //   • rótulos de grupo y avisos               → nada: no se pueden elegir.
@@ -28,7 +29,7 @@ public partial class PlaybookWindow
     /// algo que se recorre: se avisa que hay más y se invita a afinar la búsqueda.</summary>
     private const int EntryResultCap = 50;
 
-    private enum PickKind { Library, Nature, Vocabulary }
+    private enum PickKind { Library, Nature, Vocabulary, Issues }
 
     /// <summary>
     /// Base de toda fila de la lista. <see cref="Selectable"/> false = rótulo o aviso: se ve, pero
@@ -372,6 +373,11 @@ public partial class PlaybookWindow
     {
         switch (row)
         {
+            // Las que tienen un problema anotado se abren como FICHAS y no como ronda: lo que hay
+            // que hacer con ellas es leer la nota y arreglarlas (E), no responderlas.
+            case PickRow { Kind: PickKind.Issues } issues:
+                OpenFicha(issues.EntryIds.Where(_entries.ContainsKey).Select(id => _entries[id]).ToList(), 0);
+                break;
             case PickRow pick:
                 EnterSetup(pick);
                 break;
@@ -407,10 +413,12 @@ public partial class PlaybookWindow
     /// nuevos, tras una edición cambió una entrada); si sólo se volvió del armado no cambió nada y no
     /// se toca. El texto del buscador se conserva siempre; <paramref name="selectEntryId"/> deja
     /// además marcada esa entrada, que es como se vuelve de una ficha sin perder el lugar.
+    /// Si por el camino se editó, eliminó o anotó algo (<see cref="_staleRows"/>) se relee igual.
     /// </summary>
     private void BackToSearch(bool reload, long? selectEntryId = null)
     {
-        if (reload) LoadData();
+        if (reload || _staleRows) LoadData();
+        _staleRows = false;
         _picked = null;
         _pickedEntries = new List<Entry>();
         _selection = new List<Entry>();

@@ -110,6 +110,10 @@ public partial class ConfigWindow
         public string LibraryText { get; init; } = "";
         public Visibility LibraryVisibility { get; init; }
         public int ReviewCount { get; init; }
+        /// <summary>"Con problema · <comienzo de la nota>" ("" si no tiene nada anotado).</summary>
+        public string IssueText { get; init; } = "";
+        public string IssueTip { get; init; } = "";
+        public Visibility IssueVisibility { get; init; }
         public string AccessibleName { get; init; } = "";
         /// <summary>Frente + dorso ya normalizados (sin tildes, minúsculas) para el buscador.</summary>
         public string Haystack { get; init; } = "";
@@ -151,6 +155,7 @@ public partial class ConfigWindow
         KnEntrySearchBox.PreviewKeyDown += OnKnSearchKeyDown;
         foreach (var radio in new[] { KnKindAllRadio, KnKindCardsRadio, KnKindTermsRadio })
             radio.Checked += (_, _) => { if (!_knRebuilding) ApplyKnEntryFilter(SelectedKnEntryIds()); };
+        KnIssueOnlyChk.Click += (_, _) => ApplyKnEntryFilter(SelectedKnEntryIds());
         KnEntryClearBtn.Click += (_, _) => ClearKnEntryFilters();
 
         KnSortKindBtn.Click += (_, _) => SortKnEntriesBy("kind");
@@ -606,6 +611,12 @@ public partial class ConfigWindow
                 reviewCounts.TryGetValue(e.Id, out int n) ? n : 0, includeSub)).ToList();
         }
 
+        // «Con problema (N)»: cuántas de las cargadas tienen algo anotado. Sin ninguna el filtro se
+        // apaga —el (0) ya dice por qué— salvo que estuviera puesto: ahí tiene que poder sacarse.
+        int flagged = _knRows.Count(r => r.Entry.HasIssue);
+        KnIssueOnlyChk.Content = string.Format(Loc.T("Config.KnowledgeIssueOnly"), flagged);
+        KnIssueOnlyChk.IsEnabled = flagged > 0 || KnIssueOnlyChk.IsChecked == true;
+
         KnEntryHeader.Text = library is null
             ? Loc.T("Config.KnowledgeEntriesNoLibrary")
             : string.Format(Loc.T("Config.KnowledgeEntriesHeader"), KnPath(library.Id), KnCount(_knRows.Count));
@@ -635,6 +646,7 @@ public partial class ConfigWindow
         if (nature != "")
             accessible += ", " + string.Format(
                 Loc.T(own ? "Config.KnowledgeNatureOwnAccessible" : "Config.KnowledgeNatureInheritedAccessible"), nature);
+        if (entry.HasIssue) accessible += ", " + string.Format(Loc.T("Config.KnowledgeIssueDetail"), entry.IssueNote);
 
         return new KnEntryRow
         {
@@ -654,6 +666,9 @@ public partial class ConfigWindow
             LibraryText = showLibrary ? KnPath(entry.LibraryId) : "",
             LibraryVisibility = showLibrary ? Visibility.Visible : Visibility.Collapsed,
             ReviewCount = reviewCount,
+            IssueText = entry.HasIssue ? string.Format(Loc.T("Config.KnowledgeIssueRow"), KnClip(OneLine(entry.IssueNote), 120)) : "",
+            IssueTip = KnClip(entry.IssueNote, 1200),
+            IssueVisibility = entry.HasIssue ? Visibility.Visible : Visibility.Collapsed,
             AccessibleName = accessible,
             Haystack = TextFold.Fold(entry.Front + "\n" + entry.Back),
         };
@@ -677,10 +692,12 @@ public partial class ConfigWindow
     {
         var terms = TextFold.Fold(KnEntrySearchBox.Text).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         var kind = KnKindFilter;
-        bool filtering = terms.Length > 0 || kind is not null;
+        bool issueOnly = KnIssueOnlyChk.IsChecked == true;
+        bool filtering = terms.Length > 0 || kind is not null || issueOnly;
 
         IEnumerable<KnEntryRow> visible = _knRows;
         if (kind is { } k) visible = visible.Where(r => r.Entry.Kind == k);
+        if (issueOnly) visible = visible.Where(r => r.Entry.HasIssue);
         if (terms.Length > 0)
             visible = visible.Where(r => terms.All(t => r.Haystack.Contains(t, StringComparison.Ordinal)));
         var list = SortKnRows(visible).ToList();
@@ -774,6 +791,7 @@ public partial class ConfigWindow
         try
         {
             KnKindAllRadio.IsChecked = true;
+            KnIssueOnlyChk.IsChecked = false;
         }
         finally { _knRebuilding = false; }
         if (KnEntrySearchBox.Text == "") ApplyKnEntryFilter(SelectedKnEntryIds());
@@ -831,6 +849,13 @@ public partial class ConfigWindow
         bool allThere = target is not null && selected.Count > 0 && selected.All(r => r.Entry.LibraryId == target.Id);
         KnEntryMoveCombo.IsEnabled = _knLibraries.Count > 0;
         KnEntryMoveBtn.IsEnabled = selected.Count > 0 && target is not null && !allThere;
+
+        // El problema anotado de la fila elegida, entero, debajo de la lista.
+        bool showIssue = selected.Count == 1 && selected[0].Entry.HasIssue;
+        KnEntryIssueBox.Visibility = showIssue ? Visibility.Visible : Visibility.Collapsed;
+        KnEntryIssueText.Text = showIssue
+            ? string.Format(Loc.T("Config.KnowledgeIssueDetail"), selected[0].Entry.IssueNote)
+            : "";
 
         int shown = KnEntryList.Items.Count;
         KnEntryCountText.Text = selected.Count > 0

@@ -277,6 +277,25 @@
                               AutomationProperties.Name="{loc:Translate KnowledgeEntry.FldNature}" />
                     <TextBlock Style="{StaticResource Hint}" Text="{loc:Translate KnowledgeEntry.NatureHint}" />
 
+                    <!-- El PROBLEMA ANOTADO (sólo al editar: una entrada que todavía no existe no
+                         tiene nada anotado). Es lo que se escribió jugando, con la tecla R, para
+                         arreglar acá. Se edita como cualquier campo y se guarda con Guardar;
+                         «Marcar como resuelto» lo vacía — con el motivo escrito al lado cuando no
+                         hay nada que resolver. -->
+                    <StackPanel x:Name="IssuePanel" Visibility="Collapsed">
+                        <TextBlock Style="{StaticResource Lbl}" Margin="0,14,0,3"
+                                   Text="{loc:Translate KnowledgeEntry.FldIssue}" />
+                        <TextBox x:Name="IssueBox" Style="{StaticResource MultiField}"
+                                 AutomationProperties.Name="{loc:Translate KnowledgeEntry.FldIssue}" />
+                        <TextBlock Style="{StaticResource Hint}" Text="{loc:Translate KnowledgeEntry.IssueHint}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <Button x:Name="IssueResolveBtn" Padding="10,4"
+                                    Content="{loc:Translate KnowledgeEntry.IssueResolve}" />
+                            <TextBlock x:Name="IssueStateText" Style="{StaticResource Hint}" FontSize="12"
+                                       Margin="10,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </StackPanel>
+
                     <TextBlock Style="{StaticResource Hint}" Margin="0,12,0,2"
                                Text="{loc:Translate KnowledgeEntry.RequiredLegend}" />
                 </StackPanel>

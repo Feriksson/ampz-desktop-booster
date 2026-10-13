@@ -21,6 +21,7 @@ namespace AmpzDesktopBooster;
 ///   BÚSQUEDA → ARMADO (qué lado se muestra primero) → QUIZ → RESUMEN        (este archivo;
 ///                                             la ayuda del quiz, tecla A: PlaybookWindow.Helper.cs)
 ///   BÚSQUEDA → FICHA de una entrada, para leerla                             (PlaybookWindow.Ficha.cs)
+///   QUIZ / FICHA: editar, eliminar y anotar un problema en la entrada        (PlaybookWindow.Actions.cs)
 ///   BÚSQUEDA → ESTADÍSTICAS                                                  (PlaybookWindow.Stats.cs)
 ///
 /// La búsqueda, con sus filas y la captura rápida, vive en PlaybookWindow.Browse.cs.
@@ -156,6 +157,7 @@ public partial class PlaybookWindow : Window
         InitFicha();
         InitStats();
         InitHelper();
+        InitActions();
 
         StartBtn.Click += (_, _) => StartRound();
         SetupBackBtn.Click += (_, _) => LeaveSetup();
@@ -261,6 +263,13 @@ public partial class PlaybookWindow : Window
             .OrderBy(e => e.Front, StringComparer.CurrentCultureIgnoreCase).Select(e => e.Id).ToList();
         if (terms.Count > 0) rows.Insert(0, VocabularyRow(terms, states));
 
+        // CON UN PROBLEMA ANOTADO: las entradas que tienen algo escrito para arreglar, la anotada más
+        // recientemente primero. Sólo si hay alguna, justo debajo de Vocabulario. No se JUEGA: Enter
+        // las abre como fichas, que es donde se lee la nota y se corrige (ver Activate).
+        var flagged = _entries.Values.Where(e => e.HasIssue)
+            .OrderByDescending(e => e.IssueAt).ThenBy(e => e.Id).Select(e => e.Id).ToList();
+        if (flagged.Count > 0) rows.Insert(terms.Count > 0 ? 1 : 0, IssuesRow(flagged));
+
         _rows = rows;
     }
 
@@ -334,6 +343,22 @@ public partial class PlaybookWindow : Window
             AccessibleName = string.Format(Loc.T("Playbook.RowVocabularyAccessible"), chip, name, count, SpokenSolidity(average)),
             Haystack = TextFold.Fold(chip + " " + name),
             EntryIds = termIds,
+        };
+    }
+
+    private static PickRow IssuesRow(List<long> entryIds)
+    {
+        string name = Loc.T("Playbook.IssueMark");
+        string count = CountLabel(entryIds.Count);
+        return new PickRow
+        {
+            Kind = PickKind.Issues,
+            Name = name,
+            CountText = count,
+            BarVisibility = Visibility.Collapsed,
+            AccessibleName = string.Format(Loc.T("Playbook.RowIssuesAccessible"), name, count),
+            Haystack = TextFold.Fold(name),
+            EntryIds = entryIds,
         };
     }
 
@@ -412,6 +437,7 @@ public partial class PlaybookWindow : Window
 
     private void ShowStage(Stage stage)
     {
+        CommitIssueIfOpen(); // lo que se estaba anotando no se pierde por cambiar de paso
         _stage = stage;
         SearchView.Visibility = stage == Stage.Search ? Visibility.Visible : Visibility.Collapsed;
         SetupView.Visibility = stage == Stage.Setup ? Visibility.Visible : Visibility.Collapsed;
@@ -465,6 +491,15 @@ public partial class PlaybookWindow : Window
         // Una sola puerta de teclado para toda la ventana (tunneling: corre ANTES que el control con
         // foco). Así Espacio jamás "clickea" el botón que quedó enfocado tras un click de mouse —
         // en el quiz eso anotaría una respuesta que nadie dio.
+
+        // Con el campo de "anotar un problema" abierto, el teclado es SUYO: ahí las letras son
+        // texto y no puede dispararse ningún atajo del paso de atrás.
+        if (_issueOpen)
+        {
+            OnIssueKey(e);
+            return;
+        }
+
         BeginGuardedKey();
         switch (_stage)
         {
@@ -806,9 +841,33 @@ public partial class PlaybookWindow : Window
 
     private void ShowCard()
     {
+        CommitIssueIfOpen(); // se pasó de tarjeta con el campo abierto (un click en una respuesta)
         var card = _round[_index];
         _revealed = false;
 
+        RenderCardHeader(card);
+        ShowQuestionWithHelpClosed(card);
+        CardScroll.ScrollToTop();
+
+        RevealBtn.Visibility = Visibility.Visible;
+        GradePanel.Visibility = Visibility.Collapsed;
+        CardSolidityText.Text = "";
+        UpdateHelpControls();
+        UpdateHint();
+
+        // El foco vive en la tarjeta: las flechas scrollean el texto largo y ningún botón queda
+        // "armado" bajo el Enter.
+        CardScroll.Focus();
+        Keyboard.Focus(CardScroll);
+    }
+
+    /// <summary>
+    /// Lo que rodea a la tarjeta y depende de la ENTRADA: avance, qué lado se muestra, dónde vive,
+    /// su naturaleza y la marca de problema anotado. Aparte de <see cref="ShowCard"/> porque también
+    /// se repinta al volver de editarla, sin tocar si estaba revelada.
+    /// </summary>
+    private void RenderCardHeader(QuizCard card)
+    {
         ProgressText.Text = string.Format(Loc.T("Playbook.Progress"), _index + 1, _round.Count);
         ShownSideText.Text = card.Side switch
         {
@@ -823,19 +882,7 @@ public partial class PlaybookWindow : Window
         CardNatureText.Text = nature;
         CardNatureChip.Visibility = nature == "" ? Visibility.Collapsed : Visibility.Visible;
 
-        ShowQuestionWithHelpClosed(card);
-        CardScroll.ScrollToTop();
-
-        RevealBtn.Visibility = Visibility.Visible;
-        GradePanel.Visibility = Visibility.Collapsed;
-        CardSolidityText.Text = "";
-        UpdateHelpControls();
-        UpdateHint();
-
-        // El foco vive en la tarjeta: las flechas scrollean el texto largo y ningún botón queda
-        // "armado" bajo el Enter.
-        CardScroll.Focus();
-        Keyboard.Focus(CardScroll);
+        ShowIssueMark(CardIssueChip, card.Entry);
     }
 
     /// <summary>El nombre del idioma de un lado <c>lang:&lt;id&gt;</c> ("" si ya no existe).</summary>
@@ -946,7 +993,8 @@ public partial class PlaybookWindow : Window
         if (_advancing)
         {
             // Durante el destello sólo se traga lo que tendría efecto; el resto (Alt+Tab, etc.) pasa.
-            if (e.Key is Key.Space or Key.Escape or Key.Enter or Key.A or Key.H || GradeFromKey(e.Key) is not null) e.Handled = true;
+            if (e.Key is Key.Space or Key.Escape or Key.Enter or Key.A or Key.H or Key.E or Key.X or Key.R
+                || GradeFromKey(e.Key) is not null) e.Handled = true;
             return;
         }
 
@@ -975,6 +1023,21 @@ public partial class PlaybookWindow : Window
             case Key.A or Key.H when LetterAllowed:
                 e.Handled = true;
                 ToggleHelp();
+                break;
+
+            // E / X / R: corregir, eliminar o anotarle un problema a ESTA entrada sin cortar la ronda
+            // (PlaybookWindow.Actions.cs). Valen antes y después de revelar.
+            case Key.E when LetterAllowed:
+                e.Handled = true;
+                EditQuizEntry();
+                break;
+            case Key.X when LetterAllowed:
+                e.Handled = true;
+                DeleteQuizEntry();
+                break;
+            case Key.R when LetterAllowed:
+                e.Handled = true;
+                OpenIssue();
                 break;
 
             default:

@@ -78,6 +78,7 @@ public partial class KnowledgeEntryWindow : Window
     // está escribiendo la palabra, que todavía no tenga definición no es un error).
     private readonly HashSet<GlossaryRow> _glossaryTouched = new();
 
+    private string _issueInitial = ""; // la nota con la que se abrió: se guarda sólo si cambió
     private string _snapshot = "";
     private bool _attempted;      // ya se intentó guardar: los errores de campo quedan a la vista
     private bool _frontTouched;   // el campo ya tuvo el foco: recién ahí reclama si quedó vacío
@@ -175,6 +176,23 @@ public partial class KnowledgeEntryWindow : Window
         foreach (var language in _languages)
             AddTranslationRow(language, translations.TryGetValue(language.Id, out var text) ? text : "");
         NoLanguagesText.Visibility = _languages.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        // ── Problema anotado: sólo en una edición ──
+        if (existing is not null)
+        {
+            _issueInitial = existing.IssueNote;
+            IssueBox.Text = existing.IssueNote;
+            IssuePanel.Visibility = Visibility.Visible;
+            IssueBox.TextChanged += (_, _) => UpdateIssueState();
+            IssueResolveBtn.Click += (_, _) =>
+            {
+                // Resolver = vaciar la nota. Queda a la vista (el campo en blanco) y recién se
+                // escribe en la base con Guardar, como el resto del formulario: Cancelar lo deshace.
+                IssueBox.Clear();
+                IssueBox.Focus();
+            };
+            UpdateIssueState();
+        }
 
         // ── Botones y teclas ──
         SaveNewBtn.Visibility = _adding ? Visibility.Visible : Visibility.Collapsed;
@@ -396,6 +414,16 @@ public partial class KnowledgeEntryWindow : Window
         box.BringIntoView();
         box.Focus();
         Keyboard.Focus(box);
+    }
+
+    /// <summary>«Marcar como resuelto» sólo tiene qué hacer con algo anotado; apagado, dice por qué.</summary>
+    private void UpdateIssueState()
+    {
+        bool any = IssueBox.Text.Trim() != "";
+        IssueResolveBtn.IsEnabled = any;
+        IssueStateText.Text = any ? "" : Loc.T(_issueInitial.Trim() == ""
+            ? "KnowledgeEntry.IssueNone" : "KnowledgeEntry.IssueResolvedOnSave");
+        AutomationProperties.SetHelpText(IssueResolveBtn, IssueStateText.Text);
     }
 
     // ──────────────────────────── Glosario (sólo cards) ────────────────────────────
@@ -649,6 +677,20 @@ public partial class KnowledgeEntryWindow : Window
             return;
         }
 
+        // El problema anotado va aparte del contenido (no es parte de la entrada: ver
+        // KnowledgeStore.SetEntryIssue) y sólo si se lo tocó. Mismo trato que traducciones y
+        // glosario si falla: se dice, y el diálogo sigue sobre esta entrada para reintentar.
+        if (IssuePanel.Visibility == Visibility.Visible && IssueBox.Text.Trim() != _issueInitial.Trim())
+        {
+            if (!_store.SetEntryIssue(id, IssueBox.Text))
+            {
+                _snapshot = "";
+                ShowNotice(Loc.T("KnowledgeEntry.IssueFailed"), error: true);
+                return;
+            }
+            _issueInitial = IssueBox.Text;
+        }
+
         if (!thenNew)
         {
             _closeConfirmed = true;
@@ -747,7 +789,7 @@ public partial class KnowledgeEntryWindow : Window
 
     /// <summary>Todo lo editable, en un texto: comparar dos de éstos dice si hay algo sin guardar.</summary>
     private string Snapshot() => string.Join("\u001f",
-        new[] { FrontBox.Text, BackBox.Text, WordTypeCombo.Text, UsageBox.Text, OriginBox.Text, NatureCombo.Text }
+        new[] { FrontBox.Text, BackBox.Text, WordTypeCombo.Text, UsageBox.Text, OriginBox.Text, NatureCombo.Text, IssueBox.Text }
             // Sólo las traducciones con texto: sumar un idioma con "+ idioma" agrega un campo vacío,
             // y eso solo no es "tener algo sin guardar".
             .Concat(_translationBoxes.Where(p => p.Value.Text != "").OrderBy(p => p.Key)

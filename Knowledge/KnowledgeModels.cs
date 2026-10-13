@@ -14,8 +14,13 @@ namespace AmpzDesktopBooster.Knowledge;
 /// planas y la UI arma el árbol. <see cref="DefaultNatureId"/> es la naturaleza que HEREDAN sus
 /// entradas mientras no fijen una propia; null = la que le llegue de su biblioteca madre (ver
 /// <see cref="LibraryTree.EffectiveNatureId(long, IReadOnlyDictionary{long, Library})"/>).
+/// <see cref="Sort"/> es su posición entre sus HERMANAS (el orden que el usuario les dio; el desempate
+/// es el id). <see cref="Collapsed"/> = en las listas se muestra PLEGADA, con sus hijas ocultas: es un
+/// dato de cómo se MIRA el árbol, no de su contenido — lo comparten el árbol de la config y la lista
+/// del playbooker, y por eso se guarda con la biblioteca en vez de vivir en cada ventana.
 /// </summary>
-public sealed record Library(long Id, long? ParentId, string Name, long? DefaultNatureId, int Sort, DateTime CreatedAt);
+public sealed record Library(long Id, long? ParentId, string Name, long? DefaultNatureId, int Sort, DateTime CreatedAt,
+    bool Collapsed = false);
 
 /// <summary>
 /// Preguntas sobre el ÁRBOL de bibliotecas que se contestan en memoria, con la lista plana que
@@ -117,10 +122,21 @@ public enum EntryKind { Card, Term }
 /// <see cref="WordType"/>, <see cref="UsageContext"/> y <see cref="Origin"/> (vacíos en una tarjeta).
 /// <see cref="NatureId"/> null NO es "sin naturaleza": es "la que diga mi biblioteca" (o, si ella
 /// tampoco tiene, la primera de sus ancestros que sí).
+///
+/// <see cref="IssueNote"/> es el PROBLEMA ANOTADO: lo que el usuario escribió sobre esta entrada
+/// mientras la jugaba ("el dorso está mal", "falta un ejemplo") para arreglarla después. "" = sin
+/// nada anotado; <see cref="IssueAt"/> (UTC) es cuándo se anotó, y es null exactamente cuando la nota
+/// está vacía. Es una nota PERSONAL sobre la entrada, no parte de su contenido: no cambia
+/// <see cref="UpdatedAt"/>, no entra en la solidez y no viaja en una exportación.
 /// </summary>
 public sealed record Entry(
     long Id, long LibraryId, EntryKind Kind, string Front, string Back, long? NatureId,
-    string WordType, string UsageContext, string Origin, DateTime CreatedAt, DateTime UpdatedAt);
+    string WordType, string UsageContext, string Origin, DateTime CreatedAt, DateTime UpdatedAt,
+    string IssueNote = "", DateTime? IssueAt = null)
+{
+    /// <summary>¿Tiene un problema anotado?</summary>
+    public bool HasIssue => IssueNote != "";
+}
 
 /// <summary>Lo que el usuario edita de una entrada (alta y modificación): todo menos identidad y fechas.</summary>
 public sealed record EntryDraft(

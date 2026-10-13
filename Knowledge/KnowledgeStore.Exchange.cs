@@ -95,7 +95,7 @@ public sealed partial class KnowledgeStore
     public ExchangeDocument? ExportLibraries(long? rootId) => Read<ExchangeDocument?>(null, c =>
     {
         var libraries = Query(c, null,
-            "SELECT id, parent_id, name, default_nature_id, sort, created_at FROM libraries ORDER BY sort, id", ReadLibrary);
+            $"SELECT {LibraryColumns} FROM libraries ORDER BY sort, id", ReadLibrary);
         var children = libraries.ToLookup(l => l.ParentId);
         var natures = NamedRows(c, null, "natures").ToDictionary(x => x.Id, x => x.Name);
         var languages = NamedRows(c, null, "languages").ToDictionary(x => x.Id, x => x.Name);

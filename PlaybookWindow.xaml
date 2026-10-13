@@ -522,18 +522,26 @@
                 </Grid.RowDefinitions>
 
                 <!-- De qué tarjeta se trata: lado mostrado a la izquierda; biblioteca y naturaleza a la derecha. -->
-                <Grid Grid.Row="0" Margin="0,0,0,8">
+                <Grid Grid.Row="0" Margin="0,0,0,8" MinHeight="24">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock x:Name="ShownSideText" Grid.Column="0" FontSize="14"
                                Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
-                    <TextBlock x:Name="CardPathText" Grid.Column="1" FontSize="14" Margin="16,0,0,0"
+                    <!-- "Con un problema anotado": la marca de que esta entrada tiene algo escrito para
+                         arreglar (tecla R). Va en TEXTO, con la nota entera en el tooltip. -->
+                    <Border x:Name="CardIssueChip" Grid.Column="1" Visibility="Collapsed" Margin="12,0,0,0" Padding="7,1"
+                            BorderBrush="{StaticResource FgBrush}" BorderThickness="1" CornerRadius="9"
+                            VerticalAlignment="Center">
+                        <TextBlock Text="{loc:Translate Playbook.IssueMark}" FontSize="13" />
+                    </Border>
+                    <TextBlock x:Name="CardPathText" Grid.Column="2" FontSize="14" Margin="16,0,0,0"
                                Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"
                                HorizontalAlignment="Right" TextTrimming="CharacterEllipsis" />
-                    <Border x:Name="CardNatureChip" Grid.Column="2" Margin="10,0,0,0" Padding="7,1"
+                    <Border x:Name="CardNatureChip" Grid.Column="3" Margin="10,0,0,0" Padding="7,1"
                             BorderBrush="{StaticResource GoldBrush}" BorderThickness="1" CornerRadius="9"
                             VerticalAlignment="Center">
                         <TextBlock x:Name="CardNatureText" FontSize="13" Foreground="{StaticResource GoldBrush}" />
@@ -565,6 +573,63 @@
                     </ScrollViewer>
                 </Border>
 
+                <!-- ANOTAR UN PROBLEMA (R). No es otra ventana: es un campo que aparece DENTRO del área
+                     de la tarjeta, apoyado abajo, encima de ella. No scrollea ni mueve los botones; y
+                     es BAJO a propósito (el campo y sus dos botones lado a lado): lo que se anota es
+                     sobre el texto de la tarjeta, así que ese texto tiene que seguir a la vista — si
+                     la tarjeta es tan alta que el panel la taparía, el code-behind la sube lo justo
+                     mientras dura (PlaybookWindow.Actions.cs). El mismo panel sirve a la ficha: se lo
+                     muda a FichaIssueHost. Mientras está abierto no vale ningún atajo: las letras son texto. -->
+                <Grid x:Name="QuizIssueHost" Grid.Row="1" VerticalAlignment="Bottom" MaxWidth="940"
+                      Margin="28,0,28,18">
+                    <Border x:Name="IssuePanel" Visibility="Collapsed" Padding="16,11,16,12" CornerRadius="8"
+                            Background="{StaticResource BgBrush}" BorderBrush="{StaticResource GoldBrush}"
+                            BorderThickness="2">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <!-- Rótulo visible del campo + qué pasa con lo anotado. Si la base no lo
+                                 guardó, el motivo reemplaza a la explicación ACÁ, pegado al campo, y
+                                 lo escrito queda en él (IssueError, con marca de error en texto). -->
+                            <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Margin="0,0,0,7">
+                                <TextBlock x:Name="IssueLabel" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock x:Name="IssueHelpText" Style="{StaticResource BlockNote}" Margin="0,1,0,0"
+                                           Text="{loc:Translate Playbook.IssueHelp}" />
+                                <TextBlock x:Name="IssueError" Visibility="Collapsed" FontSize="13" FontWeight="SemiBold"
+                                           TextWrapping="Wrap" Margin="0,1,0,0" Foreground="{StaticResource FgBrush}"
+                                           AutomationProperties.LiveSetting="Assertive" />
+                            </StackPanel>
+                            <TextBox x:Name="IssueBox" Grid.Row="1" Grid.Column="0" Height="72" FontSize="16"
+                                     AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top"
+                                     VerticalScrollBarVisibility="Auto" />
+                            <StackPanel Grid.Row="1" Grid.Column="1" Margin="10,0,0,0">
+                                <Button x:Name="IssueSaveBtn" Height="34" Margin="0,0,0,4" HorizontalContentAlignment="Stretch">
+                                    <DockPanel>
+                                        <Border DockPanel.Dock="Right" Style="{StaticResource Keycap}" Margin="10,0,0,0">
+                                            <TextBlock Style="{StaticResource KeycapText}" Text="Ctrl+Enter" />
+                                        </Border>
+                                        <TextBlock Text="{loc:Translate Playbook.IssueSave}" VerticalAlignment="Center" />
+                                    </DockPanel>
+                                </Button>
+                                <Button x:Name="IssueCancelBtn" Height="34" HorizontalContentAlignment="Stretch">
+                                    <DockPanel>
+                                        <Border DockPanel.Dock="Right" Style="{StaticResource Keycap}" Margin="10,0,0,0">
+                                            <TextBlock Style="{StaticResource KeycapText}" Text="Esc" />
+                                        </Border>
+                                        <TextBlock Text="{loc:Translate Playbook.IssueCancel}" VerticalAlignment="Center" />
+                                    </DockPanel>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+
                 <!-- Bajo la tarjeta: solidez de este lado (recién tras revelar), el aviso de guardado
                      y la AYUDA (A). Alto fijo: aparecer o desaparecer no hace saltar los botones de abajo.
 
@@ -577,6 +642,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
@@ -599,6 +665,35 @@
                             </Border>
                         </StackPanel>
                     </Button>
+                    <!-- Lo que se le puede hacer a ESTA entrada sin salir de la ronda: corregirla,
+                         eliminarla (pide una segunda X) o dejarle anotado un problema. Siempre a la
+                         vista, antes y después de revelar. -->
+                    <StackPanel Grid.Column="4" Orientation="Horizontal">
+                        <Button x:Name="QuizEditBtn" Height="36" Padding="12,0" Margin="8,0,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{loc:Translate Playbook.FichaEdit}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <Border Style="{StaticResource Keycap}">
+                                    <TextBlock Style="{StaticResource KeycapText}" Text="E" />
+                                </Border>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="QuizDeleteBtn" Height="36" Padding="12,0" Margin="8,0,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{loc:Translate Playbook.Delete}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <Border Style="{StaticResource Keycap}">
+                                    <TextBlock Style="{StaticResource KeycapText}" Text="X" />
+                                </Border>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="QuizIssueBtn" Height="36" Padding="12,0" Margin="8,0,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{loc:Translate Playbook.Issue}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <Border Style="{StaticResource Keycap}">
+                                    <TextBlock Style="{StaticResource KeycapText}" Text="R" />
+                                </Border>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
                 </Grid>
 
                 <!-- Acciones. Antes de revelar: un solo botón. Después: las cuatro respuestas, todas
@@ -781,18 +876,26 @@
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <Grid Grid.Row="0" Margin="0,0,0,8">
+                <Grid Grid.Row="0" Margin="0,0,0,8" MinHeight="24">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock x:Name="FichaKindText" Grid.Column="0" FontSize="14"
                                Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
-                    <TextBlock x:Name="FichaPathText" Grid.Column="1" FontSize="14" Margin="16,0,0,0"
+                    <!-- "Con un problema anotado": la marca de que esta entrada tiene algo escrito para
+                         arreglar (tecla R). Va en TEXTO, con la nota entera en el tooltip. -->
+                    <Border x:Name="FichaIssueChip" Grid.Column="1" Visibility="Collapsed" Margin="12,0,0,0" Padding="7,1"
+                            BorderBrush="{StaticResource FgBrush}" BorderThickness="1" CornerRadius="9"
+                            VerticalAlignment="Center">
+                        <TextBlock Text="{loc:Translate Playbook.IssueMark}" FontSize="13" />
+                    </Border>
+                    <TextBlock x:Name="FichaPathText" Grid.Column="2" FontSize="14" Margin="16,0,0,0"
                                Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"
                                HorizontalAlignment="Right" TextTrimming="CharacterEllipsis" />
-                    <Border x:Name="FichaNatureChip" Grid.Column="2" Margin="10,0,0,0" Padding="7,1"
+                    <Border x:Name="FichaNatureChip" Grid.Column="3" Margin="10,0,0,0" Padding="7,1"
                             BorderBrush="{StaticResource GoldBrush}" BorderThickness="1" CornerRadius="9"
                             VerticalAlignment="Center">
                         <TextBlock x:Name="FichaNatureText" FontSize="13" Foreground="{StaticResource GoldBrush}" />
@@ -825,6 +928,10 @@
                             <StackPanel x:Name="FichaPanel" MaxWidth="760" VerticalAlignment="Center" />
                         </ScrollViewer>
                     </Border>
+                    <!-- Donde se apoya el campo de "anotar un problema" cuando se abre desde la ficha
+                         (el panel es el mismo del quiz; lo muda el code-behind). -->
+                    <Grid x:Name="FichaIssueHost" Grid.Column="0" VerticalAlignment="Bottom" MaxWidth="760"
+                          Margin="28,0,28,18" />
                     <Border Grid.Column="2" Background="{StaticResource SurfaceBrush}" CornerRadius="10"
                             BorderBrush="{StaticResource SoftLineBrush}" BorderThickness="2" Padding="22,18,10,18">
                         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
@@ -846,6 +953,22 @@
                                 <TextBlock Text="{loc:Translate Playbook.FichaEdit}" VerticalAlignment="Center" Margin="0,0,8,0" />
                                 <Border Style="{StaticResource Keycap}">
                                     <TextBlock Style="{StaticResource KeycapText}" Text="E" />
+                                </Border>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="FichaDeleteBtn" Margin="0,0,10,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{loc:Translate Playbook.Delete}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <Border Style="{StaticResource Keycap}">
+                                    <TextBlock Style="{StaticResource KeycapText}" Text="X" />
+                                </Border>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="FichaIssueBtn" Margin="0,0,10,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{loc:Translate Playbook.Issue}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <Border Style="{StaticResource Keycap}">
+                                    <TextBlock Style="{StaticResource KeycapText}" Text="R" />
                                 </Border>
                             </StackPanel>
                         </Button>
