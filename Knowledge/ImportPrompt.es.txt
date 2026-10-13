@@ -120,6 +120,9 @@ General:
 - No repitas el mismo concepto en dos entradas, ni como card y término a la vez.
 - Ordena las entradas de lo fundamental a lo específico.
 - Exactitud ante todo: si dudas de un dato, déjalo fuera. Prefiero menos entradas y correctas.
+- Escribe las cantidades con punto como separador de miles y coma para los decimales: 1.000,
+  25.000, 1.250.000, 3,5 %. Nunca "1000000" ni "1,000,000". No lo apliques a lo que no es una
+  cantidad: años (2024), versiones (HTTP 1.1), puertos, códigos ni identificadores.
 
 ## Entrega
 
