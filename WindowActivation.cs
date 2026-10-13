@@ -65,9 +65,42 @@ internal static class WindowActivation
         ForceWithRetry(window);
     }
 
-    /// <summary>Trae al frente una ventana YA abierta (re-press de singletons: Config/Notes/Paths).</summary>
+    /// <summary>
+    /// Trae al frente una ventana YA abierta (re-press de singletons: Config/Notes/Paths/Playbook).
+    /// Si estaba MINIMIZADA la restaura: <see cref="ForceWithRetry"/> manda SW_RESTORE a una ventana
+    /// iconizada (y sólo a ésa), que la devuelve al estado que tenía — normal o maximizada.
+    /// </summary>
     public static void BringToFront(this Window window)
         => ForceWithRetry(window);
+
+    /// <summary>
+    /// Para las ventanas de trabajo LARGO que se pueden minimizar (playbooker, Notas): al
+    /// MINIMIZARLAS corre la misma red que al cerrar una utilitaria (<see cref="OnUtilityWindowClosed"/>).
+    /// El motivo es el mismo: minimizar la única ventana de un desk deja el foreground HUÉRFANO igual
+    /// que cerrarla, y con el foco en el aire el hook global deja de recibir teclas. La red difiere
+    /// ~80ms, devuelve el foco a algo real (o al escritorio) y reinstala el hook.
+    ///
+    /// Es opt-in y no parte de <see cref="ShowFocused"/> a propósito: sólo la piden las ventanas que
+    /// nacieron para minimizarse. Restaurarla no necesita nada: es un cambio de foco de los normales.
+    /// </summary>
+    public static void RearmHookOnMinimize(this Window window)
+    {
+        window.StateChanged += (_, _) =>
+        {
+            if (window.WindowState == WindowState.Minimized) OnUtilityWindowClosed?.Invoke();
+        };
+    }
+
+    /// <summary>
+    /// Cierra los modales EFÍMEROS que estén abiertos (los armados con <see cref="CloseOnDeactivate"/>:
+    /// Variables, Servicios, pickers…) al mostrar o traer al frente una ventana de trabajo largo que
+    /// NO es Topmost (playbooker, Notas). Sin esto quedan APILADOS encima de ella: su guarda "el foco
+    /// se fue a una ventana nuestra → no cierres" los deja abiertos, y como ellos sí son Topmost, la
+    /// ventana recién pedida aparecería DETRÁS. Mientras esas ventanas eran Topmost el problema no se
+    /// veía (la última activada tapaba a la otra). Es la regla de siempre —un solo modal utilitario a
+    /// la vez— aplicada desde el lado que antes no hacía falta.
+    /// </summary>
+    public static void CloseEphemeralWindows(Window opened) => CloseOtherUtilityWindows(opened);
 
     /// <summary>
     /// Cierra la ventana sola cuando pierde el foreground: al hacer click AFUERA o al cambiar de
@@ -232,7 +265,10 @@ internal static class WindowActivation
         {
             // Cortar si: la ventana ya cerró (¡el fix del cuelgue!), ya SOMOS el foreground, o
             // agotamos el techo (~10 × 60ms). Cualquiera de las tres frena el machaque.
-            if (!window.IsVisible || !window.IsLoaded
+            // Y si el usuario la MINIMIZÓ en este tramo: seguir machacando la des-minimizaría sola
+            // (ForceForeground restaura lo iconizado). En el re-press de una minimizada no molesta:
+            // el ForceForeground inmediato de arriba ya la restauró antes del primer tick.
+            if (!window.IsVisible || !window.IsLoaded || window.WindowState == WindowState.Minimized
                 || WindowMethods.GetForegroundWindow() == hwnd || ++attempts >= 10)
             {
                 timer.Stop();

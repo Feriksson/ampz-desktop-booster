@@ -19,7 +19,7 @@ namespace AmpzDesktopBooster;
 /// (mismo recurso que el Shortcuts Helper):
 ///
 ///   BÚSQUEDA → ARMADO (qué lado se muestra primero) → QUIZ → RESUMEN        (este archivo;
-///                                             la ayuda del quiz, tecla H: PlaybookWindow.Helper.cs)
+///                                             la ayuda del quiz, tecla A: PlaybookWindow.Helper.cs)
 ///   BÚSQUEDA → FICHA de una entrada, para leerla                             (PlaybookWindow.Ficha.cs)
 ///   BÚSQUEDA → ESTADÍSTICAS                                                  (PlaybookWindow.Stats.cs)
 ///
@@ -33,10 +33,14 @@ namespace AmpzDesktopBooster;
 ///      puede sugerir una obligación — tampoco las estadísticas, que son un espejo y no una agenda.
 ///   2. Es teclado primero (la app entera lo es), pero NADA es sólo-teclado: cada tecla tiene su
 ///      botón a la vista con la tecla dibujada, y la pista del pie dice siempre qué vale ahora.
-///   3. Se abre con <c>ShowFocused(closeOnDeactivate: false)</c>: una sesión de estudio tiene que
-///      sobrevivir a un Alt+Tab o a un cambio de escritorio. Por lo mismo el re-press del atajo sólo
-///      la cierra desde la búsqueda (<see cref="CanCloseOnRepress"/>): una tecla suelta no puede
-///      matar un quiz a la mitad.
+///   3. Es una ventana de trabajo LARGO: no es Topmost, se minimiza, figura en la barra de tareas y
+///      se abre con <c>ShowFocused(closeOnDeactivate: false)</c> — una sesión de estudio tiene que
+///      sobrevivir a un Alt+Tab o a un cambio de escritorio. Por lo mismo NADA la cierra de un solo
+///      gesto: cerrar pide una segunda pulsación (PlaybookWindow.Guard.cs) y el atajo que la abre
+///      sólo la trae al frente (<c>App.ShowPlaybook</c>).
+///   4. El quiz se juega entero con la MANO IZQUIERDA (Espacio, 1..4, A, E, X, R, Esc; Q / W en la
+///      ficha): es el gesto que se repite cientos de veces, y con la derecha en el mouse o en el
+///      café. Las teclas de antes (H, Enter, flechas) siguen valiendo, sin anunciarse.
 ///
 /// Los datos se cargan UNA vez al abrir (bibliotecas, entradas, naturalezas, historial) y todo lo
 /// que muestran las listas —conteos, solidez— se arma en memoria: nada de una consulta por fila.
@@ -146,7 +150,7 @@ public partial class PlaybookWindow : Window
 
         PreviewKeyDown += OnPreviewKeyDown;
         HeaderBar.MouseLeftButtonDown += OnHeaderMouseDown;
-        CloseBtn.Click += (_, _) => Close();
+        InitGuard();
 
         InitBrowse();
         InitFicha();
@@ -197,13 +201,6 @@ public partial class PlaybookWindow : Window
         RootBorder.LayoutTransform = new ScaleTransform(scale, scale);
     }
 
-    /// <summary>
-    /// ¿El re-press del atajo puede cerrar la ventana? Sólo desde la búsqueda. En cualquier otro paso
-    /// hay algo en curso (una elección, una ronda, un resumen sin leer, una ficha abierta) y el
-    /// re-press la trae al frente.
-    /// </summary>
-    public bool CanCloseOnRepress => _stage == Stage.Search;
-
     // ──────────────────────────── Datos ────────────────────────────
 
     /// <summary>
@@ -219,7 +216,7 @@ public partial class PlaybookWindow : Window
         var natures = _store.GetNatures();
         _natureNames = natures.ToDictionary(n => n.Id, n => n.Name);
         _languageNames = _store.GetLanguages().ToDictionary(l => l.Id, l => l.Name);
-        // Los glosarios de TODAS las cards, de una vez: es lo que muestra la ayuda del quiz (H).
+        // Los glosarios de TODAS las cards, de una vez: es lo que muestra la ayuda del quiz (A).
         _glossaries = _store.GetAllGlossaries();
 
         // UNA lectura del historial y un solo cálculo para todas las filas (y para las estadísticas,
@@ -432,6 +429,16 @@ public partial class PlaybookWindow : Window
             _ => _picked?.Title ?? Loc.T("Playbook.Header"),
         };
         ProgressText.Visibility = stage == Stage.Quiz ? Visibility.Visible : Visibility.Collapsed;
+        // El título de la VENTANA es lo que se lee en la barra de tareas y en Alt+Tab: dice el
+        // paso, para reconocer una ronda a medias entre las demás ventanas.
+        // (La ficha y las estadísticas ya traen "Playbook · …" en su encabezado: van tal cual.)
+        Title = stage switch
+        {
+            Stage.Search => Loc.T("Playbook.WindowTitle"),
+            Stage.Ficha or Stage.Stats => TitleText.Text,
+            _ => string.Format(Loc.T("Playbook.WindowTitleStage"), TitleText.Text),
+        };
+        ClearGuard(); // cambiar de paso es "otra cosa": una confirmación a medias no lo sobrevive
         UpdateHint();
 
         // Lo recién mostrado todavía no pasó por layout y Focus() sobre algo sin medir no prende:
@@ -458,6 +465,7 @@ public partial class PlaybookWindow : Window
         // Una sola puerta de teclado para toda la ventana (tunneling: corre ANTES que el control con
         // foco). Así Espacio jamás "clickea" el botón que quedó enfocado tras un click de mouse —
         // en el quiz eso anotaría una respuesta que nadie dio.
+        BeginGuardedKey();
         switch (_stage)
         {
             case Stage.Search: OnSearchKey(e); break;
@@ -467,11 +475,21 @@ public partial class PlaybookWindow : Window
             case Stage.Ficha: OnFichaKey(e); break;
             case Stage.Stats: OnStatsKey(e); break;
         }
+        EndGuardedKey(e);
     }
 
-    /// <summary>¿Enter le pertenece al botón que tiene el foco? (Tab hasta "Volver" + Enter = Volver.)</summary>
-    private static bool FocusIsOn(params Button[] buttons) =>
-        buttons.Any(b => ReferenceEquals(Keyboard.FocusedElement, b));
+    /// <summary>¿Enter / Espacio le pertenecen al botón que tiene el foco? (Tab hasta "Volver" + Enter = Volver.)</summary>
+    private static bool FocusIsOn(params Button?[] buttons) =>
+        buttons.Any(b => b is not null && ReferenceEquals(Keyboard.FocusedElement, b));
+
+    /// <summary>
+    /// ¿Una LETRA suelta puede ser un atajo ahora? No con Ctrl / Alt / Win apretados (ahí es otra
+    /// tecla: Ctrl+A, Alt+E…) ni con el foco en un campo de texto (ahí es una letra que se escribe).
+    /// La consultan todos los atajos de letra de la ventana: A, E, X, R, F, Q, W.
+    /// </summary>
+    private static bool LetterAllowed =>
+        (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) == 0
+        && Keyboard.FocusedElement is not System.Windows.Controls.Primitives.TextBoxBase;
 
     private void OnHeaderMouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -694,7 +712,9 @@ public partial class PlaybookWindow : Window
                 LeaveSetup();
                 break;
 
-            case Key.Enter when !FocusIsOn(SetupBackBtn, CloseBtn):
+            // Espacio EMPIEZA (mano izquierda); Enter sigue valiendo. Sobre un botón enfocado las dos
+            // son de ese botón: Tab hasta «Volver» + Espacio tiene que ser Volver, no una ronda.
+            case Key.Space or Key.Enter when !FocusIsOn(SetupBackBtn, CloseBtn, MinimizeBtn):
                 e.Handled = true;
                 StartRound(); // con la selección vacía no arranca: el motivo ya está en pantalla
                 break;
@@ -711,7 +731,7 @@ public partial class PlaybookWindow : Window
                 SelectSide((Math.Max(CurrentSideIndex(), 0) + step + _sideRadios.Count) % _sideRadios.Count, focus: true);
                 break;
 
-            case Key.F when KindPanel.Visibility == Visibility.Visible:
+            case Key.F when LetterAllowed && KindPanel.Visibility == Visibility.Visible:
                 e.Handled = true;
                 CycleKind(1, focus: false);
                 break;
@@ -926,7 +946,7 @@ public partial class PlaybookWindow : Window
         if (_advancing)
         {
             // Durante el destello sólo se traga lo que tendría efecto; el resto (Alt+Tab, etc.) pasa.
-            if (e.Key is Key.Space or Key.Escape or Key.Enter or Key.H || GradeFromKey(e.Key) is not null) e.Handled = true;
+            if (e.Key is Key.Space or Key.Escape or Key.Enter or Key.A or Key.H || GradeFromKey(e.Key) is not null) e.Handled = true;
             return;
         }
 
@@ -940,14 +960,19 @@ public partial class PlaybookWindow : Window
 
             case Key.Escape:
                 e.Handled = true;
-                // Con la ayuda abierta, el primer Esc la cierra; recién el siguiente corta la ronda.
-                if (!CloseHelpIfOpen()) EndRound();
+                // Con la ayuda abierta, el primer Esc la cierra; recién el siguiente corta la ronda —
+                // y si la ronda ya tiene respuestas anotadas, cortarla pide una segunda pulsación:
+                // Esc está al lado del 1 y un dedo corrido no puede tirar veinte minutos de repaso.
+                // Sin nada respondido no hay nada que cuidar y sale directo, como siempre.
+                if (CloseHelpIfOpen()) break;
+                if (_gradeCounts.Sum() == 0 || ConfirmTwice(GuardKind.EndRound, Loc.T("Playbook.ConfirmEndRound")))
+                    EndRound();
                 break;
 
-            // H: la ayuda. Se traga siempre (acá no hay dónde escribir una hache); si no hay ayuda
-            // que abrir no pasa nada, y el motivo está escrito junto al botón. Con Ctrl / Alt no es
-            // esta tecla: se deja pasar.
-            case Key.H when Keyboard.Modifiers == ModifierKeys.None:
+            // A: la ayuda (H, la tecla original, sigue valiendo: quedaba del otro lado del teclado).
+            // Se traga siempre (acá no hay dónde escribir una letra); si no hay ayuda que abrir no
+            // pasa nada, y el motivo está escrito junto al botón.
+            case Key.A or Key.H when LetterAllowed:
                 e.Handled = true;
                 ToggleHelp();
                 break;
@@ -1138,7 +1163,7 @@ public partial class PlaybookWindow : Window
                 BackToSearch(reload: true);
                 break;
 
-            case Key.Enter when !FocusIsOn(SummaryBackBtn, CloseBtn):
+            case Key.Space or Key.Enter when !FocusIsOn(SummaryBackBtn, CloseBtn, MinimizeBtn):
                 e.Handled = true;
                 StartRound(); // lo mismo, con un orden nuevo
                 break;

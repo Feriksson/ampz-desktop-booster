@@ -10,7 +10,7 @@ using AmpzDesktopBooster.Services.Localization;
 
 namespace AmpzDesktopBooster;
 
-// ── Playbooker · la AYUDA del quiz (tecla H) ─────────────────────────────────────────────────────
+// ── Playbooker · la AYUDA del quiz (tecla A) ─────────────────────────────────────────────────────
 //
 // Nació del primer uso real: el frente de una card trae a veces palabras que uno no conoce, y la nota
 // terminaba midiendo vocabulario en vez del concepto que la card enseña — o mandaba a buscar afuera
@@ -114,7 +114,7 @@ public partial class PlaybookWindow
     /// <summary>
     /// Recién revelada, con la ayuda abierta: si así la tarjeta ya no entra entera, la ayuda se
     /// cierra sola. Lo que se pidió con Espacio es la RESPUESTA, y una respuesta que queda debajo del
-    /// borde hasta que se scrollea es justo lo que esta ventana no admite. Sigue a una tecla (H). En el
+    /// borde hasta que se scrollea es justo lo que esta ventana no admite. Sigue a una tecla (A). En el
     /// alto de referencia no pasa con contenido normal; es para pantallas chicas y textos muy largos.
     /// </summary>
     private void CloseHelpIfAnswerDoesNotFit(QuizCard card)
@@ -184,7 +184,7 @@ public partial class PlaybookWindow
         AutomationProperties.SetName(HelpBtn, reason == "" ? label : label + ". " + reason);
     }
 
-    /// <summary>La pista del pie durante el quiz. Nombra la H sólo si AHORA hay ayuda que abrir.</summary>
+    /// <summary>La pista del pie durante el quiz. Nombra la A sólo si AHORA hay ayuda que abrir.</summary>
     private string QuizHint()
     {
         string key = _revealed ? "Playbook.HintQuizAnswer" : "Playbook.HintQuizQuestion";

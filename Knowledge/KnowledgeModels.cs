@@ -129,7 +129,7 @@ public sealed record EntryDraft(
 
 /// <summary>
 /// Un renglón del GLOSARIO de una card: una palabra difícil del texto y su definición breve. Es lo que
-/// muestra la ayuda del quiz (tecla H) para que una pregunta con jerga no mande a buscar afuera.
+/// muestra la ayuda del quiz (tecla A) para que una pregunta con jerga no mande a buscar afuera.
 /// Sólo las CARDS llevan glosario: un término ya trae <see cref="Entry.Origin"/> (etimología y
 /// composición), que es lo que su ayuda muestra.
 /// </summary>
@@ -180,7 +180,7 @@ public sealed record Translation(long EntryId, long LanguageId, string Text);
 /// <summary>
 /// Un repaso: qué lado se MOSTRÓ como pregunta (<see cref="Side"/>, ver <see cref="ReviewSide"/>),
 /// cómo le fue y cuándo (UTC). El historial es de sólo-agregar: la solidez se DERIVA de él.
-/// <see cref="Helped"/> = se abrió la ayuda (H) ANTES de revelar la respuesta en esa pregunta. Es un
+/// <see cref="Helped"/> = se abrió la ayuda (A) ANTES de revelar la respuesta en esa pregunta. Es un
 /// dato que se guarda para poder mirarlo después; NO entra en la solidez ni cambia la nota.
 /// </summary>
 public sealed record Review(long Id, long EntryId, string Side, Grade Grade, DateTime ReviewedAt, bool Helped = false);

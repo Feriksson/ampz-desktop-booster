@@ -98,11 +98,11 @@ public sealed class HotkeyRouter
     public Action? OpenConfig { get; set; }
 
     /// <summary>
-    /// Abre / cierra / trae al frente el playbooker (NumpadClear pelado). Lo inyecta <c>App</c>, igual
+    /// Abre o trae al frente el playbooker (NumpadClear pelado; nunca lo cierra). Lo inyecta <c>App</c>, igual
     /// que <see cref="OpenConfig"/>: la instancia única y la biblioteca de conocimiento viven allá, y
     /// el router no tiene por qué conocer ese dominio para rutear una tecla.
     /// </summary>
-    public Action? TogglePlaybook { get; set; }
+    public Action? ShowPlaybook { get; set; }
 
     // Virtual-keys de las F que ruteamos (F1..F12 = 0x70..0x7B; backtick = 0xC0; barra /? = 0xBF).
     // F7 (Pin Manager) y F8 (Restricciones) SE QUITARON: eran popups de gestión compleja que hoy
@@ -289,7 +289,7 @@ public sealed class HotkeyRouter
         if (!e.WinDown)
         {
             if (e.Key == NumpadKey.D5)   // NumpadClear
-                TogglePlaybook?.Invoke();
+                ShowPlaybook?.Invoke();
             return;
         }
 
@@ -578,7 +578,7 @@ public sealed class HotkeyRouter
 
     /// <summary>
     /// El DeskPicker (saltar a un espacio de la sesión). PERDIÓ SU ATAJO por decisión del usuario el
-    /// 2026-10-10: NumpadClear pelado pasó al playbooker (<see cref="TogglePlaybook"/>). La ventana y
+    /// 2026-10-10: NumpadClear pelado pasó al playbooker (<see cref="ShowPlaybook"/>). La ventana y
     /// este método se conservan enteros a propósito — hoy no los llama ninguna tecla, pero se pueden
     /// volver a enlazar con una línea en <see cref="Route"/> cuando haya una tecla libre para darle.
     /// </summary>

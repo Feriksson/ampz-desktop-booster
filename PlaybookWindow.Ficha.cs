@@ -105,14 +105,17 @@ public partial class PlaybookWindow
                 e.Handled = true;
                 CloseFicha();
                 break;
-            case Key.E:
+            case Key.E when LetterAllowed:
                 e.Handled = true;
                 EditFichaEntry();
                 break;
+            // Q / W: anterior / siguiente con la mano izquierda (las flechas siguen valiendo).
+            case Key.Q when LetterAllowed:
             case Key.Left:
                 e.Handled = true;
                 StepFicha(-1);
                 break;
+            case Key.W when LetterAllowed:
             case Key.Right:
                 e.Handled = true;
                 StepFicha(1);

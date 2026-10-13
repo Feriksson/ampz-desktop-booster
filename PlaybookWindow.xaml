@@ -3,9 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:AmpzDesktopBooster.Services.Localization"
         Title="{loc:Translate Playbook.WindowTitle}"
-        WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True"
+        WindowStyle="None" ResizeMode="CanMinimize" AllowsTransparency="True"
         WindowStartupLocation="Manual"
-        ShowInTaskbar="False" Topmost="True"
+        ShowInTaskbar="True" Topmost="False"
         Background="Transparent" UseLayoutRounding="True"
         FontFamily="Segoe UI">
 
@@ -374,11 +374,19 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <!-- Encabezado: qué se está jugando + avance + cerrar. También es la manija para arrastrar
-                 la ventana (queda Topmost durante una sesión larga: hay que poder correrla). -->
+            <!-- Encabezado: qué se está jugando + avance + minimizar + cerrar. También es la manija
+                 para arrastrar la ventana.
+
+                 La ventana NO es Topmost y se puede MINIMIZAR (pedido del usuario tras los primeros
+                 días de uso): una sesión de estudio dura, y una ventana que tapa todo lo demás obliga
+                 a cerrarla para mirar otra cosa. Por eso mismo figura en la barra de tareas y en
+                 Alt+Tab (ResizeMode="CanMinimize" es lo que deja minimizarla y restaurarla desde ahí).
+                 «Cerrar» tiene un ancho mínimo fijo: mientras pide confirmación su rótulo es más
+                 largo, y no puede correr de lugar a «Minimizar» justo cuando se va a clickear. -->
             <Grid x:Name="HeaderBar" Grid.Row="0" Margin="0,0,0,14" Background="Transparent">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
@@ -387,7 +395,9 @@
                 <TextBlock x:Name="ProgressText" Grid.Column="1" FontSize="18" FontFamily="Consolas"
                            Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"
                            Margin="12,0,16,0" Visibility="Collapsed" />
-                <Button x:Name="CloseBtn" Grid.Column="2" Height="34"
+                <Button x:Name="MinimizeBtn" Grid.Column="2" Height="34" Margin="0,0,8,0"
+                        Content="{loc:Translate Playbook.Minimize}" />
+                <Button x:Name="CloseBtn" Grid.Column="3" Height="34" MinWidth="172"
                         Content="{loc:Translate Playbook.Close}" />
             </Grid>
 
@@ -487,7 +497,7 @@
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="{loc:Translate Playbook.Start}" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <Border Style="{StaticResource Keycap}">
-                                <TextBlock Style="{StaticResource KeycapText}" Text="Enter" />
+                                <TextBlock Style="{StaticResource KeycapText}" Text="{loc:Translate Playbook.KeySpace}" />
                             </Border>
                         </StackPanel>
                     </Button>
@@ -556,7 +566,7 @@
                 </Border>
 
                 <!-- Bajo la tarjeta: solidez de este lado (recién tras revelar), el aviso de guardado
-                     y la AYUDA (H). Alto fijo: aparecer o desaparecer no hace saltar los botones de abajo.
+                     y la AYUDA (A). Alto fijo: aparecer o desaparecer no hace saltar los botones de abajo.
 
                      El botón de ayuda está SIEMPRE a la vista, en el mismo lugar. Cuando no se puede
                      usar queda apagado con el motivo escrito a su izquierda (HelpReasonText): que la
@@ -585,7 +595,7 @@
                             <TextBlock x:Name="HelpBtnText" Text="{loc:Translate Playbook.Help}"
                                        VerticalAlignment="Center" Margin="0,0,8,0" />
                             <Border x:Name="HelpKeycap" Style="{StaticResource Keycap}">
-                                <TextBlock Style="{StaticResource KeycapText}" Text="H" />
+                                <TextBlock Style="{StaticResource KeycapText}" Text="A" />
                             </Border>
                         </StackPanel>
                     </Button>
@@ -746,7 +756,7 @@
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="{loc:Translate Playbook.PlayAgain}" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <Border Style="{StaticResource Keycap}">
-                                <TextBlock Style="{StaticResource KeycapText}" Text="Enter" />
+                                <TextBlock Style="{StaticResource KeycapText}" Text="{loc:Translate Playbook.KeySpace}" />
                             </Border>
                         </StackPanel>
                     </Button>
@@ -852,7 +862,7 @@
                         <Button x:Name="FichaPrevBtn" AutomationProperties.Name="{loc:Translate Playbook.FichaPrev}">
                             <StackPanel Orientation="Horizontal">
                                 <Border Style="{StaticResource Keycap}" Margin="0,0,8,0">
-                                    <TextBlock Style="{StaticResource KeycapText}" Text="←" />
+                                    <TextBlock Style="{StaticResource KeycapText}" Text="Q" />
                                 </Border>
                                 <TextBlock Text="{loc:Translate Playbook.FichaPrev}" VerticalAlignment="Center" />
                             </StackPanel>
@@ -863,7 +873,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="{loc:Translate Playbook.FichaNext}" VerticalAlignment="Center" Margin="0,0,8,0" />
                                 <Border Style="{StaticResource Keycap}">
-                                    <TextBlock Style="{StaticResource KeycapText}" Text="→" />
+                                    <TextBlock Style="{StaticResource KeycapText}" Text="W" />
                                 </Border>
                             </StackPanel>
                         </Button>
@@ -991,10 +1001,26 @@
                 </StackPanel>
             </Grid>
 
-            <!-- Pista: SIEMPRE dice qué teclas valen en el paso actual (la cambia el code-behind). -->
-            <TextBlock x:Name="HintText" Grid.Row="2" Margin="0,12,0,0" FontSize="14"
-                       Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
-                       HorizontalAlignment="Center" TextAlignment="Center" />
+            <!-- Pie. Dos cosas en el MISMO lugar, nunca a la vez:
+                   • la pista: SIEMPRE dice qué teclas valen en el paso actual (la cambia el code-behind);
+                   • el aviso de confirmación ("Esc otra vez para cerrar"): lo que pide una segunda
+                     pulsación antes de cerrar, cortar una ronda o eliminar (PlaybookWindow.Guard.cs).
+                 Mientras se ve el aviso la pista queda Hidden —no Collapsed— y el renglón tiene alto
+                 mínimo: aparecer y desaparecer no mueve nada de lo de arriba. El aviso es texto claro
+                 sobre el fondo más oscuro (≈15:1) con una marca dorada, y se anuncia (LiveSetting). -->
+            <Grid Grid.Row="2" Margin="0,10,0,0" MinHeight="30">
+                <TextBlock x:Name="HintText" FontSize="14" VerticalAlignment="Center"
+                           Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
+                           HorizontalAlignment="Center" TextAlignment="Center" />
+                <Border x:Name="GuardNotice" Visibility="Collapsed" HorizontalAlignment="Center"
+                        VerticalAlignment="Center" Padding="14,4" CornerRadius="4"
+                        Background="{StaticResource SurfaceBrush}"
+                        BorderBrush="{StaticResource GoldBrush}" BorderThickness="3,0,0,0">
+                    <TextBlock x:Name="GuardNoticeText" FontSize="15" FontWeight="SemiBold"
+                               Foreground="{StaticResource FgBrush}"
+                               AutomationProperties.LiveSetting="Assertive" />
+                </Border>
+            </Grid>
         </Grid>
     </Border>
 </Window>

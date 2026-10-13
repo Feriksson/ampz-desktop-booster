@@ -279,10 +279,11 @@ public partial class PlaybookWindow
         switch (e.Key)
         {
             case Key.Escape:
-                // Esc en dos tiempos: primero limpia el texto, recién con el buscador vacío cierra.
+                // Esc en tiempos: primero limpia el texto; con el buscador vacío PIDE cerrar, y cierra
+                // recién con la pulsación siguiente (ver RequestClose).
                 e.Handled = true;
                 if (SearchBox.Text != "") { SearchBox.Clear(); FocusSearchBox(); }
-                else Close();
+                else RequestClose();
                 break;
 
             case Key.F2:
@@ -290,7 +291,7 @@ public partial class PlaybookWindow
                 ShowStats(reload: false);
                 break;
 
-            case Key.Enter when !FocusIsOn(CloseBtn, StatsBtn):
+            case Key.Enter when !FocusIsOn(CloseBtn, MinimizeBtn, StatsBtn):
                 e.Handled = true;
                 ActivateSelected();
                 break;

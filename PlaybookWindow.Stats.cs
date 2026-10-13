@@ -458,7 +458,7 @@ public partial class PlaybookWindow
                 BackToSearch(reload: false);
                 break;
 
-            case Key.Enter when !FocusIsOn(StatsBackBtn, CloseBtn):
+            case Key.Enter when !FocusIsOn(StatsBackBtn, CloseBtn, MinimizeBtn):
                 e.Handled = true;
                 PlaySelectedStat();
                 break;

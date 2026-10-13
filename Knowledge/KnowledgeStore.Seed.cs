@@ -12,7 +12,7 @@ namespace AmpzDesktopBooster.Knowledge;
 // Se siembra UNA sola vez: dentro de la migración 0→1 (ver Initialize). Si el usuario la borra, no
 // vuelve. Muestra a propósito las tres cosas no obvias del modelo: bibliotecas anidadas, naturaleza
 // heredada (de la biblioteca, y de la biblioteca madre) vs. fijada en la entrada, términos con
-// ficha completa, y cards con GLOSARIO (la ayuda del quiz, tecla H).
+// ficha completa, y cards con GLOSARIO (la ayuda del quiz, tecla A).
 public sealed partial class KnowledgeStore
 {
     private static void Seed(SqliteConnection c, SqliteTransaction tx)
