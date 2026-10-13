@@ -218,6 +218,77 @@ public sealed partial class KnowledgeStore
         return KnowledgeOpResult.Ok;
     });
 
+    /// <summary>
+    /// Sube o baja una biblioteca <paramref name="delta"/> lugares ENTRE SUS HERMANAS (-1 = un lugar
+    /// hacia arriba). <see cref="KnowledgeOpResult.SameTarget"/> si ya está en esa punta.
+    /// </summary>
+    public KnowledgeOpResult ReorderLibrary(long id, int delta) =>
+        Write(KnowledgeOpResult.Failed, (c, tx) => Place(c, tx, id, newParentId: null, delta, relative: true));
+
+    /// <summary>
+    /// Deja una biblioteca (con todo su subárbol) bajo <paramref name="newParentId"/> (null = raíz) en
+    /// la posición <paramref name="index"/> entre las hijas de ese padre: 0 = primera; un índice más
+    /// allá del final = última. Sirve para reordenar dentro del mismo padre y para mover a otro
+    /// eligiendo DÓNDE cae (lo que hace un arrastre); <see cref="MoveLibrary"/> es el caso "al final".
+    ///
+    /// Mismas reglas que <see cref="MoveLibrary"/> al cambiar de padre (ciclo y nombre repetido entre
+    /// hermanas). <see cref="KnowledgeOpResult.SameTarget"/> si ya estaba exactamente ahí.
+    /// </summary>
+    public KnowledgeOpResult PlaceLibrary(long id, long? newParentId, int index) =>
+        Write(KnowledgeOpResult.Failed, (c, tx) => Place(c, tx, id, newParentId, index, relative: false));
+
+    /// <summary>
+    /// El cuerpo de las dos de arriba, dentro de UNA transacción: valida, cambia el padre si hace
+    /// falta y RENUMERA a las hermanas 0..n-1 en su orden nuevo. Renumerar a todas (y no hacerle un
+    /// hueco a una sola) es lo que mantiene el orden sin empates: bases anteriores pueden traer
+    /// hermanas con el mismo <c>sort</c>, y ahí "sumarle uno" no garantiza quedar donde se pidió.
+    /// </summary>
+    private static KnowledgeOpResult Place(SqliteConnection c, SqliteTransaction tx, long id, long? newParentId, int index, bool relative)
+    {
+        var current = Query(c, tx, "SELECT parent_id, name FROM libraries WHERE id = $id",
+            r => (Parent: NullableLong(r, 0), Name: r.GetString(1)), ("$id", id));
+        if (current.Count == 0) return KnowledgeOpResult.NotFound;
+
+        long? oldParentId = current[0].Parent;
+        if (relative) newParentId = oldParentId;
+        bool sameParent = oldParentId == newParentId;
+        if (!sameParent)
+        {
+            if (newParentId == id) return KnowledgeOpResult.WouldCycle;
+            if (newParentId is { } p)
+            {
+                if (!Exists(c, tx, "libraries", p)) return KnowledgeOpResult.NotFound;
+                if (DescendantIds(c, tx, id).Contains(p)) return KnowledgeOpResult.WouldCycle;
+            }
+            if (SiblingNameTaken(c, tx, newParentId, current[0].Name, exceptId: id)) return KnowledgeOpResult.NameTaken;
+        }
+
+        // Las hermanas del destino, en su orden de hoy. Si ya vivía ahí, se anota dónde y se la saca:
+        // `index` es la posición FINAL, contada sin ella.
+        var siblings = ChildIds(c, tx, newParentId);
+        int from = siblings.IndexOf(id);
+        if (from >= 0) siblings.RemoveAt(from);
+        int to = Math.Clamp(relative ? from + index : index, 0, siblings.Count);
+        if (sameParent && to == from) return KnowledgeOpResult.SameTarget;
+        siblings.Insert(to, id);
+
+        if (!sameParent)
+            Execute(c, tx, "UPDATE libraries SET parent_id = $p WHERE id = $id", ("$p", newParentId), ("$id", id));
+        Renumber(c, tx, siblings);
+        // Las que dejó atrás también quedan 0..n-1: sin el hueco de la que se fue.
+        if (!sameParent) Renumber(c, tx, ChildIds(c, tx, oldParentId));
+        return KnowledgeOpResult.Ok;
+    }
+
+    private static List<long> ChildIds(SqliteConnection c, SqliteTransaction? tx, long? parentId) => Query(c, tx,
+        "SELECT id FROM libraries WHERE parent_id IS $p ORDER BY sort, id", r => r.GetInt64(0), ("$p", parentId));
+
+    private static void Renumber(SqliteConnection c, SqliteTransaction? tx, IReadOnlyList<long> orderedIds)
+    {
+        for (int i = 0; i < orderedIds.Count; i++)
+            Execute(c, tx, "UPDATE libraries SET sort = $s WHERE id = $id AND sort <> $s", ("$s", i), ("$id", orderedIds[i]));
+    }
+
     /// <summary>Borra la biblioteca y, en cascada, sus hijas, entradas, traducciones y repasos.</summary>
     public bool DeleteLibrary(long id) => Write(false, (c, tx) =>
         Execute(c, tx, "DELETE FROM libraries WHERE id = $id", ("$id", id)) > 0);

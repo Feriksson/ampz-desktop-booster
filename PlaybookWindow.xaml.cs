@@ -228,6 +228,10 @@ public partial class PlaybookWindow : Window
         _states = Solidity.ComputeAll(_reviews, _loadedAt);
         var states = _states;
 
+        // Qué bibliotecas están plegadas: el mismo dato que usa el árbol de la config (se guarda con
+        // la biblioteca). La lista lo aplica sólo con el buscador vacío — ver ApplyFilter.
+        _collapsedLibraries = libraries.Where(l => l.Collapsed).Select(l => l.Id).ToHashSet();
+
         var ownEntries = _entries.Values.ToLookup(e => e.LibraryId, e => e.Id);
         var children = libraries.ToLookup(l => l.ParentId);
         var rows = new List<PickRow>();
@@ -242,7 +246,7 @@ public partial class PlaybookWindow : Window
             var ids = ownEntries[library.Id].ToList();
             foreach (var child in children[library.Id].OrderBy(l => l.Sort).ThenBy(l => l.Id))
                 ids.AddRange(Walk(child, depth + 1));
-            rows[slot] = LibraryRow(library, depth, ids, states);
+            rows[slot] = LibraryRow(library, depth, ids, states, children[library.Id].Count());
             return ids;
         }
         foreach (var root in children[null].OrderBy(l => l.Sort).ThenBy(l => l.Id))
@@ -274,7 +278,7 @@ public partial class PlaybookWindow : Window
     }
 
     private PickRow LibraryRow(Library library, int depth, List<long> entryIds,
-        IReadOnlyDictionary<(long, string), SolidityState> states)
+        IReadOnlyDictionary<(long, string), SolidityState> states, int childCount)
     {
         var path = LibraryTree.PathOf(library.Id, _libraries);
         string prefix = path.Count > 1 ? string.Join(PathSeparator, path.Take(path.Count - 1)) + PathSeparator : "";
@@ -283,10 +287,14 @@ public partial class PlaybookWindow : Window
         return new PickRow
         {
             Kind = PickKind.Library,
+            LibraryId = library.Id,
+            ParentLibraryId = library.ParentId,
+            ChildCount = childCount,
             Depth = depth,
             PathPrefix = prefix,
             Name = library.Name,
             CountText = count,
+            BaseCountText = count,
             Average = average,
             SolidityText = SolidityLabel(average),
             BarFillWidth = BarFill(average),

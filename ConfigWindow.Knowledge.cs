@@ -19,7 +19,8 @@ namespace AmpzDesktopBooster;
 //
 // Cómo está armada:
 //   • Izquierda, el árbol de bibliotecas como lista plana con sangría (ver el comentario de la pestaña
-//     Espacios: un TreeView trae su template claro). Es la ÚNICA fuente de la selección.
+//     Espacios: un TreeView trae su template claro). Es la ÚNICA fuente de la selección. Plegar,
+//     reordenar y arrastrar viven aparte, en ConfigWindow.KnowledgeTree.cs.
 //   • Derecha, las entradas de la biblioteca elegida. Se leen UNA vez por selección (entradas + todos
 //     sus repasos en una consulta) y de ahí en más buscar, filtrar y ordenar es memoria: tipear en el
 //     buscador no toca el disco, y la lista virtualiza, así que unas miles de entradas no pesan.
@@ -148,6 +149,7 @@ public partial class ConfigWindow
         KnLibMoveBtn.Click += (_, _) => MoveKnLibrary();
         KnLibNatureCombo.SelectionChanged += (_, _) => { if (!_knRebuilding) UpdateKnLibraryButtons(); };
         KnLibNatureBtn.Click += (_, _) => ApplyKnLibraryNature();
+        InitKnowledgeTree();
 
         // ── Entradas ──
         KnIncludeSubChk.Click += (_, _) => LoadKnEntries(SelectedKnEntryIds());
@@ -209,6 +211,19 @@ public partial class ConfigWindow
         long? wantedLanguage = SelectedKnLanguage?.Id;
 
         var libraries = _knowledge.GetLibraries();
+        // La que va a quedar elegida tiene que VERSE. Si quien llama PIDIÓ una (la que acaba de
+        // crear, mover o soltar dentro de una rama cerrada), se despliega el camino hasta ella. Si
+        // sólo se conserva la que estaba y quedó dentro de una rama que se plegó por otro lado (desde
+        // el playbook, que comparte el estado), NO se la vuelve a abrir — sería deshacerle al usuario
+        // lo que acaba de plegar —: la selección sube a la biblioteca plegada que la contiene.
+        if (selectLibraryId is { } asked)
+        {
+            if (ExpandKnAncestors(asked, libraries)) libraries = _knowledge.GetLibraries();
+        }
+        else if (wantedLibrary is { } kept)
+        {
+            wantedLibrary = KnOutermostCollapsedAncestor(kept, libraries) ?? kept;
+        }
         _knLibraries = libraries.ToDictionary(l => l.Id);
         _knChildren = libraries.ToLookup(l => l.ParentId);
         _knNatures = _knowledge.GetNatures().ToList();
@@ -224,7 +239,7 @@ public partial class ConfigWindow
         try
         {
             KnLibList.Items.Clear();
-            foreach (var (library, depth) in KnTreeOrder())
+            foreach (var (library, depth) in KnTreeOrder(visibleOnly: true))
                 KnLibList.Items.Add(BuildKnLibraryItem(library, depth,
                     entryCounts.TryGetValue(library.Id, out int count) ? count : 0));
 
@@ -267,22 +282,26 @@ public partial class ConfigWindow
     /// Las bibliotecas en ORDEN DE ÁRBOL (cada madre seguida de sus hijas) con su profundidad.
     /// Las que no cuelgan de ninguna raíz —una base tocada a mano con un ciclo, A hija de B y B hija
     /// de A— se agregan al final como si fueran raíces: invisibles no se podrían ni borrar.
+    ///
+    /// <paramref name="visibleOnly"/> = sólo lo que se VE en el árbol: se saltean las que cuelgan de
+    /// una biblioteca plegada. Los combos de destino piden el árbol entero (plegar es cómo se mira,
+    /// no qué existe).
     /// </summary>
-    private List<(Library Library, int Depth)> KnTreeOrder()
+    private List<(Library Library, int Depth)> KnTreeOrder(bool visibleOnly = false)
     {
         var ordered = new List<(Library, int)>();
         var seen = new HashSet<long>();
 
-        void Walk(Library library, int depth)
+        void Walk(Library library, int depth, bool hidden)
         {
             if (!seen.Add(library.Id)) return; // corta el ciclo
-            ordered.Add((library, depth));
+            if (!hidden) ordered.Add((library, depth));
             foreach (var child in _knChildren[library.Id].OrderBy(l => l.Sort).ThenBy(l => l.Id))
-                Walk(child, depth + 1);
+                Walk(child, depth + 1, hidden || (visibleOnly && library.Collapsed));
         }
 
-        foreach (var root in _knChildren[null].OrderBy(l => l.Sort).ThenBy(l => l.Id)) Walk(root, 0);
-        foreach (var orphan in _knLibraries.Values.OrderBy(l => l.Id)) Walk(orphan, 0);
+        foreach (var root in _knChildren[null].OrderBy(l => l.Sort).ThenBy(l => l.Id)) Walk(root, 0, false);
+        foreach (var orphan in _knLibraries.Values.OrderBy(l => l.Id)) Walk(orphan, 0, false);
         return ordered;
     }
 
@@ -317,8 +336,22 @@ public partial class ConfigWindow
     private ListBoxItem BuildKnLibraryItem(Library library, int depth, int ownEntries)
     {
         var panel = new DockPanel { Margin = new Thickness(depth * KnIndentPerLevel, 0, 0, 0) };
+        int children = _knChildren[library.Id].Count();
+        bool collapsed = library.Collapsed && children > 0;
         string count = KnCount(ownEntries);
+        // Plegada, dice cuántas tiene adentro: lo que no se ve no puede parecer que no existe.
+        if (collapsed)
+            count += " · " + (children == 1
+                ? Loc.T("Config.KnowledgeLibChildrenOne")
+                : string.Format(Loc.T("Config.KnowledgeLibChildrenMany"), children));
         string accessible = string.Format(Loc.T("Config.KnowledgeLibRowAccessible"), KnPath(library.Id), count);
+        if (children > 0)
+            accessible += ", " + Loc.T(collapsed ? "Config.KnowledgeLibCollapsedAccessible" : "Config.KnowledgeLibExpandedAccessible");
+
+        // Primero el triángulo (o su hueco, para que los nombres de un mismo nivel queden alineados).
+        var disclosure = BuildKnDisclosure(library, children > 0, collapsed);
+        DockPanel.SetDock(disclosure, Dock.Left);
+        panel.Children.Add(disclosure);
 
         // El chip va PRIMERO en el DockPanel (pegado a la derecha) para que, si no entra todo, lo que
         // se recorte con "…" sea el nombre y no la naturaleza.
@@ -355,7 +388,9 @@ public partial class ConfigWindow
             ToolTip = KnPath(library.Id),
         });
 
-        var item = new ListBoxItem { Content = panel, Tag = library };
+        // El contenido va envuelto con lo que pinta el arrastre (ver KnDropVisuals): el relleno de
+        // "cae adentro" y las dos líneas de "cae entre", que no ocupan lugar cuando no se ven.
+        var item = new ListBoxItem { Content = WrapKnDropVisuals(panel), Tag = library };
         System.Windows.Automation.AutomationProperties.SetName(item, accessible);
         return item;
     }
@@ -454,6 +489,8 @@ public partial class ConfigWindow
         KnLibNatureBtn.IsEnabled = any && choice is not null && !sameNature;
         KnLibNatureReason.Text = sameNature ? Loc.T("Config.KnowledgeLibNatureSameReason") : "";
 
+        UpdateKnOrderButtons();
+
         // Lo que exporta «Exportar…» depende de la biblioteca elegida: se recalcula con ella.
         UpdateKnExchangeScope();
     }
@@ -462,6 +499,7 @@ public partial class ConfigWindow
     {
         if (e.Key == Key.F2) { e.Handled = true; RenameKnLibrary(); }
         else if (e.Key == Key.Delete) { e.Handled = true; DeleteKnLibrary(); }
+        else OnKnTreeKeyDown(e); // ← → pliegan / despliegan; Alt+↑ ↓ reordenan
     }
 
     /// <summary>
