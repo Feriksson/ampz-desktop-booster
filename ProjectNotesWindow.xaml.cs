@@ -27,8 +27,14 @@ namespace AmpzDesktopBooster;
 ///
 /// Guardado — regla de oro: NUNCA se pierde texto. Sigue el flujo "abrir, editar, cerrar y listo" (no
 /// hay que guardar a mano): al cambiar de fila se guarda la anterior ANTES de cargar la nueva, al
-/// cerrar (Esc, botón, o el cierre solo por perder el foco de ShowFocused) se guarda en Closing, y
-/// Ctrl+S guarda explícito sin cerrar. Siempre sólo si el texto cambió respecto de lo cargado.
+/// cerrar (Esc, botón, Alt+F4) se guarda en Closing, y Ctrl+S guarda explícito sin cerrar. Siempre
+/// sólo si el texto cambió respecto de lo cargado.
+///
+/// La ventana dejó de ser un popup: NO es Topmost, se MINIMIZA, figura en la barra de tareas y ya no
+/// se cierra sola al perder el foco (una ventana que se puede tapar o minimizar no puede cerrarse por
+/// eso). Como ahora vive mucho más tiempo abierta y sin el foco, también guarda CADA VEZ QUE LO
+/// PIERDE (ver <see cref="SaveQuietly"/>): antes el cierre-al-desactivar hacía ese trabajo; sin él,
+/// lo escrito quedaría sólo en memoria hasta el próximo cierre, a merced de un corte o un kill.
 /// </summary>
 public partial class ProjectNotesWindow : Window
 {
@@ -90,6 +96,9 @@ public partial class ProjectNotesWindow : Window
         Icon = AppIcon.TryLoadForWindow();
         HeaderText.Text = Loc.T("Notes.WindowTitle");
         SubHeaderText.Text = $"{store.ScopeLabel(deskName, deskIdx)} · {deskName}";
+        // El título de la VENTANA (barra de tareas, Alt+Tab) dice de QUÉ escritorio son estas notas:
+        // entre varias ventanas, "Notas" a secas no alcanza para saber cuál se está por traer.
+        Title = string.Format(Loc.T("Notes.WindowTitleScope"), SubHeaderText.Text);
 
         // ── Panel de carpeta: sólo si había un Explorer con carpeta real en foreground ──
         _activeFolder = activeFolder ?? "";
@@ -129,11 +138,15 @@ public partial class ProjectNotesWindow : Window
         SearchBtn.Click += (_, _) => FocusFilter();
         AllProjectsBtn.Click += (_, _) => ToggleAllProjects();
         CloseBtn.Click += (_, _) => Close();
+        MinimizeBtn.Click += (_, _) => WindowState = WindowState.Minimized;
 
         PreviewKeyDown += OnKeyDown;
-        // Closing corre TAMBIÉN cuando la ventana se cierra sola por perder el foco (ShowFocused →
-        // CloseOnDeactivate): es el único punto que cubre todos los caminos de cierre.
+        // Closing es el único punto que cubre TODOS los caminos de cierre (Esc, botón, Alt+F4, el
+        // re-press desde otro escritorio, el apagado de la app).
         Closing += (_, _) => AutoSave();
+        // Y al PERDER EL FOCO o minimizarse, sin cerrar: ver el summary de la clase.
+        Deactivated += (_, _) => SaveQuietly();
+        StateChanged += (_, _) => { if (WindowState == WindowState.Minimized) SaveQuietly(); };
         // Abre con el foco en el BUSCADOR (pedido del usuario), igual que Variables y Servicios: la
         // ventana ya es un navegador, y lo primero que se hace es buscar. La nota de este escritorio
         // sigue seleccionada y cargada en el editor — Enter/Tab la edita al toque.
@@ -405,6 +418,21 @@ public partial class ProjectNotesWindow : Window
     {
         CommitEditor();
         if (_hasFolder)
+        {
+            _store.SetFolderNotes(_activeFolder, FolderNotesBox.Text);
+            _folderInitial = FolderNotesBox.Text;
+        }
+    }
+
+    /// <summary>
+    /// Guarda lo que haya cambiado, SIN cerrar ni tocar nada de la pantalla (ni la lista, ni la
+    /// selección, ni el cursor): es lo que corre cuando la ventana pierde el foco o se minimiza. Sólo
+    /// escribe si algo cambió, así que irse y volver sin tipear no toca el disco.
+    /// </summary>
+    private void SaveQuietly()
+    {
+        CommitEditor();
+        if (_hasFolder && FolderNotesBox.Text != _folderInitial)
         {
             _store.SetFolderNotes(_activeFolder, FolderNotesBox.Text);
             _folderInitial = FolderNotesBox.Text;

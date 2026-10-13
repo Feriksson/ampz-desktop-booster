@@ -388,7 +388,7 @@ que agregues tiene que describir un estado, no reclamar una obligación.
 | `Entry` | `EntryKind.Card` o `EntryKind.Term`, conviven en la misma biblioteca | Un solo motor, un solo quiz, un solo seguimiento. En un término `Front` = palabra y `Back` = definición, más `WordType`, `UsageContext`, `Origin`. `IssueNote` / `IssueAt` = el **problema anotado** (tecla `R` del playbook): una nota personal para arreglar la entrada después. `SetEntryIssue` NO toca `updated_at`, `UpdateEntry` no la borra, vaciarla es resolverla, y no viaja ni la toca una importación. Es una marca de CONTENIDO a corregir, no un estado de estudio: no entra en la solidez ni decide qué sale en una ronda. |
 | `Nature` | Lista PERSONAL y creciente (técnica, legal, general…), UNA por entrada | `Entry.NatureId` null NO es "sin naturaleza": es "la que herede", subiendo por el árbol hasta la primera biblioteca con `DefaultNatureId`. La regla está DOS veces y tienen que coincidir: `LibraryTree.EffectiveNatureId` (memoria) y `KnowledgeStore.GetEntriesByNature` (SQL). Tampoco es Espacio/Contexto. |
 | `Language` / `Translation` | Idiomas dinámicos; a lo sumo una traducción por término+idioma | Un idioma es además un LADO jugable. |
-| `GlossaryItem` | El GLOSARIO de una card: palabra difícil + definición breve. Es la ayuda del quiz (`H`) | **Sólo las CARDS** lo llevan, y a lo sumo `Glossary.MaxGlossaryItems` (5: es una ayuda para LEER la pregunta, no un segundo diccionario, y tiene que entrar en pantalla sin scroll). Un término NO lleva glosario: su ayuda es `Entry.Origin` (etimología y composición). Las reglas (recortar, descartar renglones a medias, sin repetidas) viven solas en `Glossary.Normalize` porque las aplican el store, el lector del archivo y el diálogo. |
+| `GlossaryItem` | El GLOSARIO de una card: palabra difícil + definición breve. Es la ayuda del quiz (`A`) | **Sólo las CARDS** lo llevan, y a lo sumo `Glossary.MaxGlossaryItems` (5: es una ayuda para LEER la pregunta, no un segundo diccionario, y tiene que entrar en pantalla sin scroll). Un término NO lleva glosario: su ayuda es `Entry.Origin` (etimología y composición). Las reglas (recortar, descartar renglones a medias, sin repetidas) viven solas en `Glossary.Normalize` porque las aplican el store, el lector del archivo y el diálogo. |
 | `Review` | Historial de SÓLO-AGREGAR: entrada + lado MOSTRADO + `Grade` (1..4) + fecha UTC + `Helped` | `Side` es el lado que se mostró como pregunta: `front`, `back` o `lang:<id>` (`ReviewSide`). Cada lado lleva su propia solidez: reconocer una palabra no es evocarla desde la definición. Los números de `Grade` SE PERSISTEN: no reordenar el enum. `Helped` (`reviews.helped`) = se abrió la ayuda ANTES de revelar; es un dato para mirar después y **no entra en la solidez ni cambia la nota**. |
 
 Las operaciones devuelven `KnowledgeOpResult` (un motivo), por lo mismo que `ScopeOpResult`.
@@ -592,7 +592,7 @@ del hook no se puede bloquear).
 | `NumpadClear` (Numpad5, **sin Win ni Shift**) | Abrir el **Playbooker** (jugar / consultar la biblioteca de conocimiento, ver sección 6). Instancia única; el re-press NUNCA la cierra: la trae al frente, la restaura si estaba minimizada y la muda al escritorio actual (`App.ShowPlaybook`). Con Win, el Numpad5 es navegación como cualquier otro dígito. |
 | ~~`NumpadClear` → DeskPicker~~ | **RETIRADO** por decisión del usuario el 2026-10-10: la tecla pasó al playbooker. `DeskPickerWindow` y `HotkeyRouter.ShowDeskPicker` se CONSERVAN enteros a propósito, hoy sin ninguna tecla que los llame; re-enlazarlos es una línea en `HotkeyRouter.Route` el día que haya una tecla libre. No los borres por "código muerto". |
 | `Win+Numpad *` | **Variables** del espacio/contexto/global (Paths Manager); re-press dispara el predeterminado |
-| `Win+Numpad /` | **Notas** del espacio/contexto/global |
+| `Win+Numpad /` | **Notas** del espacio/contexto/global. Ventana de trabajo largo: NO es Topmost, se minimiza y no se cierra al perder el foco (guarda sola al perderlo). Re-press en el MISMO escritorio → la trae al frente (la restaura si estaba minimizada); desde OTRO escritorio → cierra la vieja (guardando) y abre las notas de éste |
 | `Win+Numpad −` (Sub) | **Send-window picker** (mandar la ventana activa a un desk elegido) |
 | `Win+Numpad +` (Add) | **Servicios** del espacio/contexto/global: cómo levantar lo básico y qué está levantado (estado vivo 🟢/⚪ por puerto, copiar localhost / IP de red, QR). Re-press → levanta lo que falte |
 | `Win+Numpad 0` (Insert) | **Tareas**: picker para asignarle una tarea al desk actual (`TaskPickerWindow`); re-press con el picker abierto DESASIGNA la del desk donde se abrió y cierra. Migró desde `Win+NumLock`: Shift/Alt+NumLock togglea NumLock por debajo del hook y no se puede neutralizar; el Insert va por scancode. |
@@ -610,7 +610,9 @@ del hook no se puede bloquear).
 | `F1` (**sin Win**) | **Tragado** (down y up) para que nunca abra la Ayuda de Windows en la app activa. Todavía no dispara nada. |
 
 Las ventanas de Variables y Notas son de **instancia única**: re-presionar el atajo con la ventana
-abierta NO abre otra (Variables dispara el path predeterminado; Notas la trae al frente).
+abierta NO abre otra (Variables dispara el path predeterminado; Notas la trae al frente). Las dos
+recuerdan PARA QUÉ escritorio se abrieron (`_pathsWindowDeskIdx` / `_notesWindowDeskIdx`): el re-press
+desde otro desk cierra la vieja y abre la de ése — su contenido es el del scope de ESE escritorio.
 
 ---
 
@@ -639,7 +641,7 @@ abierta NO abre otra (Variables dispara el path predeterminado; Notas la trae al
 
 **Ventanas WPF** (raíz): `BarWindow` (la AppBar + widgets), `OverlayWindow` (feedback central de
 cambio de desk), `ConfigWindow` (config, instancia única), `ProjectSetterWindow`, `ProjectPathsWindow`
-(variables), `ProjectNotesWindow`, `EnvVarsWindow`, `DockerWindow`, `HzWindow` (refresh rate),
+(variables), `ProjectNotesWindow` (no Topmost, minimizable), `EnvVarsWindow`, `DockerWindow`, `HzWindow` (refresh rate),
 `WhitelistPickerWindow`, `SendWindowPickerWindow`, `ModulePickerWindow` (paso 2 del launcher),
 `AbrirConWindow` ("Abrir con"), `DeskPickerWindow` (hoy SIN atajo, ver la tabla de hotkeys),
 `ShortcutsHelperWindow` (`Win+/`), `TaskPickerWindow` + `TaskDetailWindow` (tareas),
@@ -799,6 +801,40 @@ aparecía al frente pero SIN foco de teclado — había que clickearlo.
 **Regla transversal**: estos bugs de hook/foco se cazan SIEMPRE con instrumentación a archivo + el
 usuario reproduciendo y observando el PATRÓN, NUNCA con teoría. Las teorías "lindas" fallaron varias
 veces; el log y el patrón observado siempre ganaron.
+
+### ⚠ Ventanas utilitarias NO Topmost y minimizables (playbooker, Notas): lo que cambia en la red de foco
+
+El playbooker y Notas dejaron de ser popups Topmost que se cierran al perder el foco: son ventanas
+normales, minimizables y con botón en la barra de tareas. Todo lo de arriba se escribió suponiendo
+"Topmost y efímera", así que cuatro cosas dejaron de ser gratis. Están resueltas; **no se probaron en
+vivo cuando se escribieron** — si algo de foco/hotkeys se porta raro con estas dos ventanas, empezá
+por acá, y con log (la regla transversal).
+
+1. **Minimizar deja el foco huérfano igual que cerrar** (la única ventana de un desk, minimizada). La
+   red sólo corría en `Closed`. → `WindowActivation.RearmHookOnMinimize` (opt-in: lo piden estas dos
+   ventanas) dispara el MISMO `OnUtilityWindowClosed` al pasar a `Minimized`.
+2. **Una ventana minimizada puede seguir figurando como foreground** → `HasFocusedUtilityWindow` la
+   saltea (`WindowState == Minimized`): si la contara, la red creería que el foco está bien y no
+   restauraría nada.
+3. **Los modales efímeros (Topmost, `CloseOnDeactivate`) la TAPAN**. Su guarda "el foco se fue a una
+   ventana NUESTRA → no cierres" los deja abiertos cuando se pide el playbooker o Notas, y como ellos
+   sí son Topmost quedan encima. Antes no se veía porque la ventana pedida también era Topmost. →
+   `WindowActivation.CloseEphemeralWindows` al mostrarlas o traerlas al frente (es la regla de "un
+   solo modal utilitario a la vez", aplicada desde el otro lado).
+4. **`ForceWithRetry` des-minimizaba**: machaca `ForceForeground` ~600ms y éste restaura lo
+   iconizado; minimizar la ventana en ese tramo la hacía reaparecer sola. → corta si
+   `WindowState == Minimized`. (El re-press de una minimizada no se rompe: el primer
+   `ForceForeground`, inmediato, ya la restauró.)
+
+Lo que NO cambió, a propósito: `RestoreForegroundOrDesktop` sigue excluyendo TODO lo de nuestro
+proceso, así que con el foco huérfano se lo da a otra app o al escritorio aunque el playbooker esté
+visible detrás (queda a la vista y sin foco; el atajo o un click se lo devuelven). Y `Win+D`
+(`MinimizeForeignTopLevel`) sigue salteando nuestras ventanas: NO minimiza el playbooker ni Notas,
+igual que nunca minimizó la Config.
+
+**Otro escritorio**: una ventana normal vive en el desk donde se abrió, y activarla desde otro hace
+que Windows SALTE a ese desk (le pasa a la Config). El playbooker se MUDA al desk actual
+(`DesktopService.SendWindowTo(…, follow: false)`); Notas se cierra y se reabre con las de ese desk.
 
 ### ⚠ "Mostrar escritorio" (Win+D / Win+M / gesto de 3 dedos) escondía la barra — DOS causas distintas
 

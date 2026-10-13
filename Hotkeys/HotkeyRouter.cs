@@ -55,6 +55,7 @@ public sealed class HotkeyRouter
     private int _pathsWindowDeskIdx;
     // Ventana de notas abierta (instancia única — re-press la trae al frente).
     private ProjectNotesWindow? _notesWindow;
+    private int _notesWindowDeskIdx = -1; // el desk para el que se abrió: sus notas son las de ESE scope
     // Picker de tareas abierto (instancia única — re-press DESASIGNA la tarea del desk y cierra).
     // Guardamos también el desk con el que se abrió: el re-press desasigna ESE, no el current (por si
     // navegaste de desk con el picker abierto — la tarea visible es la del desk donde lo abriste).
@@ -501,14 +502,27 @@ public sealed class HotkeyRouter
 
     private void ShowProjectNotes()
     {
-        // Re-press con la ventana abierta → traerla al frente (no abrir otra).
-        if (_notesWindow is not null)
+        int idx = _desktops.Current;
+
+        // Re-press con la ventana abierta EN ESTE escritorio → traerla al frente (no abrir otra). La
+        // restaura si estaba minimizada; y si alguien la mandó a otro escritorio (Win+Shift+Numpad)
+        // la trae de vuelta acá, en vez de dejar que activarla te saque de donde estás.
+        if (_notesWindow is not null && _notesWindowDeskIdx == idx)
         {
+            IntPtr hwnd = new System.Windows.Interop.WindowInteropHelper(_notesWindow).Handle;
+            int home = _desktops.GetWindowDesktop(hwnd);
+            if (home >= 0 && home != idx) _desktops.SendWindowTo(hwnd, idx, follow: false);
+            WindowActivation.CloseEphemeralWindows(_notesWindow);
             _notesWindow.BringToFront();
             return;
         }
+        // Quedó abierta para OTRO escritorio → se cierra (guarda sola en Closing; su handler limpia
+        // _notesWindow) y se abre la de éste. Es lo mismo que pasaba cuando la ventana se cerraba al
+        // perder el foco —cambiar de desk la cerraba, y el atajo abría SIEMPRE las notas de donde
+        // estás— y el mismo criterio que Variables: la nota "de este escritorio" es la de ESTE scope,
+        // y traer la ventana vieja mostraría como tuya la del escritorio anterior.
+        _notesWindow?.Close();
 
-        int idx = _desktops.Current;
         string name = _desktops.GetName(idx);
 
         // Capturamos la carpeta del Explorer AHORA, antes de crear la ventana: en este punto el
@@ -517,8 +531,15 @@ public sealed class HotkeyRouter
         string folder = ExplorerContext.GetActiveFolder();
 
         _notesWindow = new ProjectNotesWindow(_projects, name, idx, folder);
+        _notesWindowDeskIdx = idx;
         _notesWindow.Closed += (_, _) => _notesWindow = null;
-        _notesWindow.ShowFocused();
+        // Ventana de trabajo largo (no Topmost, minimizable): NO se cierra al perder el foco, y por
+        // lo tanto tampoco la cierra el abrir otro modal utilitario. Minimizarla corre la misma red
+        // anti-foco-huérfano que cerrarla (RearmHookOnMinimize); y al mostrarla se cierran los
+        // modales efímeros que hubiera, que al ser Topmost la taparían (CloseEphemeralWindows).
+        _notesWindow.RearmHookOnMinimize();
+        _notesWindow.ShowFocused(closeOnDeactivate: false);
+        WindowActivation.CloseEphemeralWindows(_notesWindow);
     }
 
     private void ShowServices()

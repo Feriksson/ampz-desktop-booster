@@ -1077,7 +1077,9 @@
   "Overlay.Title": "Ampz Booster Overlay",
 
   "Notes.WindowTitle": "Notas",
-  "Notes.Hint": "Enter/Tab: ir al editor · ↓ desde el filtro: ir a la lista · el filtro busca en título, contenido, espacio y contexto (y en otros espacios) · auto-guarda al cambiar de nota y al cerrar",
+  "Notes.WindowTitleScope": "Notas — {0}",
+  "Notes.BtnMinimize": "Minimizar",
+  "Notes.Hint": "Enter/Tab: ir al editor · ↓ desde el filtro: ir a la lista · el filtro busca en título, contenido, espacio y contexto (y en otros espacios) · auto-guarda al cambiar de nota, al salir de la ventana y al cerrar",
   "Notes.ProjectScope": "Notas del espacio del desk",
   "Notes.FolderScope": "Notas de la carpeta",
   "Notes.RowCurrent": "Nota de este escritorio",

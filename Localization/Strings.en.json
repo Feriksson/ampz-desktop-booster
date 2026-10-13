@@ -1077,7 +1077,9 @@
   "Overlay.Title": "Ampz Booster Overlay",
 
   "Notes.WindowTitle": "Notes",
-  "Notes.Hint": "Enter/Tab: go to the editor · ↓ from the filter: go to the list · the filter searches title, content, space and context (and other spaces) · auto-saves when switching notes and on close",
+  "Notes.WindowTitleScope": "Notes — {0}",
+  "Notes.BtnMinimize": "Minimize",
+  "Notes.Hint": "Enter/Tab: go to the editor · ↓ from the filter: go to the list · the filter searches title, content, space and context (and other spaces) · auto-saves when switching notes, when leaving the window and on close",
   "Notes.ProjectScope": "Desktop space notes",
   "Notes.FolderScope": "Folder notes",
   "Notes.RowCurrent": "This desktop's note",
