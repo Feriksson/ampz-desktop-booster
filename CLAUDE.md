@@ -134,12 +134,9 @@ Config → Escritorios. Un `desktops.json` de una versión anterior con entradas
 DESCARTA al cargar (persiste enseguida, mismo patrón que la migración del formato viejo).
 
 **⚠ Pero el nombre es SÓLO la etiqueta — no lo vuelvas a cargar de responsabilidades.**
-Durante mucho tiempo el catálogo fue un `List<string>` y ese string hacía de identificador, de ROL y
-de etiqueta a la vez. Renombrar un desk desde la config lo rompía TODO en silencio: el atajo del
-numpad (era un `switch` con literales hardcodeados en `HotkeyRouter`), el setter de Espacios, el scope
-de variables/notas/servicios, el color, la protegibilidad y el color del widget de la barra — seis
-copias de `name.Contains("DESK +")` desperdigadas que un renombre desincronizaba de golpe. Nada
-avisaba: la app seguía andando, sorda.
+Cuando el catálogo era un `List<string>`, ese string era identificador, ROL y etiqueta a la vez:
+renombrar un desk rompía en silencio atajo, scope, color y protegibilidad (seis copias de
+`name.Contains("DESK +")` desperdigadas).
 
 Hoy cada entrada es un `ManagedDesktop` con **identidad propia** — `name`, `key` (la tecla del numpad),
 `role` y `color`. El atajo y el rol viven pegados a la ENTRADA y sobreviven a cualquier renombre.
@@ -170,13 +167,9 @@ mientras el orden de los escritorios VIVOS coincidiera con el orden del catálog
 reforma de escritorios DINÁMICOS rompió de raíz: un dinámico se crea/borra en caliente y corre el
 índice de todo lo que esté después.
 
-**El bug reproducido**: catálogo `MAIN(0) / NOTES(1) / MISCS(2)`. El usuario cerró NOTES a mano un día
-cualquiera. Al reiniciar Windows, los escritorios vivos quedaron `[MAIN, <dinámico "Geocontrol /
-Plataforma">, <dinámico "Geocontrol / Plataforma Develop">]` — NOTES ya no estaba, pero el índice 1
-SÍ, ocupado por un espacio real registrado en `DynamicDeskStore`. El bootstrapper viejo, renombrando
-por índice, le puso "NOTES" al desk dinámico del índice 1. Resultado: `Win+Numpad2` (NOTES por nombre)
-y la tecla dinámica de ESE espacio apuntaban al MISMO escritorio — indistinguibles, sin ningún error
-visible.
+**El bug reproducido**: catálogo `MAIN / NOTES / MISCS`, NOTES cerrado a mano; al reiniciar, el índice 1
+lo ocupaba un dinámico vivo y el bootstrapper le puso "NOTES". `Win+Numpad2` y la tecla de ESE espacio
+apuntaban al MISMO escritorio, sin ningún error visible.
 
 **La cura, hoy**: por cada entrada del catálogo, `DesktopBootstrapper.Ensure` busca un desktop que YA
 se llame así (`DesktopService.FindExact` — el mismo criterio de nombre de toda la app). Si falta:
@@ -279,13 +272,9 @@ Main) se re-hidrata su sesión, para que no caiga al scope global.
 los N desks de un mismo espacio no se agrupan visualmente. Se eligió así porque el espacio lo elegís
 al sentarte y el contexto es el que rotás — la señal de reflejo le sirve al que rota.
 
-**⚠ `Win+NumpadDot` (cambiar sólo el contexto en el mismo desk) SE RETIRÓ** con la reforma de
-escritorios dinámicos: ya no hay "el mismo desk, otro contexto" — cada par espacio+contexto ES su
-propio escritorio, así que "rotar de contexto" es abrir (o saltar a, si ya está abierto) el desk de
-ESE otro contexto con el launcher. El contexto se elige una sola vez, en el paso 2 del launcher
-(`Win+NumpadEnter` → confirmás espacio → aparece el picker de contexto). La **pestaña Espacios de la
-config** (ver sección 4-bis) sigue siendo la única superficie donde se REORGANIZA (renombrar, mover,
-promover, degradar) sin pasar por el launcher.
+**⚠ No hay "cambiar de contexto en el mismo desk"** (el viejo `Win+NumpadDot`, retirado): cada par
+espacio+contexto ES su propio escritorio, y el contexto se elige una vez, en el paso 2 del launcher.
+Reorganizar sin el launcher es la pestaña Espacios de la config (sección 4-bis).
 
 ### 4. Scope de variables y notas — herencia de TRES niveles
 `ProjectStore.ResolvePoolWithGlobal` / `GetNotes`: si el desk es de rol `Space` (vía `DeskCatalog.IsSpace`)
@@ -301,10 +290,9 @@ todos sus contextos.
 > describe el modelo mejor de lo que lo hacía `módulo → proyecto → global`.
 
 ### 4-bis. Reorganizar el catálogo (pestaña **Espacios** de la config)
-Durante mucho tiempo el catálogo sólo supo **crear** (setter/picker) y **borrar** en cascada.
-Reorganizar había que hacerlo editando el JSON A MANO — y no es un caso raro: la estructura mental
-del usuario cambia (todo el renombre nació de descubrir que 11 "proyectos" eran contextos de dos
-espacios). Las operaciones viven en `ProjectStore` y la UI en `ConfigWindow`:
+La estructura mental del usuario cambia (el renombre nació de descubrir que 11 "proyectos" eran
+contextos de dos espacios), así que el catálogo se reorganiza sin tocar el JSON a mano. Las
+operaciones viven en `ProjectStore` y la UI en `ConfigWindow`:
 
 | Operación | Sobre | Nota |
 |---|---|---|
@@ -535,8 +523,8 @@ legacy guardaba en `A_ScriptDir`; esto se modernizó para que la app sea compart
 |---|---|---|
 | `desk_project_data.json` | JSON | Catálogo durable: `history` (los ESPACIOS), `notes`, `paths` (key = espacio **o** `"Espacio/Contexto"`), `modules` (los CONTEXTOS + su color, por espacio), `defaults` (predeterminado por scope), `services` (cómo levantar lo básico, key = scope) + `shared_services`, `shared_notes`, `shared_paths`, `shared_default`, `folder_notes`. |
 | `settings.ini` | INI custom | `[Projects]` sugerencias (`desk_N` y `desk_N_module`), `[Pins]` `proc.exe=idx`, `[Restricted]` `idx=1`, `[Whitelist_IDX]` `proc.exe=1`. |
-| `desktops.json` | JSON | `DesktopConfig`: lista `managed` de los desks **FIJOS** (cada ítem = `name` + `key` + `role` + `color`, ver `ManagedDesktop`) + flag `autoCreate`. El formato VIEJO (`managed` como array de strings) se migra solo al cargar; una entrada de rol Espacio de una versión anterior también se descarta al cargar (ya no vive acá). Ambas migraciones persisten enseguida. |
-| `dynamic_desks.json` | JSON | `DynamicDeskStore`: los escritorios DINÁMICOS vivos que abrió el launcher (`Win+NumpadEnter`), indexados por GUID del desktop (`id` + `project` + `module` + `key`). Al cargar se descarta cualquier entrada cuyo GUID ya no resuelva a un desktop real (Windows lo cerró). Separado del catálogo de espacios (`desk_project_data.json`, que es durable aunque nadie lo tenga abierto): esto es la lista de "qué desk vivo ES cada asignación", en la práctica vive y muere con la app: `OnExit` cierra los dinámicos y `OnStartup` barre los que dejó una sesión que terminó mal. |
+| `desktops.json` | JSON | `DesktopConfig`: lista `managed` de los desks **FIJOS** (cada ítem = `name` + `key` + `role` + `color`, ver `ManagedDesktop`) + flag `autoCreate`. Migraciones al cargar (formato viejo de strings, entradas de rol Espacio) — ver sección 1. |
+| `dynamic_desks.json` | JSON | `DynamicDeskStore`: los dinámicos vivos del launcher, por GUID del desktop (`id` + `project` + `module` + `key`). Al cargar descarta los GUID que ya no existen. Es "qué desk vivo ES cada asignación" (no el catálogo durable) y vive y muere con la app (ver sección 3). |
 | `apps.json` | JSON | `AppsConfig`: apps de usuario (`name`, `exePath`, `args` con `{path}`). |
 | `widgets.json` | JSON | `WidgetSettings`: qué widgets de la barra están activos (defaults: Clock + Ram + Ip). |
 | `knowledge.db` | SQLite | `KnowledgeStore`: biblioteca de conocimiento — tablas `libraries`, `entries`, `natures`, `languages`, `translations`, `glossary`, `reviews` (esquema versionado por `PRAGMA user_version`, hoy **v3**: la v1→v2 sumó `glossary` y `reviews.helped`; la v2→v3, `entries.issue_note` / `issue_at` y `libraries.collapsed` — siempre sólo AGREGANDO columnas con valor por defecto, en una transacción). El ÚNICO dato que no es JSON/INI; ver la ⚠ de abajo. Un archivo ilegible se aparta como `knowledge.db.corrupt-<fecha>`. |
@@ -594,10 +582,10 @@ del hook no se puede bloquear).
 | Atajo | Acción |
 |---|---|
 | `Win+Numpad 1..9` | Ir al desk que TENGA esa tecla asignada, sea del catálogo **fijo** (**configurable** en Config → Escritorios) o uno **dinámico** abierto por el launcher (ver `DeskLauncher.Open` — reparte la más baja libre). Defaults: 1/2/3 → MAIN / CONSOLES / MISCS (fila inferior, la más cómoda); 4..9 quedan libres para los dinámicos |
-| ~~`Win+Numpad` (tecla del desk **donde ya estás**)~~ | **RETIRADO** a pedido del usuario: hacía "volver al desk anterior" (toggle tipo Alt+Tab). Hoy apretar la tecla del desk activo NO hace nada. El historial `DesktopService.NoteCurrent`/`Previous` se borró con él — no lo reintroduzcas. |
+| ~~`Win+Numpad` (tecla del desk **donde ya estás**)~~ | **RETIRADO** a pedido del usuario ("volver al desk anterior"): hoy NO hace nada. No reintroduzcas `DesktopService.NoteCurrent`/`Previous`. |
 | `Win+Shift+`(navegación) | Enviar la ventana activa a ese desk **y seguirla** |
-| `Win+NumpadEnter` | **Launcher**, usable desde CUALQUIER desk: elegís Espacio (`ProjectSetterWindow`) → encadena el picker de Contexto (`ModulePickerWindow`) → crea un escritorio DINÁMICO nuevo (o salta al que ya lo tenga abierto), lo asigna y salta ahí. **Ya NO auto-lanza sus servicios `AutoStart`** (se retiró a pedido del usuario: abrir un escritorio no dispara procesos solo — se levantan a mano con el re-press de `Win+Numpad +` o `Ctrl+Enter` en Servicios). Ambos pasos MARCAN lo que ya está abierto (leyendo `DynamicDeskStore.CountOpenModules`/`OpenKeyFor`, mismo criterio de comparación que el dedupe): el paso Espacio muestra "● N abiertos" junto a los que tengan algún contexto (o "sin contexto") vivo; el paso Contexto marca cada fila abierta con "● abierto — <tecla>" (reusa `NumpadDecoder.Label`), incluida la opción "Sin contexto". Elegir uno YA abierto no crea nada: `DeskLauncher.Open` dedupea primero y SALTA ahí (`LauncherOpenResult.SwitchedExisting`). **Re-press con el launcher abierto** cierra el picker y, si el desk donde estás parado es uno dinámico, lo BORRA (`RemoveDesktop`, fallback = el Main); en un desk fijo sólo cierra el picker (toast). Ver `DeskLauncher`. |
-| `Win+Numpad .` (Del) | Abrir la **Config** (o traerla al frente si ya está abierta; `Esc` la cierra). La tecla quedó libre cuando se RETIRÓ su uso anterior, "cambiar de contexto en el mismo desk": con escritorios dinámicos el contexto se elige UNA sola vez, en el paso 2 del launcher. |
+| `Win+NumpadEnter` | **Launcher**, usable desde CUALQUIER desk: elegís Espacio (`ProjectSetterWindow`) → encadena el picker de Contexto (`ModulePickerWindow`) → crea un escritorio DINÁMICO nuevo (o salta al que ya lo tenga abierto), lo asigna y salta ahí. **NO auto-lanza servicios `AutoStart`** (pedido del usuario: se levantan a mano). Ambos pasos MARCAN lo ya abierto (`DynamicDeskStore.CountOpenModules`/`OpenKeyFor`, mismo criterio que el dedupe): "● N abiertos" en el paso Espacio, "● abierto — <tecla>" en el de Contexto. Elegir uno abierto no crea nada: SALTA ahí (`LauncherOpenResult.SwitchedExisting`). **Re-press con el launcher abierto** cierra el picker y, si el desk donde estás parado es uno dinámico, lo BORRA (`RemoveDesktop`, fallback = el Main); en un desk fijo sólo cierra el picker (toast). Ver `DeskLauncher`. |
+| `Win+Numpad .` (Del) | Abrir la **Config** (o traerla al frente si ya está abierta; `Esc` la cierra). Antes era "cambiar de contexto en el mismo desk" (retirado, ver sección 3). |
 | `NumpadClear` (Numpad5, **sin Win ni Shift**) | Abrir el **Playbooker** (jugar / consultar la biblioteca de conocimiento, ver sección 6). Instancia única; el re-press NUNCA la cierra: la trae al frente, la restaura si estaba minimizada y la muda al escritorio actual (`App.ShowPlaybook`). Con Win, el Numpad5 es navegación como cualquier otro dígito. |
 | ~~`NumpadClear` → DeskPicker~~ | **RETIRADO** por decisión del usuario el 2026-10-10: la tecla pasó al playbooker. `DeskPickerWindow` y `HotkeyRouter.ShowDeskPicker` se CONSERVAN enteros a propósito, hoy sin ninguna tecla que los llame; re-enlazarlos es una línea en `HotkeyRouter.Route` el día que haya una tecla libre. No los borres por "código muerto". |
 | `Win+Numpad *` | **Variables** del espacio/contexto/global (Paths Manager); re-press dispara el predeterminado |
@@ -758,8 +746,7 @@ filtrando a Win+numpad) + el usuario observando el PATRÓN, que son COROLARIOS d
 
 **1. El watchdog NO debe resetear `_winDown` a ciegas — descolgaba `Win+Numpad`.**
 Síntoma: con Win MANTENIDA, rafagueando `Win+Numpad`, el combo se descolgaba tras unos saltos
-(NumpadClear pasaba a abrir el DeskPicker PELADO — así era entonces; hoy esa tecla pelada abre el
-playbooker, y el síntoma equivalente sería ése). Patrón clave (lo encontró el usuario): se rafaguea
+(el Numpad5 actuaba como tecla pelada). Patrón clave (lo encontró el usuario): se rafaguea
 INFINITO entre desks VACÍOS, pero el **primer desk CON ventana** lo mata.
 - **Causa**: `bar.OnBarZOrderChanged → ReinstallHook` NO sólo salta al salir de fullscreen — también
   salta al navegar a un desk CON ventana (la ventana toma foreground → la barra re-evalúa z-order →
@@ -769,7 +756,7 @@ INFINITO entre desks VACÍOS, pero el **primer desk CON ventana** lo mata.
 - **Fix**: `HotkeyService.ReinstallHook` re-sincroniza los modificadores con su estado FÍSICO real
   (`WindowMethods.IsKeyPhysicallyDown` vía `GetAsyncKeyState`), NUNCA los fuerza a `false`. El log
   probó que `_winDown` caía a false SIN ningún Win-up en el hook (el hook seguía VIVO entregando
-  teclas — por eso el NumpadClear abría el DeskPicker pelado: hook vivo + flag corrupto).
+  teclas: hook vivo + flag corrupto).
 - **Teorías DESCARTADAS por el log (no repetir)**: NO hay Win-up sintético/inyectado del sistema; la
   tecla Win NO auto-repite en este teclado; NO era el "hook muerto" (entregaba todas las teclas).
   Filtrar `e.IsInjected` en el branch de Win EMPEORÓ las cosas y se revirtió.
