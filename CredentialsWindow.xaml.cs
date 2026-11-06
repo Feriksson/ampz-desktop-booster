@@ -23,8 +23,8 @@ namespace AmpzDesktopBooster;
 ///   · La contraseña nunca se pinta en la lista (máscara de largo fijo). Se ve en claro sólo en el
 ///     panel de detalle, para la fila seleccionada, después de pedirlo (Ctrl+R) — y se vuelve a
 ///     tapar al cambiar de fila o al cerrar. Revelar es un acto, no un estado que se olvida prendido.
-///   · Copiar va por <see cref="SecureClipboard"/>: los secretos (contraseña, campos marcados como
-///     secretos) quedan fuera del historial de Win+V y de la nube, y se borran solos a los 20s.
+///   · Copiar va por <see cref="ClipboardCopy"/>: portapapeles normal, con historial y sin borrado
+///     automático (decisión del usuario — ver el comentario de esa clase).
 ///   · La búsqueda NUNCA mira valores secretos: buscar "hunter2" no tiene que decirte qué
 ///     credencial lo usa. Mira título, usuario, URL, Espacio/Contexto y NOMBRES de campos.
 ///   · Ningún aviso de esta ventana lleva un secreto adentro: el flash dice QUÉ se copió, no el valor.
@@ -415,9 +415,9 @@ public partial class CredentialsWindow : Window
     /// </summary>
     private void Copy(string value, bool secret, string what, string title)
     {
-        if (!SecureClipboard.CopySecret(value, secret)) { ShowFlash(Loc.T("Creds.ClipboardBusy")); return; }
+        if (!ClipboardCopy.TryCopy(value)) { ShowFlash(Loc.T("Creds.ClipboardBusy")); return; }
         ShowFlash(secret
-            ? string.Format(Loc.T("Creds.CopiedSecret"), what, title, (int)SecureClipboard.SecretLifetime.TotalSeconds)
+            ? string.Format(Loc.T("Creds.CopiedSecret"), what, title)
             : string.Format(Loc.T("Creds.CopiedPlain"), what));
     }
 
