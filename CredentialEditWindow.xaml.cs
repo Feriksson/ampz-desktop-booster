@@ -7,6 +7,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using AmpzDesktopBooster.Credentials;
 using AmpzDesktopBooster.Desktops;
+using AmpzDesktopBooster.Services;
 using AmpzDesktopBooster.Services.Localization;
 
 namespace AmpzDesktopBooster;
@@ -171,12 +172,17 @@ public partial class CredentialEditWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var name = new TextBox { Text = f?.Name ?? "" };
         bool secret = f?.IsSecret ?? false;
         var value = new SecretInput(f?.Value ?? "", masked: secret && !_revealed);
         var secretBox = new CheckBox { Content = Loc.T("CredEdit.FldSecret"), IsChecked = secret, Margin = new Thickness(10, 0, 0, 0) };
-        var remove = new Button { Content = Loc.T("CredEdit.BtnRemoveField"), Margin = new Thickness(10, 0, 0, 0) };
+        // Copiar el VALOR desde el editor (pedido del usuario): al cargar una key nueva se la quiere
+        // pegar en otro lado sin cerrar el diálogo e ir a buscarla al gestor. Copia lo que está
+        // escrito AHORA, guardado o no.
+        var copy = new Button { Content = Loc.T("Creds.BtnCopyField"), Margin = new Thickness(10, 0, 0, 0) };
+        var remove = new Button { Content = Loc.T("CredEdit.BtnRemoveField"), Margin = new Thickness(6, 0, 0, 0) };
 
         // Los rótulos visibles son el encabezado "Nombre | Valor" de arriba (FieldsHeader); acá va el
         // nombre accesible, que un lector de pantalla no saca de un encabezado suelto.
@@ -185,21 +191,39 @@ public partial class CredentialEditWindow : Window
         Grid.SetColumn(name, 0);
         Grid.SetColumn(value.Root, 2);
         Grid.SetColumn(secretBox, 3);
-        Grid.SetColumn(remove, 4);
+        Grid.SetColumn(copy, 4);
+        Grid.SetColumn(remove, 5);
         grid.Children.Add(name);
         grid.Children.Add(value.Root);
         grid.Children.Add(secretBox);
+        grid.Children.Add(copy);
         grid.Children.Add(remove);
 
         var row = new FieldRow { Root = grid, NameBox = name, ValueBox = value, SecretBox = secretBox };
         secretBox.Checked += (_, _) => value.SetMasked(!_revealed);
         secretBox.Unchecked += (_, _) => value.SetMasked(false);
+        copy.Click += (_, _) => FlashCopy(copy, value.Value);
         remove.Click += (_, _) => { _fields.Remove(row); FieldsPanel.Children.Remove(grid); UpdateFieldsHeader(); };
 
         _fields.Add(row);
         FieldsPanel.Children.Add(grid);
         UpdateFieldsHeader();
         if (focus) name.Focus();
+    }
+
+    /// <summary>
+    /// Copia y lo confirma EN el botón (el diálogo no tiene flash propio): «Copiado» ~1,5s y vuelve.
+    /// Vacío o portapapeles tomado también lo dice ahí — un botón que no hace nada se lee como roto.
+    /// </summary>
+    private static void FlashCopy(Button btn, string text)
+    {
+        string label = Loc.T("Creds.BtnCopyField");
+        btn.Content = text == "" ? Loc.T("CredEdit.CopyEmpty")
+                    : ClipboardCopy.TryCopy(text) ? Loc.T("CredEdit.Copied")
+                    : Loc.T("Creds.ClipboardBusy");
+        var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+        t.Tick += (_, _) => { t.Stop(); btn.Content = label; };
+        t.Start();
     }
 
     /// <summary>El encabezado de columnas sólo tiene sentido con al menos una fila debajo.</summary>

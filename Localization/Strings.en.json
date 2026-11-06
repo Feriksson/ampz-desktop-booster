@@ -375,6 +375,8 @@
   "CredEdit.FieldValue": "Value",
   "CredEdit.BtnAddField": "＋ Add field",
   "CredEdit.BtnRemoveField": "Remove",
+  "CredEdit.Copied": "Copied",
+  "CredEdit.CopyEmpty": "Empty",
   "CredEdit.BtnGenerate": "Generate",
   "CredEdit.BtnSave": "Save",
   "CredEdit.GenLength": "Length",

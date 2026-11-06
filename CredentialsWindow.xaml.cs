@@ -107,6 +107,7 @@ public partial class CredentialsWindow : Window
         DeleteBtn.Click += (_, _) => DeleteSelected();
         AllProjectsBtn.Click += (_, _) => ToggleAllProjects();
         CloseBtn.Click += (_, _) => Close();
+        MinimizeBtn.Click += (_, _) => WindowState = WindowState.Minimized;
 
         // Al cerrar se tapa todo: la ventana muere igual, pero no dejamos un secreto en un TextBlock
         // vivo mientras el GC decide cuándo juntarla.
@@ -434,7 +435,8 @@ public partial class CredentialsWindow : Window
             UnelevatedLauncher.StartShellTarget(UrlHelper.Normalize(url));
         }
         catch { return; }
-        Close(); // ya cumplió: lo que sigue es el browser, y la ventana se cerraría igual al perder el foco
+        // NO se cierra: es una ventana de trabajo largo, y después de abrir el login lo normal es
+        // volver por el usuario y la contraseña.
     }
 
     private void ToggleReveal()

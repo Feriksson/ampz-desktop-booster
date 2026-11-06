@@ -544,6 +544,8 @@ public sealed class HotkeyRouter
     /// disparar: copiar una contraseña sin mirarla sería el atajo más peligroso de la app). Desde OTRO
     /// desk cierra la vieja y abre la de éste: mostrar las credenciales del desk anterior como si
     /// fueran las tuyas es justo el error de contexto que el scope por desk vino a evitar.
+    /// Mismo trato que Notas en el re-press: la restaura si estaba minimizada y, si quedó en otro
+    /// escritorio, la muda a éste en vez de dejar que activarla te haga saltar.
     /// </summary>
     private void ShowCredentials()
     {
@@ -551,6 +553,10 @@ public sealed class HotkeyRouter
         if (_credentialsWindow is not null
             && SameDesk(_credentialsWindowDeskId, _credentialsWindowDeskIdx, _desktops.IdOf(idx), idx))
         {
+            IntPtr hwnd = new System.Windows.Interop.WindowInteropHelper(_credentialsWindow).Handle;
+            int home = _desktops.GetWindowDesktop(hwnd);
+            if (home >= 0 && home != idx) _desktops.SendWindowTo(hwnd, idx, follow: false);
+            WindowActivation.CloseEphemeralWindows(_credentialsWindow);
             _credentialsWindow.BringToFront();
             return;
         }
@@ -566,9 +572,13 @@ public sealed class HotkeyRouter
         // nueva; sin comparar por referencia, ese handler pondría en null a la recién abierta.
         var opened = _credentialsWindow;
         opened.Closed += (_, _) => { if (ReferenceEquals(_credentialsWindow, opened)) _credentialsWindow = null; };
-        // Efímera como Variables (Topmost, se cierra al perder el foco): un gestor de secretos
-        // olvidado abierto encima de lo que hacés es exactamente lo que no tiene que pasar.
-        opened.ShowFocused();
+        // Ventana de trabajo largo como Notas (pedido del usuario: se consulta mientras se trabaja en
+        // otra cosa): no Topmost, minimizable, NO se cierra al perder el foco. Minimizarla corre la
+        // red anti-foco-huérfano (RearmHookOnMinimize) y al mostrarla se cierran los modales
+        // efímeros que, por ser Topmost, la taparían. Ver la ⚠ de "ventanas utilitarias NO Topmost".
+        opened.RearmHookOnMinimize();
+        opened.ShowFocused(closeOnDeactivate: false);
+        WindowActivation.CloseEphemeralWindows(opened);
     }
 
     private void ShowProjectNotes()
