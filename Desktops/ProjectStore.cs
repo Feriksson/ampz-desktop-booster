@@ -347,7 +347,7 @@ public sealed class ProjectStore
             _session[idx] = new DeskAssignment(project, "");
 
         LooseNotes.ClearTag(project, module); // la nota suelta se queda, pierde sólo el contexto
-        Credentials.ClearScope(project, module); // las credenciales SÍ caen, como las variables del scope
+        Credentials.LiftScope(project, module); // las credenciales NO caen: suben al espacio
         Save();
     }
 
@@ -913,7 +913,7 @@ public sealed class ProjectStore
             _session.Remove(idx);
 
         LooseNotes.ClearTag(name, module: null); // las notas sueltas se quedan, sin etiqueta
-        Credentials.ClearScope(name, module: null); // el espacio y todos sus contextos
+        Credentials.LiftScope(name, module: null); // las del espacio y sus contextos suben a la global
         Save();
     }
 

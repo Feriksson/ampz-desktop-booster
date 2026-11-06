@@ -219,23 +219,34 @@ public sealed class CredentialStore
 
     /// <summary>
     /// Se borró un contexto (<paramref name="module"/> dado) o un espacio (<paramref name="module"/>
-    /// null → el espacio Y todos sus contextos, "P" y "P/…"). Las credenciales de ese scope se
-    /// BORRAN, igual que sus variables en la cascada de ProjectStore: re-ubicarlas en el padre o en la
-    /// global las dejaría a la vista desde desks que nunca fueron de ese cliente.
+    /// null → el espacio Y todos sus contextos, "P" y "P/…"). A diferencia de las variables, que caen
+    /// en la cascada de ProjectStore, las credenciales SUBEN un nivel: las de un contexto pasan a su
+    /// espacio y las de un espacio borrado (con las de sus contextos) pasan a la global. Decisión del
+    /// usuario: perder una contraseña por borrar un scope es irrecuperable, y que quede a la vista
+    /// desde otros desks es el costo aceptado — se puede mover o borrar a mano después.
     /// </summary>
-    public void ClearScope(string project, string? module)
+    public void LiftScope(string project, string? module)
     {
+        // Sin espacio no hay nada que subir: un "" acá sería la global, que nunca se toca por acá.
+        if (string.IsNullOrEmpty(project)) return;
+
         string prefix = project + ProjectStore.ScopeSeparator;
-        var doomed = _byScope.Keys.Where(k => module is null
+        string target = module is null ? ProjectStore.GlobalScope : project;
+        var lifted = _byScope.Keys.Where(k => module is null
                 ? string.Equals(k, project, StringComparison.OrdinalIgnoreCase)
                   || k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
                 : string.Equals(k, ProjectStore.ScopeKey(project, module), StringComparison.OrdinalIgnoreCase))
             .ToList();
-        // El scope global nunca se borra por acá aunque llegue un espacio vacío.
-        doomed.Remove(ProjectStore.GlobalScope);
-        if (doomed.Count == 0) return;
+        if (lifted.Count == 0) return;
 
-        foreach (var k in doomed) _byScope.Remove(k);
+        // Se anexan al final del destino, en el orden en que estaban: nada se pisa ni se fusiona por
+        // título — dos "Jira" con distinto dueño siguen siendo dos.
+        foreach (var k in lifted)
+        {
+            var list = _byScope[k];
+            _byScope.Remove(k);
+            ListFor(_byScope, target).AddRange(list);
+        }
         Save();
     }
 }
