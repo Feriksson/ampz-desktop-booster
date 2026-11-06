@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using AmpzDesktopBooster.Credentials;
 using AmpzDesktopBooster.Persistence;
 
 namespace AmpzDesktopBooster.Desktops;
@@ -91,6 +92,14 @@ public sealed class ProjectStore
     /// en el mismo acto que el resto de las capas (ver el bloque "Gestión de Espacios y Contextos").
     /// </summary>
     public LooseNoteStore LooseNotes { get; } = LooseNoteStore.Load();
+
+    /// <summary>
+    /// Credenciales por scope (archivo propio y cifrado, ver <see cref="CredentialStore"/>). Mismo motivo
+    /// que <see cref="LooseNotes"/>: viven acá para que cada reorganización y cada borrado del catálogo
+    /// muevan o limpien sus keys en el mismo acto que las variables — un secreto colgando de un scope
+    /// que ya no existe sería invisible desde la UI e imposible de borrar.
+    /// </summary>
+    public CredentialStore Credentials { get; } = CredentialStore.Load();
 
     public ProjectStore()
     {
@@ -338,6 +347,7 @@ public sealed class ProjectStore
             _session[idx] = new DeskAssignment(project, "");
 
         LooseNotes.ClearTag(project, module); // la nota suelta se queda, pierde sólo el contexto
+        Credentials.ClearScope(project, module); // las credenciales SÍ caen, como las variables del scope
         Save();
     }
 
@@ -903,6 +913,7 @@ public sealed class ProjectStore
             _session.Remove(idx);
 
         LooseNotes.ClearTag(name, module: null); // las notas sueltas se quedan, sin etiqueta
+        Credentials.ClearScope(name, module: null); // el espacio y todos sus contextos
         Save();
     }
 
@@ -1019,6 +1030,7 @@ public sealed class ProjectStore
         MapSuggestions((p, m) => (Same(p, oldName) ? newName : p, m));
         Dynamic?.RemapScope((p, m) => (Same(p, oldName) ? newName : p, m));
         LooseNotes.RemapScope((p, m) => (Same(p, oldName) ? newName : p, m));
+        Credentials.RemapScope((p, m) => (Same(p, oldName) ? newName : p, m));
         Save();
         return ScopeOpResult.Ok;
     }
@@ -1041,6 +1053,7 @@ public sealed class ProjectStore
         MapSuggestions((p, m) => Same(p, project) && Same(m, oldName) ? (p, newName) : (p, m));
         Dynamic?.RemapScope((p, m) => Same(p, project) && Same(m, oldName) ? (p, newName) : (p, m));
         LooseNotes.RemapScope((p, m) => Same(p, project) && Same(m, oldName) ? (p, newName) : (p, m));
+        Credentials.RemapScope((p, m) => Same(p, project) && Same(m, oldName) ? (p, newName) : (p, m));
         Save();
         return ScopeOpResult.Ok;
     }
@@ -1080,6 +1093,7 @@ public sealed class ProjectStore
         MapSuggestions((p, m) => Same(p, fromProject) && Same(m, module) ? (toProject, module) : (p, m));
         Dynamic?.RemapScope((p, m) => Same(p, fromProject) && Same(m, module) ? (toProject, module) : (p, m));
         LooseNotes.RemapScope((p, m) => Same(p, fromProject) && Same(m, module) ? (toProject, module) : (p, m));
+        Credentials.RemapScope((p, m) => Same(p, fromProject) && Same(m, module) ? (toProject, module) : (p, m));
         Save();
         return ScopeOpResult.Ok;
     }
@@ -1103,6 +1117,7 @@ public sealed class ProjectStore
         MapSuggestions((p, m) => Same(p, project) && Same(m, module) ? (module, "") : (p, m));
         Dynamic?.RemapScope((p, m) => Same(p, project) && Same(m, module) ? (module, "") : (p, m));
         LooseNotes.RemapScope((p, m) => Same(p, project) && Same(m, module) ? (module, "") : (p, m));
+        Credentials.RemapScope((p, m) => Same(p, project) && Same(m, module) ? (module, "") : (p, m));
         Save();
         return ScopeOpResult.Ok;
     }
@@ -1130,6 +1145,7 @@ public sealed class ProjectStore
         MapSuggestions((p, m) => Same(p, project) ? (toProject, project) : (p, m));
         Dynamic?.RemapScope((p, m) => Same(p, project) ? (toProject, project) : (p, m));
         LooseNotes.RemapScope((p, m) => Same(p, project) ? (toProject, project) : (p, m));
+        Credentials.RemapScope((p, m) => Same(p, project) ? (toProject, project) : (p, m));
         Save();
         return ScopeOpResult.Ok;
     }
@@ -1178,6 +1194,7 @@ public sealed class ProjectStore
         if (!ProjectExists(source)) return ScopeOpResult.NotFound;
         if (ProjectExists(newName)) return ScopeOpResult.NameTaken;
 
+        // Las CREDENCIALES no se copian, a propósito: un secreto no se duplica en silencio a otro cliente.
         CopyScope(source, newName, reassignedPorts);
         _data.History.Add(newName);
 
@@ -1234,6 +1251,7 @@ public sealed class ProjectStore
             color = ModulePalette.NextFree(siblings.Select(m => m.Color));
 
         siblings.Add(new ModuleEntry { Name = newName, Color = color });
+        // Las CREDENCIALES no se copian, a propósito: un secreto no se duplica en silencio a otro scope.
         CopyScope(ScopeKey(project, module), ScopeKey(toProject, newName), reassignedPorts);
 
         Save();

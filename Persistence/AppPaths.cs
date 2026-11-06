@@ -48,6 +48,14 @@ public static class AppPaths
     public static string LooseNotesFile => Path.Combine(DataDir, "notes.json");
 
     /// <summary>
+    /// Credenciales por scope — ver <see cref="Credentials.CredentialStore"/>. Es un BLOB DPAPI
+    /// (CurrentUser), no JSON: nada de lo que hay adentro se puede leer abriéndolo con un editor.
+    /// Archivo propio por el mismo motivo que las notas sueltas, y además porque un secreto no tiene
+    /// por qué viajar en el catálogo que el usuario abre y edita a mano.
+    /// </summary>
+    public static string CredentialsFile => Path.Combine(DataDir, "credentials.dat");
+
+    /// <summary>
     /// Biblioteca de conocimiento (tarjetas, vocabulario e historial de repasos) — ver
     /// <see cref="Knowledge.KnowledgeStore"/>. Es el ÚNICO dato en SQLite: el historial de repasos
     /// crece sin techo y se consulta por agregados, justo lo que un JSON reescrito entero no banca.
