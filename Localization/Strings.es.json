@@ -400,7 +400,6 @@
   "Creds.WindowTitle": "Credenciales",
   "Creds.HeaderSuffix": "Credenciales",
   "Creds.ColTitle": "Título / Servicio",
-  "Creds.ColIdentity": "Identidad",
   "Creds.ColUser": "Usuario",
   "Creds.ColPassword": "Contraseña",
   "Creds.ColUrl": "URL",
