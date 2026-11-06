@@ -1367,7 +1367,7 @@
         </TabItem>
 
         <!-- ===== Pestaña CONOCIMIENTO =====
-             Todo lo que juega el playbooker (NumpadClear) se administra acá: las bibliotecas (un
+             Todo lo que juega el playbooker (Win+Shift+Numpad−) se administra acá: las bibliotecas (un
              árbol), sus entradas (tarjetas y términos) y las dos listas personales que las cruzan,
              naturalezas e idiomas. Es un dominio aparte del de Espacios/Contextos: no comparten nada.
 

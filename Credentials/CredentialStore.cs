@@ -79,6 +79,9 @@ public sealed class CredentialStore
                 c.Title ??= ""; c.User ??= ""; c.Password ??= ""; c.Url ??= ""; c.Note ??= "";
                 c.Fields = (c.Fields ?? new()).Where(f => f is not null).ToList();
                 foreach (var f in c.Fields) { f.Name ??= ""; f.Value ??= ""; }
+                // Un "provider" desconocido NO se toca acá: se lee como Other (CredentialProviders.FromKey)
+                // y recién se reescribe si el usuario edita esa credencial.
+                c.NormalizeLinks();
                 ListFor(result, key).Add(c);
             }
         }
@@ -123,6 +126,27 @@ public sealed class CredentialStore
                 .ToDictionary(kv => kv.Key, kv => (IReadOnlyList<Credential>)kv.Value.Select(c => c.Clone()).ToList(),
                               StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Busca una credencial por id en TODOS los scopes (los vínculos "inicia sesión con" cruzan
+    /// espacios). Devuelve dónde vive y una copia; null si no existe — un vínculo colgado, porque la
+    /// cuenta se borró, se informa como tal en la UI en vez de reescribir a quienes la usaban.
+    /// </summary>
+    public (string ScopeKey, Credential Credential)? Find(Guid id)
+    {
+        foreach (var (key, list) in _byScope)
+            if (list.FirstOrDefault(c => c.Id == id) is { } c) return (key, c.Clone());
+        return null;
+    }
+
+    /// <summary>
+    /// El vínculo AL REVÉS: quiénes inician sesión con <paramref name="id"/> ("La usan: Resend,
+    /// Vercel…"), con su scope. Se deriva recorriendo todo y no se guarda en la cuenta de identidad:
+    /// dos listas que dicen lo mismo desde dos lados se desincronizan en la primera edición.
+    /// </summary>
+    public IReadOnlyList<(string ScopeKey, Credential Credential)> UsedBy(Guid id) =>
+        _byScope.SelectMany(kv => kv.Value.Where(c => c.SignInWith.Contains(id)).Select(c => (kv.Key, c.Clone())))
+                .ToList();
+
     // ── Escritura: cada mutación se guarda en el acto (no hay "guardar al cerrar") ─────────────
 
     /// <summary>Alta. Devuelve la copia guardada (con su id y fechas definitivas).</summary>
@@ -132,6 +156,7 @@ public sealed class CredentialStore
         // Un id repetido haría que Update/Delete tocaran la credencial equivocada.
         if (c.Id == Guid.Empty || FindById(c.Id) is not null) c.Id = Guid.NewGuid();
         c.CreatedAt = c.UpdatedAt = DateTime.UtcNow;
+        c.NormalizeLinks(); // después de fijar el id: el "nunca a sí misma" compara contra el definitivo
         ListFor(_byScope, scopeKey ?? "").Add(c);
         Save();
         return c.Clone();
@@ -147,6 +172,7 @@ public sealed class CredentialStore
         var c = credential.Clone();
         c.CreatedAt = list[at].CreatedAt; // el alta no la reescribe una edición
         c.UpdatedAt = DateTime.UtcNow;
+        c.NormalizeLinks();
         list[at] = c;
         Save();
         return true;
@@ -170,6 +196,12 @@ public sealed class CredentialStore
         return true;
     }
 
+    /// <summary>
+    /// Borra SÓLO esa credencial. Los <see cref="Credential.SignInWith"/> de otras que la apuntaban NO
+    /// se reescriben: quedan colgados y la UI los muestra como "(cuenta eliminada)". Limpiarlos en
+    /// silencio borraría el dato de que esa cuenta entraba con Google — justo lo que hace falta saber
+    /// para volver a cargar la identidad; la confirmación de borrado ya avisa cuántas dependen.
+    /// </summary>
     public bool Delete(string scopeKey, Guid id)
     {
         if (!_byScope.TryGetValue(scopeKey ?? "", out var list) || list.RemoveAll(c => c.Id == id) == 0) return false;
@@ -191,6 +223,9 @@ public sealed class CredentialStore
     /// Si dos keys caen en la misma (no debería: ProjectStore rechaza los choques de nombre antes),
     /// las listas se FUSIONAN en vez de pisarse — perder un secreto en silencio es lo único peor que
     /// tenerlo en el lugar equivocado.
+    ///
+    /// Los vínculos "inicia sesión con" no necesitan nada acá (ni en <see cref="LiftScope"/>): van
+    /// por id, y mover listas entre keys no cambia ningún id.
     /// </summary>
     public void RemapScope(Func<string, string, (string Project, string Module)> map)
     {

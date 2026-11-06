@@ -54,7 +54,7 @@ public partial class App : Application
     private DesktopConfig _desktopConfig = new();
     private Apps.AppsConfig _appsConfig = new();
     private ConfigWindow? _configWindow;
-    // El playbooker abierto (NumpadClear). Instancia única, como la config: ver ShowPlaybook.
+    // El playbooker abierto (Win+Shift+Numpad−). Instancia única, como la config: ver ShowPlaybook.
     private PlaybookWindow? _playbookWindow;
 
     // La barra. Se guarda porque la config le avisa cambios (la marca) DESPUÉS del arranque, y
@@ -260,7 +260,7 @@ public partial class App : Application
         bar.OnTaskWidgetClicked = () => _router.ShowTaskDetail();
         // Win+NumpadDel abre la MISMA config que el tray (instancia única; si ya está, la trae al frente).
         _router.OpenConfig = () => bar.OpenConfig?.Invoke();
-        // NumpadClear pelado: el playbooker (jugar la biblioteca de conocimiento).
+        // Win+Shift+Numpad−: el playbooker (jugar la biblioteca de conocimiento).
         _router.ShowPlaybook = ShowPlaybook;
 
         // Widget de atención (dots por desk que reclama). App es el TRADUCTOR: convierte el estado del
@@ -547,7 +547,7 @@ public partial class App : Application
             a.StartsWith("http", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// NumpadClear pelado: MUESTRA el playbooker. Instancia única; si ya existe —minimizado, tapado
+    /// Win+Shift+Numpad−: MUESTRA el playbooker. Instancia única; si ya existe —minimizado, tapado
     /// por otra ventana o en otro escritorio— lo trae acá, al frente y con foco. El atajo ya NO lo
     /// cierra nunca (antes lo cerraba desde la búsqueda): desde que la ventana se puede minimizar y
     /// vive detrás de las demás, apretar la tecla significa "mostrame el playbook", y una tecla suelta
