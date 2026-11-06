@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using AmpzDesktopBooster.Credentials;
@@ -131,6 +132,13 @@ public partial class CredentialEditWindow : Window
         _links.AddRange(c.SignInWith);
         RenderLinks();
 
+        // Los nombres como strings pelados: con IsEditable el texto de la caja ES el valor, y elegir
+        // de la lista sólo lo completa. El dueño de nadie es la caja vacía (no un ítem "Nadie", que
+        // al elegirlo dejaría escrito un nombre que se crearía como dueño).
+        foreach (var o in _creds.Owners()) OwnerCombo.Items.Add(o.Name);
+        OwnerCombo.Text = _creds.OwnerName(c.OwnerId);
+        OwnerCombo.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) => UpdateOwnerHint()));
+
         _snapshot = Fingerprint();
 
         RevealBtn.Click += (_, _) => ToggleReveal();
@@ -243,6 +251,25 @@ public partial class CredentialEditWindow : Window
     /// <summary>El encabezado de columnas sólo tiene sentido con al menos una fila debajo.</summary>
     private void UpdateFieldsHeader() =>
         FieldsHeader.Visibility = _fields.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    // ── Pertenece a ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Avisa, mientras tipeás, qué va a hacer Guardar con el dueño: crear uno nuevo, o reusar uno que
+    /// ya existe con otras mayúsculas. Sin esto, "synxs" guardado como "Synxs" parecería que el
+    /// editor te corrigió por su cuenta.
+    /// </summary>
+    private void UpdateOwnerHint()
+    {
+        string typed = OwnerCombo.Text.Trim();
+        string? match = _creds.Owners().Select(o => o.Name)
+                              .FirstOrDefault(n => string.Equals(n, typed, StringComparison.CurrentCultureIgnoreCase));
+        string text = typed == "" || match == typed ? ""
+                    : match is null ? string.Format(Loc.T("CredEdit.OwnerWillCreate"), typed)
+                    : string.Format(Loc.T("CredEdit.OwnerReuses"), match);
+        OwnerHint.Text = text;
+        OwnerHint.Visibility = text == "" ? Visibility.Collapsed : Visibility.Visible;
+    }
 
     // ── Inicia sesión con ──────────────────────────────────────────────────────
 
@@ -363,9 +390,11 @@ public partial class CredentialEditWindow : Window
             case Key.N when ctrl && shift:       AddFieldRow(null, focus: true); break;
             // Ctrl+K = "vincular" (el atajo de "insertar enlace" de casi todo editor); estaba libre.
             case Key.K when ctrl:                AddLink();       break;
+            // Ctrl+D = "Dueño": salta a "Pertenece a" (el mismo Ctrl+D abre los Dueños en el gestor).
+            case Key.D when ctrl:                OwnerCombo.Focus(); break;
             // Esc con un combo desplegado es del combo (cerrarlo), no del diálogo.
             case Key.Escape when !SpaceCombo.IsDropDownOpen && !ContextCombo.IsDropDownOpen
-                                 && !ProviderCombo.IsDropDownOpen:
+                                 && !ProviderCombo.IsDropDownOpen && !OwnerCombo.IsDropDownOpen:
                 Cancel();
                 break;
             default: return;
@@ -382,7 +411,7 @@ public partial class CredentialEditWindow : Window
     private string Fingerprint() => string.Join("\u001F", new[]
     {
         _picker.ScopeKey, TitleBox.Text, UserBox.Text, _password.Value, UrlBox.Text, NoteBox.Text,
-        SelectedProvider.ToString(), string.Join(",", _links),
+        SelectedProvider.ToString(), string.Join(",", _links), OwnerCombo.Text.Trim(),
     }.Concat(_fields.SelectMany(r => new[] { r.NameBox.Text, r.ValueBox.Value, r.SecretBox.IsChecked == true ? "1" : "0" })));
 
     /// <summary>
@@ -445,6 +474,9 @@ public partial class CredentialEditWindow : Window
         c.Fields = fields;
         c.Provider = SelectedProvider;
         c.SignInWith = _links.ToList();
+        // Recién acá, con todo validado: un dueño tipeado se crea sólo si la credencial se guarda
+        // (un error de validación de arriba no deja un dueño nuevo huérfano en la lista).
+        c.OwnerId = _creds.EnsureOwner(OwnerCombo.Text);
 
         string target = _picker.ScopeKey;
         Guid id;

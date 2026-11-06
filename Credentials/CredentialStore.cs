@@ -4,6 +4,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using AmpzDesktopBooster.Desktops;
 using AmpzDesktopBooster.Persistence;
 
@@ -43,33 +44,90 @@ public sealed class CredentialStore
     // credenciales y una reorganización movería una dejando la otra huérfana e invisible.
     private readonly Dictionary<string, List<Credential>> _byScope;
 
-    private CredentialStore(Dictionary<string, List<Credential>> byScope) => _byScope = byScope;
+    /// <summary>Dueños posibles (lista GLOBAL, ver <see cref="CredentialOwner"/>). Nombres únicos sin mayúsculas.</summary>
+    private readonly List<CredentialOwner> _owners;
+
+    private CredentialStore(Dictionary<string, List<Credential>> byScope, List<CredentialOwner> owners)
+    {
+        _byScope = byScope;
+        _owners = owners;
+    }
+
+    // ── Formato del payload (lo que va adentro del blob DPAPI) ─────────────────────────────────
+    // v1 era el dict de scopes PELADO en la raíz. Sumar los dueños obligó a envolverlo, y el sobre
+    // lleva una marca ("format") para distinguirlo sin ambigüedad: en v1 TODO valor de la raíz es un
+    // array (la lista de un scope), así que un "format" de texto no puede aparecer ahí por accidente.
+    // Un archivo v1 se sigue leyendo tal cual y se reescribe en v2 en el próximo guardado.
+    private const string FormatTag = "ampz-credentials";
+
+    private sealed class Payload
+    {
+        [JsonPropertyName("format")]  public string? Format { get; set; }
+        [JsonPropertyName("version")] public int Version { get; set; }
+        [JsonPropertyName("scopes")]  public Dictionary<string, List<Credential>>? Scopes { get; set; }
+        [JsonPropertyName("owners")]  public List<CredentialOwner>? Owners { get; set; }
+    }
 
     public static CredentialStore Load()
     {
-        Dictionary<string, List<Credential>>? raw = null;
+        Payload? raw = null;
         try { raw = SafeFile.LoadBytes(AppPaths.CredentialsFile, Decrypt); }
         catch { /* nunca tumbamos la app por la persistencia */ }
-        return new CredentialStore(Normalize(raw));
+        var owners = NormalizeOwners(raw?.Owners, out var remap);
+        return new CredentialStore(Normalize(raw?.Scopes, owners, remap), owners);
     }
 
-    private static Dictionary<string, List<Credential>>? Decrypt(byte[] blob)
+    private static Payload? Decrypt(byte[] blob)
     {
         // Unprotect tira CryptographicException si el blob no es nuestro o está roto: SafeFile lo
         // toma como archivo dañado. El texto plano se pisa en cuanto deja de hacer falta.
         byte[] plain = ProtectedData.Unprotect(blob, Entropy, DataProtectionScope.CurrentUser);
-        try { return JsonSerializer.Deserialize<Dictionary<string, List<Credential>>>(plain); }
+        try
+        {
+            // Primero el sobre v2. Un v1 con un espacio que casualmente se llame "scopes" u "owners"
+            // hace tirar este intento (ahí hay un array donde el sobre espera otra cosa): se cae al
+            // formato viejo, que es justo lo que ese archivo es.
+            Payload? env = null;
+            try { env = JsonSerializer.Deserialize<Payload>(plain); }
+            catch (JsonException) { }
+            if (env is { Format: FormatTag }) return env;
+            return new Payload { Scopes = JsonSerializer.Deserialize<Dictionary<string, List<Credential>>>(plain) };
+        }
         finally { Array.Clear(plain); }
     }
 
     /// <summary>
-    /// Pasa lo leído a un dict case-insensitive (fusionando keys que difieren sólo en mayúsculas) y
-    /// repara lo que rompería la identidad de una fila: id vacío o repetido, listas/strings nulos.
+    /// Deja la lista de dueños sana: nombres recortados, sin vacíos, sin ids repetidos y sin dos
+    /// grafías del mismo nombre (archivo tocado a mano). Un dueño descartado por nombre repetido NO
+    /// pierde sus credenciales: <paramref name="remap"/> las manda al que sobrevive.
     /// </summary>
-    private static Dictionary<string, List<Credential>> Normalize(Dictionary<string, List<Credential>>? raw)
+    private static List<CredentialOwner> NormalizeOwners(List<CredentialOwner>? raw, out Dictionary<Guid, Guid> remap)
+    {
+        remap = new Dictionary<Guid, Guid>();
+        var result = new List<CredentialOwner>();
+        foreach (var o in (raw ?? new()).Where(o => o is not null))
+        {
+            string name = (o.Name ?? "").Trim();
+            if (name == "" || o.Id == Guid.Empty || result.Any(x => x.Id == o.Id)) continue;
+            if (result.FirstOrDefault(x => SameName(x.Name, name)) is { } twin) { remap[o.Id] = twin.Id; continue; }
+            result.Add(new CredentialOwner { Id = o.Id, Name = name });
+        }
+        return result;
+    }
+
+    private static bool SameName(string a, string b) => string.Equals(a.Trim(), b.Trim(), StringComparison.CurrentCultureIgnoreCase);
+
+    /// <summary>
+    /// Pasa lo leído a un dict case-insensitive (fusionando keys que difieren sólo en mayúsculas) y
+    /// repara lo que rompería la identidad de una fila: id vacío o repetido, listas/strings nulos, un
+    /// dueño que ya no está en la lista.
+    /// </summary>
+    private static Dictionary<string, List<Credential>> Normalize(Dictionary<string, List<Credential>>? raw,
+                                                                  List<CredentialOwner> owners, Dictionary<Guid, Guid> remap)
     {
         var result = new Dictionary<string, List<Credential>>(StringComparer.OrdinalIgnoreCase);
         var seen = new HashSet<Guid>();
+        var ownerIds = owners.Select(o => o.Id).ToHashSet();
         foreach (var (key, list) in raw ?? new())
         {
             if (key is null || list is null) continue;
@@ -82,6 +140,8 @@ public sealed class CredentialStore
                 // Un "provider" desconocido NO se toca acá: se lee como Other (CredentialProviders.FromKey)
                 // y recién se reescribe si el usuario edita esa credencial.
                 c.NormalizeLinks();
+                if (c.OwnerId is { } oid && remap.TryGetValue(oid, out var survivor)) c.OwnerId = survivor;
+                if (c.OwnerId is { } still && !ownerIds.Contains(still)) c.OwnerId = null; // colgado = de nadie
                 ListFor(result, key).Add(c);
             }
         }
@@ -95,7 +155,11 @@ public sealed class CredentialStore
         {
             // Las listas vacías no se escriben: un scope que se quedó sin credenciales no tiene por
             // qué dejar su nombre adentro del archivo.
-            var payload = _byScope.Where(kv => kv.Value.Count > 0).ToDictionary(kv => kv.Key, kv => kv.Value);
+            var payload = new Payload
+            {
+                Format = FormatTag, Version = 2, Owners = _owners,
+                Scopes = _byScope.Where(kv => kv.Value.Count > 0).ToDictionary(kv => kv.Key, kv => kv.Value),
+            };
             plain = JsonSerializer.SerializeToUtf8Bytes(payload);
             byte[] blob = ProtectedData.Protect(plain, Entropy, DataProtectionScope.CurrentUser);
             SafeFile.WriteAllBytes(AppPaths.CredentialsFile, blob);
@@ -157,6 +221,7 @@ public sealed class CredentialStore
         if (c.Id == Guid.Empty || FindById(c.Id) is not null) c.Id = Guid.NewGuid();
         c.CreatedAt = c.UpdatedAt = DateTime.UtcNow;
         c.NormalizeLinks(); // después de fijar el id: el "nunca a sí misma" compara contra el definitivo
+        DropDanglingOwner(c);
         ListFor(_byScope, scopeKey ?? "").Add(c);
         Save();
         return c.Clone();
@@ -173,6 +238,7 @@ public sealed class CredentialStore
         c.CreatedAt = list[at].CreatedAt; // el alta no la reescribe una edición
         c.UpdatedAt = DateTime.UtcNow;
         c.NormalizeLinks();
+        DropDanglingOwner(c);
         list[at] = c;
         Save();
         return true;
@@ -211,6 +277,85 @@ public sealed class CredentialStore
 
     private Credential? FindById(Guid id) =>
         _byScope.Values.SelectMany(l => l).FirstOrDefault(c => c.Id == id);
+
+    /// <summary>
+    /// Un dueño que ya no está en la lista (se borró desde el diálogo de Dueños mientras el editor
+    /// estaba abierto) se guarda como "de nadie": un id colgado sería un dueño invisible e imposible
+    /// de quitar desde la UI.
+    /// </summary>
+    private void DropDanglingOwner(Credential c)
+    {
+        if (c.OwnerId is { } id && !_owners.Any(o => o.Id == id)) c.OwnerId = null;
+    }
+
+    // ── Dueños (lista global que alimenta el usuario) ─────────────────────────────────────────
+    // Cada mutación se guarda en el acto, como el resto del store.
+
+    /// <summary>Los dueños, por nombre. Copias.</summary>
+    public IReadOnlyList<CredentialOwner> Owners() =>
+        _owners.OrderBy(o => o.Name, StringComparer.CurrentCultureIgnoreCase).Select(o => o.Clone()).ToList();
+
+    /// <summary>Nombre del dueño; "" si es null o ya no existe (un id colgado es "de nadie").</summary>
+    public string OwnerName(Guid? id) =>
+        id is { } g && _owners.FirstOrDefault(o => o.Id == g) is { } o ? o.Name : "";
+
+    /// <summary>
+    /// El id del dueño con ese nombre, CREÁNDOLO si no existe — es lo que hace el editor al guardar lo
+    /// tipeado en "Pertenece a". El nombre se compara recortado y sin mayúsculas: "synxs" reusa a
+    /// "Synxs" en vez de abrir una segunda grafía, que es exactamente el desorden que vino a resolver
+    /// la lista. Vacío → null (de nadie).
+    /// </summary>
+    public Guid? EnsureOwner(string? name)
+    {
+        name = (name ?? "").Trim();
+        if (name == "") return null;
+        if (_owners.FirstOrDefault(o => SameName(o.Name, name)) is { } existing) return existing.Id;
+
+        var created = new CredentialOwner { Name = name };
+        _owners.Add(created);
+        Save();
+        return created.Id;
+    }
+
+    /// <summary>
+    /// Renombra. Como las credenciales lo referencian por id, todas muestran el nombre nuevo sin
+    /// reescribir ninguna. Cambiar SÓLO mayúsculas ("synxs" → "Synxs") vale: el choque es con OTRO dueño.
+    /// </summary>
+    public OwnerOpResult RenameOwner(Guid id, string newName)
+    {
+        newName = (newName ?? "").Trim();
+        var owner = _owners.FirstOrDefault(o => o.Id == id);
+        if (owner is null) return OwnerOpResult.NotFound;
+        if (newName == "") return OwnerOpResult.EmptyName;
+        if (_owners.Any(o => o.Id != id && SameName(o.Name, newName))) return OwnerOpResult.DuplicateName;
+        if (owner.Name == newName) return OwnerOpResult.Ok;
+
+        owner.Name = newName;
+        Save();
+        return OwnerOpResult.Ok;
+    }
+
+    /// <summary>Cuántas credenciales (de todos los scopes) le pertenecen.</summary>
+    public int OwnerUsage(Guid id) => _byScope.Values.Sum(l => l.Count(c => c.OwnerId == id));
+
+    /// <summary>
+    /// Saca al dueño de la lista y lo QUITA de sus credenciales, que quedan intactas y "de nadie" —
+    /// borrar un dueño nunca borra una credencial. A diferencia de un vínculo "inicia sesión con" no
+    /// se deja colgado: un id de dueño que no existe no le sirve a nadie para reconstruir nada.
+    /// Devuelve cuántas credenciales lo perdieron; null si el dueño no existía.
+    /// </summary>
+    public int? DeleteOwner(Guid id)
+    {
+        if (_owners.RemoveAll(o => o.Id == id) == 0) return null;
+        int affected = 0;
+        foreach (var c in _byScope.Values.SelectMany(l => l).Where(c => c.OwnerId == id))
+        {
+            c.OwnerId = null; // no re-fecha: quitarle el dueño no es editar su contenido
+            affected++;
+        }
+        Save();
+        return affected;
+    }
 
     // ── Seguir las reorganizaciones del catálogo (las llama ProjectStore) ─────────────────────
 
