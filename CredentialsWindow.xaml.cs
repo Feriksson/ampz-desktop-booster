@@ -464,8 +464,21 @@ public partial class CredentialsWindow : Window
         OpenEditor(row);
     }
 
-    /// <summary>Alta (row null) o edición de la fila. El editor llega con su propia ventana.</summary>
-    private void OpenEditor(Row? row) => ShowFlash(Loc.T("Creds.EditorPending"));
+    /// <summary>
+    /// Alta (row null, en el scope de este desk) o edición de la fila (en el scope donde vive). El
+    /// editor guarda solo; acá se refresca y se deja seleccionado lo guardado. Si quedó en un scope
+    /// que esta vista no muestra (otro espacio sin el toggle), se avisa dónde — si no, el alta
+    /// parecería perdida (mismo criterio que Variables).
+    /// </summary>
+    private void OpenEditor(Row? row)
+    {
+        var saved = CredentialEditWindow.Show(this, _store, row?.ScopeKey ?? _scopeKey, row?.Credential);
+        if (saved is not { } s) return;
+
+        RefreshList(s.Id);
+        if (SelectedRow?.Credential?.Id != s.Id)
+            ShowFlash(string.Format(Loc.T("Scope.SavedIn"), ScopePicker.LabelOf(s.ScopeKey)));
+    }
 
     // ── Feedback ───────────────────────────────────────────────────────────────
 
