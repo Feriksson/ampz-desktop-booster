@@ -1577,6 +1577,37 @@
                             </Setter>
                         </Style>
 
+                        <!-- El triángulo que pliega / despliega una biblioteca con hijas. Es la marca
+                             de siempre de "esto se abre" (▸ cerrado, ▾ abierto) y va en texto. La zona
+                             clickeable es de 24×24 aunque el dibujo sea chico; el margen negativo evita
+                             que agrande el renglón. No toma el foco del teclado a propósito: con el foco
+                             en la lista se pliega y despliega con ← →, y un triángulo enfocable por
+                             renglón volvería interminable el recorrido con Tab. -->
+                        <Style x:Key="KnDisclosure" TargetType="Button">
+                            <Setter Property="Width" Value="24" />
+                            <Setter Property="Height" Value="24" />
+                            <Setter Property="Margin" Value="-4,-4,2,-4" />
+                            <Setter Property="Focusable" Value="False" />
+                            <Setter Property="Cursor" Value="Hand" />
+                            <Setter Property="FontSize" Value="12" />
+                            <Setter Property="Foreground" Value="{StaticResource FgMuted}" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="bd" Background="Transparent" CornerRadius="3">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bd" Property="Background" Value="#3A3A3A" />
+                                                <Setter Property="Foreground" Value="{StaticResource Fg}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+
                         <!-- Por qué un botón está apagado: texto A LA VISTA al lado, nunca un tooltip
                              (WPF ni siquiera muestra el tooltip de un control deshabilitado). -->
                         <Style x:Key="KnReason" TargetType="TextBlock">
@@ -1611,6 +1642,12 @@
                                     <TextBlock Text="{Binding LibraryText}" Visibility="{Binding LibraryVisibility}"
                                                FontSize="11" Foreground="{StaticResource FgMuted}"
                                                TextTrimming="CharacterEllipsis" />
+                                    <!-- "Con problema · <la nota>": la marca va ESCRITA (no es un color ni
+                                         un ícono) y trae el comienzo de la nota; entera, en el tooltip y
+                                         debajo de la lista cuando la fila está elegida. -->
+                                    <TextBlock Text="{Binding IssueText}" Visibility="{Binding IssueVisibility}"
+                                               FontSize="11" Foreground="{StaticResource KnGold}"
+                                               TextTrimming="CharacterEllipsis" ToolTip="{Binding IssueTip}" />
                                 </StackPanel>
                                 <TextBlock Grid.Column="2" Text="{Binding BackPreview}" FontSize="12"
                                            Foreground="{StaticResource FgMuted}" VerticalAlignment="Center"
@@ -1725,13 +1762,31 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
-                                <TextBlock Grid.Row="0" Text="{loc:Translate Config.KnowledgeLibrariesHeader}"
-                                           Foreground="{StaticResource FgMuted}" FontSize="11" Margin="2,0,0,5" />
+                                <!-- Rótulo + expandir / contraer TODO: con muchas bibliotecas anidadas
+                                     el árbol entero no entra, y plegarlas una por una no es navegar. -->
+                                <Grid Grid.Row="0" Margin="2,0,0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{loc:Translate Config.KnowledgeLibrariesHeader}"
+                                               Foreground="{StaticResource FgMuted}" FontSize="11" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <Button x:Name="KnLibExpandAllBtn" Style="{StaticResource KnTextButton}" FontSize="11"
+                                                Padding="6,2" Content="{loc:Translate Config.KnowledgeLibExpandAll}" />
+                                        <Button x:Name="KnLibCollapseAllBtn" Style="{StaticResource KnTextButton}" FontSize="11"
+                                                Padding="6,2" Content="{loc:Translate Config.KnowledgeLibCollapseAll}" />
+                                    </StackPanel>
+                                </Grid>
 
                                 <Border Grid.Row="1" Background="{StaticResource Panel}" CornerRadius="4" Padding="2">
                                     <Grid>
+                                        <!-- AllowDrop: una biblioteca se ARRASTRA sobre otra para meterla
+                                             adentro, o al borde entre dos para reordenarla (ver
+                                             ConfigWindow.KnowledgeTree.cs). Todo lo que hace el arrastre
+                                             se puede hacer sin él: «Mover a…», Subir / Bajar, Alt+↑ ↓. -->
                                         <ListBox x:Name="KnLibList" Background="Transparent" BorderThickness="0"
-                                                 Foreground="{StaticResource Fg}" FontSize="13"
+                                                 Foreground="{StaticResource Fg}" FontSize="13" AllowDrop="True"
                                                  ItemContainerStyle="{StaticResource KnRow}"
                                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                                  AutomationProperties.Name="{loc:Translate Config.KnowledgeLibrariesHeader}" />
@@ -1756,8 +1811,20 @@
                                         <Button x:Name="KnLibRenameBtn"   Content="{loc:Translate Config.KnowledgeLibRename}"   Margin="0,0,6,6" />
                                         <Button x:Name="KnLibDeleteBtn"   Content="{loc:Translate Config.KnowledgeLibDelete}"   Margin="0,0,6,6"
                                                 Foreground="{StaticResource KnDanger}" />
+                                        <!-- El orden entre hermanas (el mismo que se ve en el playbook, en
+                                             los destinos de «mover» y en una exportación). -->
+                                        <Button x:Name="KnLibUpBtn"   Content="{loc:Translate Config.KnowledgeLibUp}"   Margin="0,0,6,6"
+                                                ToolTip="Alt+↑" />
+                                        <Button x:Name="KnLibDownBtn" Content="{loc:Translate Config.KnowledgeLibDown}" Margin="0,0,6,6"
+                                                ToolTip="Alt+↓" />
                                     </WrapPanel>
                                     <TextBlock x:Name="KnLibReason" Style="{StaticResource KnReason}" Margin="0,0,0,6" />
+                                    <!-- Por qué Subir / Bajar están apagados; y, mientras se arrastra una
+                                         biblioteca, DÓNDE va a caer o por qué ahí no se puede. Alto fijo
+                                         de dos renglones: mostrar o cambiar el texto no mueve los combos. -->
+                                    <TextBlock x:Name="KnLibOrderReason" Style="{StaticResource KnReason}" Margin="0,0,0,6"
+                                               Height="30" VerticalAlignment="Top"
+                                               AutomationProperties.LiveSetting="Polite" />
 
                                     <!-- Mover: el destino se elige y se confirma con su botón (cambiar un
                                          combo con las flechas no puede ir moviendo la biblioteca por el árbol). -->
@@ -1814,6 +1881,7 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="{loc:Translate Config.KnowledgeSearchLabel}"
                                                VerticalAlignment="Center" Foreground="{StaticResource FgMuted}"
@@ -1839,8 +1907,13 @@
                                                          Content="{loc:Translate Config.KnowledgeKindTerms}" />
                                         </StackPanel>
                                     </Border>
+                                    <!-- Sólo las que tienen un problema anotado (lo que se marcó jugando,
+                                         con R), con cuántas son: para barrerlas de una. El texto y el
+                                         número los pone el code-behind. -->
+                                    <CheckBox x:Name="KnIssueOnlyChk" Grid.Column="4" FontSize="12" Margin="14,0,0,0"
+                                              VerticalAlignment="Center" />
                                     <!-- Sólo aparece con algún filtro puesto, y siempre en este lugar. -->
-                                    <Button x:Name="KnEntryClearBtn" Grid.Column="4" Margin="10,0,0,0" Visibility="Collapsed"
+                                    <Button x:Name="KnEntryClearBtn" Grid.Column="5" Margin="10,0,0,0" Visibility="Collapsed"
                                             Content="{loc:Translate Config.KnowledgeClearFilters}" />
                                 </Grid>
 
@@ -1892,17 +1965,27 @@
                                     </Grid>
                                 </Border>
 
-                                <!-- Cuántas se ven de cuántas hay (nunca esconder el total) + la leyenda de la cursiva. -->
-                                <Grid Grid.Row="4" Margin="2,5,2,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock x:Name="KnEntryCountText" Grid.Column="0" FontSize="11"
-                                               Foreground="{StaticResource FgMuted}" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Grid.Column="1" FontSize="11" Foreground="{StaticResource FgMuted}"
-                                               Text="{loc:Translate Config.KnowledgeNatureLegend}" />
-                                </Grid>
+                                <StackPanel Grid.Row="4">
+                                    <!-- El problema anotado de la fila elegida, ENTERO (en la fila entra
+                                         sólo el comienzo). Aparece con UNA fila elegida que lo tenga. -->
+                                    <Border x:Name="KnEntryIssueBox" Visibility="Collapsed" Margin="0,6,0,0" Padding="10,6"
+                                            Background="{StaticResource Panel}" CornerRadius="4"
+                                            BorderThickness="3,0,0,0" BorderBrush="{StaticResource KnGold}">
+                                        <TextBlock x:Name="KnEntryIssueText" FontSize="12" TextWrapping="Wrap"
+                                                   MaxHeight="68" TextTrimming="CharacterEllipsis" />
+                                    </Border>
+                                    <!-- Cuántas se ven de cuántas hay (nunca esconder el total) + la leyenda de la cursiva. -->
+                                    <Grid Margin="2,5,2,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="KnEntryCountText" Grid.Column="0" FontSize="11"
+                                                   Foreground="{StaticResource FgMuted}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" FontSize="11" Foreground="{StaticResource FgMuted}"
+                                                   Text="{loc:Translate Config.KnowledgeNatureLegend}" />
+                                    </Grid>
+                                </StackPanel>
 
                                 <WrapPanel Grid.Row="5" Margin="0,8,0,0">
                                     <Button x:Name="KnEntryNewCardBtn" Content="{loc:Translate Config.KnowledgeEntryNewCard}" MinWidth="110" Margin="0,0,6,6" />

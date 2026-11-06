@@ -5,7 +5,7 @@
         Title="{loc:Translate Notes.WindowTitle}"
         WindowStyle="None" ResizeMode="CanResize"
         WindowStartupLocation="Manual"
-        ShowInTaskbar="False" Topmost="True"
+        ShowInTaskbar="True" Topmost="False"
         MinWidth="960" MinHeight="420"
         Background="#1E1E1E" UseLayoutRounding="True"
         FontFamily="Segoe UI">
@@ -216,6 +216,11 @@
                     <Button x:Name="SaveBtn"   Content="{loc:Translate Notes.BtnSave}" Tag="{loc:Translate Keys.CtrlS}" MinWidth="80" Margin="0,0,6,6" Padding="10,4" />
                     <Button x:Name="SearchBtn" Content="{loc:Translate Notes.BtnSearch}" Tag="{loc:Translate Keys.CtrlF}" MinWidth="80" Margin="0,0,6,6" Padding="10,4" />
                     <Button x:Name="AllProjectsBtn" Content="{loc:Translate Paths.BtnAllProjectsOff}" Tag="{loc:Translate Keys.CtrlP}" MinWidth="160" Margin="0,0,6,6" Padding="10,4" />
+                    <!-- Notas es una ventana de trabajo LARGO (pedido del usuario): no es Topmost, se
+                         minimiza y figura en la barra de tareas — se escribe en ella mientras se mira
+                         otra cosa, y una ventana que tapa todo obligaba a cerrarla para leer lo que se
+                         estaba anotando. Sin keycap: minimizar no tiene atajo propio (es el de Windows). -->
+                    <Button x:Name="MinimizeBtn" Content="{loc:Translate Notes.BtnMinimize}" MinWidth="80" Margin="0,0,6,6" Padding="10,4" />
                     <!-- IsCancel: Esc cierra aunque el foco esté en un botón (ver ProjectPathsWindow). -->
                     <Button x:Name="CloseBtn"  Content="{loc:Translate Paths.BtnClose}" Tag="{loc:Translate Keys.Escape}" MinWidth="80" Margin="0,0,6,6" Padding="10,4" IsCancel="True" />
                 </WrapPanel>

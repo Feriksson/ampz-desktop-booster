@@ -27,6 +27,12 @@ namespace AmpzDesktopBooster.Knowledge;
 // es un campo OPCIONAL, y un lector anterior ignora las claves que no conoce — importa la card igual,
 // sin su ayuda. Subir la versión habría hecho que esos lectores rechacen el archivo entero por un dato
 // que podían saltear.
+//
+// Lo que NO viaja, además del progreso: el PROBLEMA ANOTADO de una entrada (Entry.IssueNote) y el
+// "plegada" de una biblioteca (Library.Collapsed). Los dos son personales de quien usa la base —una
+// nota de trabajo y una preferencia de cómo mirar el árbol— y no parte de lo que se comparte. Por lo
+// mismo la importación no los toca: una entrada que ya estaba conserva su nota tal cual, y una que
+// entra nace sin ninguna.
 
 /// <summary>
 /// Una entrada tal como viaja en el archivo. <see cref="Nature"/> null = la hereda.

@@ -15,6 +15,7 @@ namespace AmpzDesktopBooster;
 // La lista de la búsqueda mezcla cuatro clases de fila, y cada una hace otra cosa con Enter:
 //
 //   • biblioteca / naturaleza / «Vocabulario» → se JUEGA (pasa al armado);
+//   • «Con un problema anotado»               → se REVISA (sus entradas, como fichas);
 //   • una entrada (término o card)            → se LEE (pasa a su ficha);
 //   • «Crear término / card "texto"…»         → se CARGA, con lo tipeado ya puesto;
 //   • rótulos de grupo y avisos               → nada: no se pueden elegir.
@@ -28,7 +29,7 @@ public partial class PlaybookWindow
     /// algo que se recorre: se avisa que hay más y se invita a afinar la búsqueda.</summary>
     private const int EntryResultCap = 50;
 
-    private enum PickKind { Library, Nature, Vocabulary }
+    private enum PickKind { Library, Nature, Vocabulary, Issues }
 
     /// <summary>
     /// Base de toda fila de la lista. <see cref="Selectable"/> false = rótulo o aviso: se ve, pero
@@ -48,6 +49,10 @@ public partial class PlaybookWindow
     private sealed class PickRow : ListRow
     {
         public PickKind Kind { get; init; }
+        /// <summary>Sólo en una biblioteca: su id, el de su madre y cuántas hijas directas tiene.</summary>
+        public long LibraryId { get; init; }
+        public long? ParentLibraryId { get; init; }
+        public int ChildCount { get; init; }
         public int Depth { get; init; }
         /// <summary>"Madre › " (vacío en una raíz, una naturaleza o el vocabulario): los ancestros, atenuados.</summary>
         public string PathPrefix { get; init; } = "";
@@ -55,7 +60,13 @@ public partial class PlaybookWindow
         /// <summary>El chip que dice qué es cuando no es una biblioteca ("Naturaleza", "Vocabulario").</summary>
         public string ChipText { get; init; } = "";
         public Brush ChipBrush { get; init; } = Brushes.Transparent;
-        public string CountText { get; init; } = "";
+        /// <summary>Lo que se ve en la columna del conteo. En una biblioteca PLEGADA suma cuántas
+        /// tiene adentro; por eso lo recalcula ApplyFilter a partir de <see cref="BaseCountText"/>.</summary>
+        public string CountText { get; set; } = "";
+        public string BaseCountText { get; init; } = "";
+        /// <summary>"▸" plegada · "▾" abierta · "" sin hijas o fuera del árbol. Lo pone ApplyFilter.</summary>
+        public string Disclosure { get; set; } = "";
+        public double DisclosureWidth { get; set; }
         public SolidityAverage Average { get; init; }
         public string SolidityText { get; init; } = "";
         public double BarFillWidth { get; init; }
@@ -116,8 +127,13 @@ public partial class PlaybookWindow
         };
     }
 
-    // Las entradas que mostró la última búsqueda, en su orden: es por donde se mueven ← → en la ficha.
+    // Las entradas que mostró la última búsqueda, en su orden: es por donde se mueven Q / W en la ficha.
     private List<Entry> _entryResults = new();
+
+    // Las bibliotecas PLEGADAS (ver LoadData). Con el buscador vacío sus hijas no se listan; al
+    // buscar se ignora — una coincidencia nunca queda escondida dentro de una rama cerrada.
+    private HashSet<long> _collapsedLibraries = new();
+    private const double DisclosureColumn = 26;
 
     private void InitBrowse()
     {
@@ -160,9 +176,22 @@ public partial class PlaybookWindow
         var visible = new List<ListRow>();
         var playable = filtering
             ? _rows.Where(r => words.All(w => r.Haystack.Contains(w, StringComparison.Ordinal))).ToList()
-            : _rows;
+            : VisibleTreeRows();
         foreach (var row in playable)
-            row.Indent = new Thickness(filtering || row.Kind != PickKind.Library ? 0 : row.Depth * IndentPerLevel, 0, 0, 0);
+        {
+            bool inTree = !filtering && row.Kind == PickKind.Library;
+            bool collapsed = inTree && row.ChildCount > 0 && _collapsedLibraries.Contains(row.LibraryId);
+            row.Indent = new Thickness(inTree ? row.Depth * IndentPerLevel : 0, 0, 0, 0);
+            row.DisclosureWidth = inTree ? DisclosureColumn : 0;
+            row.Disclosure = !inTree || row.ChildCount == 0 ? "" : collapsed ? "▸" : "▾";
+            // Plegada, dice cuántas bibliotecas tiene adentro (el conteo de entradas ya las incluía).
+            // Sólo las bibliotecas tienen las dos versiones del conteo; el resto no se toca.
+            if (row.Kind == PickKind.Library) row.CountText = collapsed
+                ? (row.ChildCount == 1
+                      ? Loc.T("Playbook.CollapsedOne")
+                      : string.Format(Loc.T("Playbook.CollapsedMany"), row.ChildCount)) + " · " + row.BaseCountText
+                : row.BaseCountText;
+        }
         visible.AddRange(playable);
 
         _entryResults = new List<Entry>();
@@ -203,6 +232,73 @@ public partial class PlaybookWindow
 
         if (wanted >= 0) FocusRow(wanted);
         return wanted >= 0;
+    }
+
+    /// <summary>
+    /// Las filas del árbol que se VEN con el buscador vacío: todas, menos las bibliotecas que cuelgan
+    /// de una plegada. <see cref="_rows"/> ya viene en orden de árbol (cada madre seguida de las
+    /// suyas), así que alcanza con saltear lo que sea más profundo que la última plegada.
+    /// </summary>
+    private List<PickRow> VisibleTreeRows()
+    {
+        var rows = new List<PickRow>();
+        int? hiddenBelow = null; // la profundidad de la biblioteca plegada bajo la que se está
+        foreach (var row in _rows)
+        {
+            if (row.Kind != PickKind.Library)
+            {
+                hiddenBelow = null;
+                rows.Add(row);
+                continue;
+            }
+            if (hiddenBelow is { } depth && row.Depth > depth) continue;
+            hiddenBelow = _collapsedLibraries.Contains(row.LibraryId) && row.ChildCount > 0 ? row.Depth : null;
+            rows.Add(row);
+        }
+        return rows;
+    }
+
+    /// <summary>¿La fila es una biblioteca del ÁRBOL (buscador vacío)? Sólo ahí se pliega.</summary>
+    private bool IsTreeRow(ListRow? row) =>
+        row is PickRow { Kind: PickKind.Library } && SearchBox.Text.Trim() == "";
+
+    /// <summary>
+    /// Pliega o despliega una biblioteca de la lista y lo GUARDA: es el mismo estado que muestra el
+    /// árbol de la config. Si la base no lo guarda vale igual por esta sesión (es cómo se mira la
+    /// lista, no un dato que se pierda). La fila queda elegida y con el foco.
+    /// </summary>
+    private void SetRowCollapsed(PickRow row, bool collapsed)
+    {
+        if (row.ChildCount == 0) return;
+        _store.SetLibraryCollapsed(row.LibraryId, collapsed);
+        if (collapsed) _collapsedLibraries.Add(row.LibraryId);
+        else _collapsedLibraries.Remove(row.LibraryId);
+        ApplyFilter();
+        FocusRow(PickList.Items.IndexOf(row));
+    }
+
+    /// <summary>
+    /// ← → sobre una biblioteca del árbol, como en cualquier árbol (y como en la config): ← la pliega
+    /// o, si ya lo está o no tiene hijas, sube a su madre; → la despliega o, si ya está abierta, baja
+    /// a la primera hija. Devuelve si la tecla era para esto.
+    /// </summary>
+    private bool OnTreeArrow(Key key)
+    {
+        if (PickList.SelectedItem is not PickRow row || !IsTreeRow(row)) return false;
+        bool open = row.ChildCount > 0 && !_collapsedLibraries.Contains(row.LibraryId);
+        if (key == Key.Left)
+        {
+            if (open) SetRowCollapsed(row, true);
+            else if (row.ParentLibraryId is { } parent)
+                FocusRow(PickList.Items.Cast<object>().ToList()
+                    .FindIndex(r => r is PickRow { Kind: PickKind.Library } p && p.LibraryId == parent));
+        }
+        else if (row.ChildCount > 0)
+        {
+            if (!open) SetRowCollapsed(row, false);
+            else FocusRow(PickList.SelectedIndex + 1); // abierta: la fila de abajo es su primera hija
+        }
+        return true;
     }
 
     /// <summary>
@@ -279,10 +375,11 @@ public partial class PlaybookWindow
         switch (e.Key)
         {
             case Key.Escape:
-                // Esc en dos tiempos: primero limpia el texto, recién con el buscador vacío cierra.
+                // Esc en tiempos: primero limpia el texto; con el buscador vacío PIDE cerrar, y cierra
+                // recién con la pulsación siguiente (ver RequestClose).
                 e.Handled = true;
                 if (SearchBox.Text != "") { SearchBox.Clear(); FocusSearchBox(); }
-                else Close();
+                else RequestClose();
                 break;
 
             case Key.F2:
@@ -290,7 +387,7 @@ public partial class PlaybookWindow
                 ShowStats(reload: false);
                 break;
 
-            case Key.Enter when !FocusIsOn(CloseBtn, StatsBtn):
+            case Key.Enter when !FocusIsOn(CloseBtn, MinimizeBtn, StatsBtn):
                 e.Handled = true;
                 ActivateSelected();
                 break;
@@ -309,6 +406,12 @@ public partial class PlaybookWindow
                 e.Handled = true;
                 if (NextSelectable(PickList.SelectedIndex, -1) is { } above) FocusRow(above);
                 else FocusSearchBox(); // subir desde la primera vuelve al buscador
+                break;
+
+            // ← → en la LISTA pliegan y despliegan una biblioteca del árbol. En el buscador siguen
+            // siendo del cursor del texto.
+            case Key.Left or Key.Right when inList && _keyModifiers == ModifierKeys.None && OnTreeArrow(e.Key):
+                e.Handled = true;
                 break;
 
             case Key.Back when inList:
@@ -345,7 +448,11 @@ public partial class PlaybookWindow
             && ItemsControl.ContainerFromElement(PickList, source) is ListBoxItem { DataContext: ListRow row })
         {
             e.Handled = true;
-            Activate(row);
+            // El click sobre el triángulo pliega / despliega; en el resto de la fila, la elige.
+            if (source is TextBlock { Tag: "disclosure" } && row is PickRow { ChildCount: > 0 } tree && IsTreeRow(tree))
+                SetRowCollapsed(tree, !_collapsedLibraries.Contains(tree.LibraryId));
+            else
+                Activate(row);
         }
     }
 
@@ -371,6 +478,11 @@ public partial class PlaybookWindow
     {
         switch (row)
         {
+            // Las que tienen un problema anotado se abren como FICHAS y no como ronda: lo que hay
+            // que hacer con ellas es leer la nota y arreglarlas (E), no responderlas.
+            case PickRow { Kind: PickKind.Issues } issues:
+                OpenFicha(issues.EntryIds.Where(_entries.ContainsKey).Select(id => _entries[id]).ToList(), 0, fromIssues: true);
+                break;
             case PickRow pick:
                 EnterSetup(pick);
                 break;
@@ -406,10 +518,15 @@ public partial class PlaybookWindow
     /// nuevos, tras una edición cambió una entrada); si sólo se volvió del armado no cambió nada y no
     /// se toca. El texto del buscador se conserva siempre; <paramref name="selectEntryId"/> deja
     /// además marcada esa entrada, que es como se vuelve de una ficha sin perder el lugar.
+    /// Si por el camino se editó, eliminó o anotó algo (<see cref="_staleRows"/>) se relee igual.
     /// </summary>
     private void BackToSearch(bool reload, long? selectEntryId = null)
     {
-        if (reload) LoadData();
+        // ANTES de releer: un problema a medio anotar se guarda primero, o la fila «Con un problema
+        // anotado» se arma con la foto de antes y queda vieja (ShowStage lo guardaba, pero después).
+        CommitIssueIfOpen();
+        if (reload || _staleRows) LoadData();
+        _staleRows = false;
         _picked = null;
         _pickedEntries = new List<Entry>();
         _selection = new List<Entry>();

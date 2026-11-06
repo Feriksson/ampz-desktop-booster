@@ -19,8 +19,9 @@ namespace AmpzDesktopBooster;
 /// (mismo recurso que el Shortcuts Helper):
 ///
 ///   BÚSQUEDA → ARMADO (qué lado se muestra primero) → QUIZ → RESUMEN        (este archivo;
-///                                             la ayuda del quiz, tecla H: PlaybookWindow.Helper.cs)
+///                                             la ayuda del quiz, tecla A: PlaybookWindow.Helper.cs)
 ///   BÚSQUEDA → FICHA de una entrada, para leerla                             (PlaybookWindow.Ficha.cs)
+///   QUIZ / FICHA: editar, eliminar y anotar un problema en la entrada        (PlaybookWindow.Actions.cs)
 ///   BÚSQUEDA → ESTADÍSTICAS                                                  (PlaybookWindow.Stats.cs)
 ///
 /// La búsqueda, con sus filas y la captura rápida, vive en PlaybookWindow.Browse.cs.
@@ -33,10 +34,14 @@ namespace AmpzDesktopBooster;
 ///      puede sugerir una obligación — tampoco las estadísticas, que son un espejo y no una agenda.
 ///   2. Es teclado primero (la app entera lo es), pero NADA es sólo-teclado: cada tecla tiene su
 ///      botón a la vista con la tecla dibujada, y la pista del pie dice siempre qué vale ahora.
-///   3. Se abre con <c>ShowFocused(closeOnDeactivate: false)</c>: una sesión de estudio tiene que
-///      sobrevivir a un Alt+Tab o a un cambio de escritorio. Por lo mismo el re-press del atajo sólo
-///      la cierra desde la búsqueda (<see cref="CanCloseOnRepress"/>): una tecla suelta no puede
-///      matar un quiz a la mitad.
+///   3. Es una ventana de trabajo LARGO: no es Topmost, se minimiza, figura en la barra de tareas y
+///      se abre con <c>ShowFocused(closeOnDeactivate: false)</c> — una sesión de estudio tiene que
+///      sobrevivir a un Alt+Tab o a un cambio de escritorio. Por lo mismo NADA la cierra de un solo
+///      gesto: cerrar pide una segunda pulsación (PlaybookWindow.Guard.cs) y el atajo que la abre
+///      sólo la trae al frente (<c>App.ShowPlaybook</c>).
+///   4. El quiz se juega entero con la MANO IZQUIERDA (Espacio, 1..4, A, E, X, R, Esc; Q / W en la
+///      ficha): es el gesto que se repite cientos de veces, y con la derecha en el mouse o en el
+///      café. Las teclas de antes (H, Enter, flechas) siguen valiendo, sin anunciarse.
 ///
 /// Los datos se cargan UNA vez al abrir (bibliotecas, entradas, naturalezas, historial) y todo lo
 /// que muestran las listas —conteos, solidez— se arma en memoria: nada de una consulta por fila.
@@ -146,12 +151,13 @@ public partial class PlaybookWindow : Window
 
         PreviewKeyDown += OnPreviewKeyDown;
         HeaderBar.MouseLeftButtonDown += OnHeaderMouseDown;
-        CloseBtn.Click += (_, _) => Close();
+        InitGuard();
 
         InitBrowse();
         InitFicha();
         InitStats();
         InitHelper();
+        InitActions();
 
         StartBtn.Click += (_, _) => StartRound();
         SetupBackBtn.Click += (_, _) => LeaveSetup();
@@ -197,13 +203,6 @@ public partial class PlaybookWindow : Window
         RootBorder.LayoutTransform = new ScaleTransform(scale, scale);
     }
 
-    /// <summary>
-    /// ¿El re-press del atajo puede cerrar la ventana? Sólo desde la búsqueda. En cualquier otro paso
-    /// hay algo en curso (una elección, una ronda, un resumen sin leer, una ficha abierta) y el
-    /// re-press la trae al frente.
-    /// </summary>
-    public bool CanCloseOnRepress => _stage == Stage.Search;
-
     // ──────────────────────────── Datos ────────────────────────────
 
     /// <summary>
@@ -219,7 +218,7 @@ public partial class PlaybookWindow : Window
         var natures = _store.GetNatures();
         _natureNames = natures.ToDictionary(n => n.Id, n => n.Name);
         _languageNames = _store.GetLanguages().ToDictionary(l => l.Id, l => l.Name);
-        // Los glosarios de TODAS las cards, de una vez: es lo que muestra la ayuda del quiz (H).
+        // Los glosarios de TODAS las cards, de una vez: es lo que muestra la ayuda del quiz (A).
         _glossaries = _store.GetAllGlossaries();
 
         // UNA lectura del historial y un solo cálculo para todas las filas (y para las estadísticas,
@@ -228,6 +227,10 @@ public partial class PlaybookWindow : Window
         _loadedAt = DateTime.UtcNow;
         _states = Solidity.ComputeAll(_reviews, _loadedAt);
         var states = _states;
+
+        // Qué bibliotecas están plegadas: el mismo dato que usa el árbol de la config (se guarda con
+        // la biblioteca). La lista lo aplica sólo con el buscador vacío — ver ApplyFilter.
+        _collapsedLibraries = libraries.Where(l => l.Collapsed).Select(l => l.Id).ToHashSet();
 
         var ownEntries = _entries.Values.ToLookup(e => e.LibraryId, e => e.Id);
         var children = libraries.ToLookup(l => l.ParentId);
@@ -243,7 +246,7 @@ public partial class PlaybookWindow : Window
             var ids = ownEntries[library.Id].ToList();
             foreach (var child in children[library.Id].OrderBy(l => l.Sort).ThenBy(l => l.Id))
                 ids.AddRange(Walk(child, depth + 1));
-            rows[slot] = LibraryRow(library, depth, ids, states);
+            rows[slot] = LibraryRow(library, depth, ids, states, children[library.Id].Count());
             return ids;
         }
         foreach (var root in children[null].OrderBy(l => l.Sort).ThenBy(l => l.Id))
@@ -264,11 +267,18 @@ public partial class PlaybookWindow : Window
             .OrderBy(e => e.Front, StringComparer.CurrentCultureIgnoreCase).Select(e => e.Id).ToList();
         if (terms.Count > 0) rows.Insert(0, VocabularyRow(terms, states));
 
+        // CON UN PROBLEMA ANOTADO: las entradas que tienen algo escrito para arreglar, la anotada más
+        // recientemente primero. Sólo si hay alguna, justo debajo de Vocabulario. No se JUEGA: Enter
+        // las abre como fichas, que es donde se lee la nota y se corrige (ver Activate).
+        var flagged = _entries.Values.Where(e => e.HasIssue)
+            .OrderByDescending(e => e.IssueAt).ThenBy(e => e.Id).Select(e => e.Id).ToList();
+        if (flagged.Count > 0) rows.Insert(terms.Count > 0 ? 1 : 0, IssuesRow(flagged));
+
         _rows = rows;
     }
 
     private PickRow LibraryRow(Library library, int depth, List<long> entryIds,
-        IReadOnlyDictionary<(long, string), SolidityState> states)
+        IReadOnlyDictionary<(long, string), SolidityState> states, int childCount)
     {
         var path = LibraryTree.PathOf(library.Id, _libraries);
         string prefix = path.Count > 1 ? string.Join(PathSeparator, path.Take(path.Count - 1)) + PathSeparator : "";
@@ -277,10 +287,14 @@ public partial class PlaybookWindow : Window
         return new PickRow
         {
             Kind = PickKind.Library,
+            LibraryId = library.Id,
+            ParentLibraryId = library.ParentId,
+            ChildCount = childCount,
             Depth = depth,
             PathPrefix = prefix,
             Name = library.Name,
             CountText = count,
+            BaseCountText = count,
             Average = average,
             SolidityText = SolidityLabel(average),
             BarFillWidth = BarFill(average),
@@ -337,6 +351,22 @@ public partial class PlaybookWindow : Window
             AccessibleName = string.Format(Loc.T("Playbook.RowVocabularyAccessible"), chip, name, count, SpokenSolidity(average)),
             Haystack = TextFold.Fold(chip + " " + name),
             EntryIds = termIds,
+        };
+    }
+
+    private static PickRow IssuesRow(List<long> entryIds)
+    {
+        string name = Loc.T("Playbook.IssueMark");
+        string count = CountLabel(entryIds.Count);
+        return new PickRow
+        {
+            Kind = PickKind.Issues,
+            Name = name,
+            CountText = count,
+            BarVisibility = Visibility.Collapsed,
+            AccessibleName = string.Format(Loc.T("Playbook.RowIssuesAccessible"), name, count),
+            Haystack = TextFold.Fold(name),
+            EntryIds = entryIds,
         };
     }
 
@@ -415,6 +445,7 @@ public partial class PlaybookWindow : Window
 
     private void ShowStage(Stage stage)
     {
+        CommitIssueIfOpen(); // lo que se estaba anotando no se pierde por cambiar de paso
         _stage = stage;
         SearchView.Visibility = stage == Stage.Search ? Visibility.Visible : Visibility.Collapsed;
         SetupView.Visibility = stage == Stage.Setup ? Visibility.Visible : Visibility.Collapsed;
@@ -432,6 +463,16 @@ public partial class PlaybookWindow : Window
             _ => _picked?.Title ?? Loc.T("Playbook.Header"),
         };
         ProgressText.Visibility = stage == Stage.Quiz ? Visibility.Visible : Visibility.Collapsed;
+        // El título de la VENTANA es lo que se lee en la barra de tareas y en Alt+Tab: dice el
+        // paso, para reconocer una ronda a medias entre las demás ventanas.
+        // (La ficha y las estadísticas ya traen "Playbook · …" en su encabezado: van tal cual.)
+        Title = stage switch
+        {
+            Stage.Search => Loc.T("Playbook.WindowTitle"),
+            Stage.Ficha or Stage.Stats => TitleText.Text,
+            _ => string.Format(Loc.T("Playbook.WindowTitleStage"), TitleText.Text),
+        };
+        ClearGuard(); // cambiar de paso es "otra cosa": una confirmación a medias no lo sobrevive
         UpdateHint();
 
         // Lo recién mostrado todavía no pasó por layout y Focus() sobre algo sin medir no prende:
@@ -458,6 +499,33 @@ public partial class PlaybookWindow : Window
         // Una sola puerta de teclado para toda la ventana (tunneling: corre ANTES que el control con
         // foco). Así Espacio jamás "clickea" el botón que quedó enfocado tras un click de mouse —
         // en el quiz eso anotaría una respuesta que nadie dio.
+
+        // Los modificadores de ESTA tecla (los del dispositivo que la mandó): los consultan
+        // PlainKey / LetterAllowed mientras dura su despacho.
+        _keyModifiers = ModifiersOf(e.KeyboardDevice);
+
+        // ⚠ AUTO-REPETICIÓN: una tecla MANTENIDA no es "apretarla otra vez". Sin este corte, dejar
+        // el dedo en la X armaba y confirmaba el borrado sola, y seguía borrando las tarjetas que
+        // venían; Esc mantenido cortaba la ronda, salía del resumen y cerraba la ventana en menos de
+        // un segundo; Espacio / Enter arrancaban una ronda y la pasaban entera. Va ANTES de todo
+        // (también de las guardas): una repetición no confirma, no desarma y no llega al botón con
+        // foco (por eso se marca Handled: Enter repetido sobre «Eliminar» serían clicks seguidos).
+        // La repetición sigue valiendo donde es inofensiva y se espera: las flechas y escribir.
+        if (e.IsRepeat && IsRepeatSwallowed(e.Key, TextKeysAreTyped, EnterIsTyped))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        // Con el campo de "anotar un problema" abierto, el teclado es SUYO: ahí las letras son
+        // texto y no puede dispararse ningún atajo del paso de atrás.
+        if (_issueOpen)
+        {
+            OnIssueKey(e);
+            return;
+        }
+
+        BeginGuardedKey();
         switch (_stage)
         {
             case Stage.Search: OnSearchKey(e); break;
@@ -467,11 +535,73 @@ public partial class PlaybookWindow : Window
             case Stage.Ficha: OnFichaKey(e); break;
             case Stage.Stats: OnStatsKey(e); break;
         }
+        EndGuardedKey(e);
     }
 
-    /// <summary>¿Enter le pertenece al botón que tiene el foco? (Tab hasta "Volver" + Enter = Volver.)</summary>
-    private static bool FocusIsOn(params Button[] buttons) =>
-        buttons.Any(b => ReferenceEquals(Keyboard.FocusedElement, b));
+    /// <summary>¿Enter / Espacio le pertenecen al botón que tiene el foco? (Tab hasta "Volver" + Enter = Volver.)</summary>
+    private static bool FocusIsOn(params Button?[] buttons) =>
+        buttons.Any(b => b is not null && ReferenceEquals(Keyboard.FocusedElement, b));
+
+    private ModifierKeys _keyModifiers; // los de la tecla en curso (ver OnPreviewKeyDown)
+
+    /// <summary>
+    /// Los modificadores apretados, CON la tecla Windows. <c>Keyboard.Modifiers</c> de WPF sólo
+    /// informa Ctrl, Alt y Shift — nunca <see cref="ModifierKeys.Windows"/> —, así que preguntarle
+    /// por Win era una condición que jamás se cumplía: Win+2 calificaba igual que un 2. Se lee del
+    /// dispositivo que mandó la tecla.
+    /// </summary>
+    private static ModifierKeys ModifiersOf(KeyboardDevice keyboard)
+    {
+        var modifiers = keyboard.Modifiers;
+        if (keyboard.IsKeyDown(Key.LWin) || keyboard.IsKeyDown(Key.RWin)) modifiers |= ModifierKeys.Windows;
+        return modifiers;
+    }
+
+    /// <summary>
+    /// ¿La tecla en curso vino SIN Ctrl / Alt / Win? Con alguno apretado es otra tecla (Ctrl+Espacio,
+    /// Win+2…) y no puede responder, saltar ni empezar nada. Shift no cuenta: no cambia qué tecla es.
+    /// </summary>
+    private bool PlainKey => IsPlain(_keyModifiers);
+
+    internal static bool IsPlain(ModifierKeys modifiers) =>
+        (modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) == 0;
+
+    /// <summary>
+    /// ¿Una LETRA suelta puede ser un atajo ahora? No con Ctrl / Alt / Win apretados (ahí es otra
+    /// tecla: Ctrl+A, Alt+E…) ni con el foco en un campo de texto (ahí es una letra que se escribe).
+    /// La consultan todos los atajos de letra de la ventana: A, E, X, R, F, Q, W.
+    /// </summary>
+    private bool LetterAllowed =>
+        PlainKey && Keyboard.FocusedElement is not System.Windows.Controls.Primitives.TextBoxBase;
+
+    // ── Auto-repetición (ver OnPreviewKeyDown) ──
+
+    /// <summary>¿Letras, números y Espacio son TEXTO ahora? En la búsqueda siempre (tipear en la
+    /// lista también escribe en el buscador), con el campo de problema abierto, o en un campo de texto.</summary>
+    private bool TextKeysAreTyped =>
+        _issueOpen || _stage == Stage.Search
+        || Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase;
+
+    /// <summary>¿Enter es un salto de línea ahora? Sólo en un campo de varios renglones (la nota de
+    /// problema) y sin Ctrl: Ctrl+Enter ahí es «Guardar».</summary>
+    private bool EnterIsTyped =>
+        (_keyModifiers & ModifierKeys.Control) == 0
+        && Keyboard.FocusedElement is TextBox { AcceptsReturn: true };
+
+    /// <summary>
+    /// ¿La REPETICIÓN de esta tecla se ignora? Sí para todo lo que en esta ventana es una ACCIÓN:
+    /// Esc, Enter, F2, Espacio, los números (respuestas, lados) y las letras (A/H, E, X, R, Q, W, F)
+    /// — salvo cuando son texto que se está escribiendo. No para lo demás: flechas, Retroceso,
+    /// Supr, Tab… se repiten como en cualquier lado. Decisión pura, aparte, para poder probarla.
+    /// </summary>
+    internal static bool IsRepeatSwallowed(Key key, bool textKeysAreTyped, bool enterIsTyped)
+    {
+        if (key is Key.Escape or Key.F2) return true;
+        if (key == Key.Enter) return !enterIsTyped;
+        bool textKey = key == Key.Space || key is >= Key.A and <= Key.Z
+            || key is >= Key.D0 and <= Key.D9 || key is >= Key.NumPad0 and <= Key.NumPad9;
+        return textKey && !textKeysAreTyped;
+    }
 
     private void OnHeaderMouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -694,7 +824,9 @@ public partial class PlaybookWindow : Window
                 LeaveSetup();
                 break;
 
-            case Key.Enter when !FocusIsOn(SetupBackBtn, CloseBtn):
+            // Espacio EMPIEZA (mano izquierda); Enter sigue valiendo. Sobre un botón enfocado las dos
+            // son de ese botón: Tab hasta «Volver» + Espacio tiene que ser Volver, no una ronda.
+            case Key.Space or Key.Enter when PlainKey && !FocusIsOn(SetupBackBtn, CloseBtn, MinimizeBtn):
                 e.Handled = true;
                 StartRound(); // con la selección vacía no arranca: el motivo ya está en pantalla
                 break;
@@ -711,14 +843,14 @@ public partial class PlaybookWindow : Window
                 SelectSide((Math.Max(CurrentSideIndex(), 0) + step + _sideRadios.Count) % _sideRadios.Count, focus: true);
                 break;
 
-            case Key.F when KindPanel.Visibility == Visibility.Visible:
+            case Key.F when LetterAllowed && KindPanel.Visibility == Visibility.Visible:
                 e.Handled = true;
                 CycleKind(1, focus: false);
                 break;
 
             default:
                 // 1..n: una tecla por opción de lado, sean las que sean.
-                if (DigitOf(e.Key) is { } digit && digit <= _sideRadios.Count)
+                if (PlainKey && DigitOf(e.Key) is { } digit && digit <= _sideRadios.Count)
                 {
                     e.Handled = true;
                     SelectSide(digit - 1, focus: true);
@@ -786,9 +918,36 @@ public partial class PlaybookWindow : Window
 
     private void ShowCard()
     {
+        CommitIssueIfOpen(); // se pasó de tarjeta con el campo abierto (un click en una respuesta)
+        // Otra tarjeta es "otra cosa": un «Eliminar» armado sobre la anterior NO puede confirmarse
+        // sobre ésta (pasaba: click en «Eliminar», Espacio para saltar, X → se iba la siguiente).
+        ClearGuard();
         var card = _round[_index];
         _revealed = false;
 
+        RenderCardHeader(card);
+        ShowQuestionWithHelpClosed(card);
+        CardScroll.ScrollToTop();
+
+        RevealBtn.Visibility = Visibility.Visible;
+        GradePanel.Visibility = Visibility.Collapsed;
+        CardSolidityText.Text = "";
+        UpdateHelpControls();
+        UpdateHint();
+
+        // El foco vive en la tarjeta: las flechas scrollean el texto largo y ningún botón queda
+        // "armado" bajo el Enter.
+        CardScroll.Focus();
+        Keyboard.Focus(CardScroll);
+    }
+
+    /// <summary>
+    /// Lo que rodea a la tarjeta y depende de la ENTRADA: avance, qué lado se muestra, dónde vive,
+    /// su naturaleza y la marca de problema anotado. Aparte de <see cref="ShowCard"/> porque también
+    /// se repinta al volver de editarla, sin tocar si estaba revelada.
+    /// </summary>
+    private void RenderCardHeader(QuizCard card)
+    {
         ProgressText.Text = string.Format(Loc.T("Playbook.Progress"), _index + 1, _round.Count);
         ShownSideText.Text = card.Side switch
         {
@@ -803,19 +962,7 @@ public partial class PlaybookWindow : Window
         CardNatureText.Text = nature;
         CardNatureChip.Visibility = nature == "" ? Visibility.Collapsed : Visibility.Visible;
 
-        ShowQuestionWithHelpClosed(card);
-        CardScroll.ScrollToTop();
-
-        RevealBtn.Visibility = Visibility.Visible;
-        GradePanel.Visibility = Visibility.Collapsed;
-        CardSolidityText.Text = "";
-        UpdateHelpControls();
-        UpdateHint();
-
-        // El foco vive en la tarjeta: las flechas scrollean el texto largo y ningún botón queda
-        // "armado" bajo el Enter.
-        CardScroll.Focus();
-        Keyboard.Focus(CardScroll);
+        ShowIssueMark(CardIssueChip, card.Entry);
     }
 
     /// <summary>El nombre del idioma de un lado <c>lang:&lt;id&gt;</c> ("" si ya no existe).</summary>
@@ -926,7 +1073,8 @@ public partial class PlaybookWindow : Window
         if (_advancing)
         {
             // Durante el destello sólo se traga lo que tendría efecto; el resto (Alt+Tab, etc.) pasa.
-            if (e.Key is Key.Space or Key.Escape or Key.Enter or Key.H || GradeFromKey(e.Key) is not null) e.Handled = true;
+            if (e.Key is Key.Space or Key.Escape or Key.Enter or Key.A or Key.H or Key.E or Key.X or Key.R
+                || GradeFromKey(e.Key) is not null) e.Handled = true;
             return;
         }
 
@@ -934,22 +1082,45 @@ public partial class PlaybookWindow : Window
         {
             case Key.Space:
                 e.Handled = true; // SIEMPRE: Espacio nunca llega al botón enfocado
+                // Con Ctrl / Alt / Win es otra tecla (Ctrl+Espacio): se traga igual —un botón con
+                // foco la tomaría como su click— pero no revela ni salta.
+                if (!PlainKey) break;
                 if (_revealed) Skip();
                 else Reveal();
                 break;
 
             case Key.Escape:
                 e.Handled = true;
-                // Con la ayuda abierta, el primer Esc la cierra; recién el siguiente corta la ronda.
-                if (!CloseHelpIfOpen()) EndRound();
+                // Con la ayuda abierta, el primer Esc la cierra; recién el siguiente corta la ronda —
+                // y si la ronda ya tiene respuestas anotadas, cortarla pide una segunda pulsación:
+                // Esc está al lado del 1 y un dedo corrido no puede tirar veinte minutos de repaso.
+                // Sin nada respondido no hay nada que cuidar y sale directo, como siempre.
+                if (CloseHelpIfOpen()) break;
+                if (_gradeCounts.Sum() == 0 || ConfirmTwice(GuardKind.EndRound, Loc.T("Playbook.ConfirmEndRound")))
+                    EndRound();
                 break;
 
-            // H: la ayuda. Se traga siempre (acá no hay dónde escribir una hache); si no hay ayuda
-            // que abrir no pasa nada, y el motivo está escrito junto al botón. Con Ctrl / Alt no es
-            // esta tecla: se deja pasar.
-            case Key.H when Keyboard.Modifiers == ModifierKeys.None:
+            // A: la ayuda (H, la tecla original, sigue valiendo: quedaba del otro lado del teclado).
+            // Se traga siempre (acá no hay dónde escribir una letra); si no hay ayuda que abrir no
+            // pasa nada, y el motivo está escrito junto al botón.
+            case Key.A or Key.H when LetterAllowed:
                 e.Handled = true;
                 ToggleHelp();
+                break;
+
+            // E / X / R: corregir, eliminar o anotarle un problema a ESTA entrada sin cortar la ronda
+            // (PlaybookWindow.Actions.cs). Valen antes y después de revelar.
+            case Key.E when LetterAllowed:
+                e.Handled = true;
+                EditQuizEntry();
+                break;
+            case Key.X when LetterAllowed:
+                e.Handled = true;
+                DeleteQuizEntry();
+                break;
+            case Key.R when LetterAllowed:
+                e.Handled = true;
+                OpenIssue();
                 break;
 
             default:
@@ -958,7 +1129,8 @@ public partial class PlaybookWindow : Window
                 if (GradeFromKey(e.Key) is { } grade)
                 {
                     e.Handled = true;
-                    if (_revealed) GradeCurrent(grade);
+                    // Win+2 o Ctrl+3 no son una respuesta: misma regla que las letras.
+                    if (_revealed && PlainKey) GradeCurrent(grade);
                 }
                 break;
         }
@@ -1138,7 +1310,7 @@ public partial class PlaybookWindow : Window
                 BackToSearch(reload: true);
                 break;
 
-            case Key.Enter when !FocusIsOn(SummaryBackBtn, CloseBtn):
+            case Key.Space or Key.Enter when PlainKey && !FocusIsOn(SummaryBackBtn, CloseBtn, MinimizeBtn):
                 e.Handled = true;
                 StartRound(); // lo mismo, con un orden nuevo
                 break;

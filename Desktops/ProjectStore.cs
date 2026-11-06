@@ -74,6 +74,17 @@ public sealed class ProjectStore
     public ProjectData Data => _data;
 
     /// <summary>
+    /// Se dispara justo ANTES de que una key de scope se mueva o desaparezca (renombrar, mover,
+    /// promover, degradar o borrar un espacio o contexto), ya validada la operación y con el catálogo
+    /// todavía intacto. Existe por quien tenga texto SIN GUARDAR pensado para una key —la ventana de
+    /// Notas, que ahora vive abierta mientras se reorganiza desde la Config—: es su última
+    /// oportunidad de escribirlo bajo la key que todavía existe, para que viaje con ella. Avisar
+    /// después sería tarde: el texto se escribiría bajo la key vieja y la resucitaría como un scope
+    /// huérfano, con la nota partida en dos. El store no sabe quién escucha (ni que hay ventanas).
+    /// </summary>
+    public event Action? ScopeKeysChanging;
+
+    /// <summary>
     /// Notas SUELTAS (archivo propio, ver <see cref="LooseNoteStore"/>). La construye ProjectStore y no
     /// App — a diferencia de <see cref="Dynamic"/> — porque no depende de nada más, y así ninguna
     /// reorganización del catálogo puede correr sin ella: sus etiquetas de espacio/contexto se mueven
@@ -310,6 +321,7 @@ public sealed class ProjectStore
     /// </summary>
     public void DeleteModule(string project, string module)
     {
+        ScopeKeysChanging?.Invoke();
         if (_data.Modules.TryGetValue(ResolveModulesKey(project), out var list))
             list.RemoveAll(m => string.Equals(m.Name, module, StringComparison.OrdinalIgnoreCase));
 
@@ -867,6 +879,7 @@ public sealed class ProjectStore
     /// </summary>
     public void DeleteFromHistory(string name)
     {
+        ScopeKeysChanging?.Invoke();
         _data.History.RemoveAll(h => string.Equals(h, name, StringComparison.OrdinalIgnoreCase));
         _data.Paths.Remove(name);
         _data.Notes.Remove(name);
@@ -988,6 +1001,7 @@ public sealed class ProjectStore
         if (!ProjectExists(oldName)) return ScopeOpResult.NotFound;
         if (!Same(oldName, newName) && ProjectExists(newName)) return ScopeOpResult.NameTaken;
 
+        ScopeKeysChanging?.Invoke();
         int at = _data.History.FindIndex(h => Same(h, oldName));
         if (at >= 0) _data.History[at] = newName;
 
@@ -1017,6 +1031,7 @@ public sealed class ProjectStore
         if (!ModuleExists(project, oldName)) return ScopeOpResult.NotFound;
         if (!Same(oldName, newName) && ModuleExists(project, newName)) return ScopeOpResult.NameTaken;
 
+        ScopeKeysChanging?.Invoke();
         var entry = GetModules(project).First(m => Same(m.Name, oldName));
         entry.Name = newName; // la entrada es la MISMA referencia que vive en el catálogo
 
@@ -1042,6 +1057,7 @@ public sealed class ProjectStore
         if (!ProjectExists(toProject)) return ScopeOpResult.NotFound;
         if (ModuleExists(toProject, module)) return ScopeOpResult.NameTaken;
 
+        ScopeKeysChanging?.Invoke();
         var src = _data.Modules[ResolveModulesKey(fromProject)];
         var entry = src.First(m => Same(m.Name, module));
         src.Remove(entry);
@@ -1077,6 +1093,7 @@ public sealed class ProjectStore
         if (!ModuleExists(project, module)) return ScopeOpResult.NotFound;
         if (ProjectExists(module)) return ScopeOpResult.NameTaken;
 
+        ScopeKeysChanging?.Invoke();
         _data.Modules[ResolveModulesKey(project)].RemoveAll(m => Same(m.Name, module));
         MoveScope(ScopeKey(project, module), module);
         _data.History.Add(module);
@@ -1102,6 +1119,7 @@ public sealed class ProjectStore
         if (GetModules(project).Count > 0) return ScopeOpResult.WouldNest;
         if (ModuleExists(toProject, project)) return ScopeOpResult.NameTaken;
 
+        ScopeKeysChanging?.Invoke();
         _data.History.RemoveAll(h => Same(h, project));
         if (FindKey(_data.Modules, project) is string emptyCatalog) _data.Modules.Remove(emptyCatalog);
 

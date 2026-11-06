@@ -51,10 +51,18 @@ public sealed class HotkeyRouter
     // seguís en ESE desk. Si navegaste de desk con Variables abierta, el contexto (pool de espacio
     // o global) cambió → cerramos la vieja y abrimos la del desk actual, en vez de disparar el path
     // del desk viejo. Mismo criterio desk-aware que _taskWindow/_taskWindowDeskIdx (ver abajo).
+    //
+    // ⚠ "El desk con el que se abrió" es su GUID, no su ÍNDICE (ver SameDesk): los índices se
+    // corren cuando se borra un escritorio dinámico, y otro desk hereda el número. Con el índice
+    // solo, el re-press en ESE otro desk tomaba la ventana vieja por propia. El índice se guarda
+    // igual, de respaldo para cuando el shell no da un GUID.
     private ProjectPathsWindow? _pathsWindow;
     private int _pathsWindowDeskIdx;
+    private Guid _pathsWindowDeskId;
     // Ventana de notas abierta (instancia única — re-press la trae al frente).
     private ProjectNotesWindow? _notesWindow;
+    private int _notesWindowDeskIdx = -1; // el desk para el que se abrió: sus notas son las de ESE scope
+    private Guid _notesWindowDeskId;
     // Picker de tareas abierto (instancia única — re-press DESASIGNA la tarea del desk y cierra).
     // Guardamos también el desk con el que se abrió: el re-press desasigna ESE, no el current (por si
     // navegaste de desk con el picker abierto — la tarea visible es la del desk donde lo abriste).
@@ -98,11 +106,11 @@ public sealed class HotkeyRouter
     public Action? OpenConfig { get; set; }
 
     /// <summary>
-    /// Abre / cierra / trae al frente el playbooker (NumpadClear pelado). Lo inyecta <c>App</c>, igual
+    /// Abre o trae al frente el playbooker (NumpadClear pelado; nunca lo cierra). Lo inyecta <c>App</c>, igual
     /// que <see cref="OpenConfig"/>: la instancia única y la biblioteca de conocimiento viven allá, y
     /// el router no tiene por qué conocer ese dominio para rutear una tecla.
     /// </summary>
-    public Action? TogglePlaybook { get; set; }
+    public Action? ShowPlaybook { get; set; }
 
     // Virtual-keys de las F que ruteamos (F1..F12 = 0x70..0x7B; backtick = 0xC0; barra /? = 0xBF).
     // F7 (Pin Manager) y F8 (Restricciones) SE QUITARON: eran popups de gestión compleja que hoy
@@ -120,6 +128,12 @@ public sealed class HotkeyRouter
         _deskConfig = deskConfig;
         _dynamicDesks = dynamicDesks;
         _projects = projects;
+        // Notas vive abierta mientras se reorganiza el catálogo desde la Config. Si un scope está por
+        // moverse o desaparecer, se CIERRA antes: guarda sola en Closing, así lo tipeado queda bajo
+        // la key que todavía existe y viaja con ella (ver ProjectStore.ScopeKeysChanging). Dejarla
+        // abierta era escribir después bajo la key vieja — la nota partida en dos y un scope
+        // borrado que resucita. Es además lo que pasaba siempre: antes se cerraba al perder el foco.
+        _projects.ScopeKeysChanging += () => _notesWindow?.Close();
         _apps = apps;
         _pins = pins;
         _restrictions = restrictions;
@@ -289,7 +303,7 @@ public sealed class HotkeyRouter
         if (!e.WinDown)
         {
             if (e.Key == NumpadKey.D5)   // NumpadClear
-                TogglePlaybook?.Invoke();
+                ShowPlaybook?.Invoke();
             return;
         }
 
@@ -454,6 +468,14 @@ public sealed class HotkeyRouter
         _refreshCurrentDesk();
     }
 
+    /// <summary>
+    /// ¿El escritorio de ahora es el MISMO para el que se abrió la ventana? Por GUID, que es la
+    /// identidad que sobrevive a que los índices se corran. Sólo si falta alguno de los dos GUID (el
+    /// shell no lo dio) cae al índice, que es lo que se comparaba antes. Pura, para poder probarla.
+    /// </summary>
+    internal static bool SameDesk(Guid openedId, int openedIdx, Guid currentId, int currentIdx) =>
+        openedId != Guid.Empty && currentId != Guid.Empty ? openedId == currentId : openedIdx == currentIdx;
+
     private void ShowProjectPaths()
     {
         int idx = _desktops.Current;
@@ -463,7 +485,7 @@ public sealed class HotkeyRouter
         // ese desk (pool de espacio vs global). Si cambiaste de desk con Variables abierta, disparar
         // el path del desk viejo es justo el bug (FireDefault del contexto equivocado) → en ese caso
         // cerramos la vieja y reabrimos para el desk actual más abajo.
-        if (_pathsWindow is not null && _pathsWindowDeskIdx == idx)
+        if (_pathsWindow is not null && SameDesk(_pathsWindowDeskId, _pathsWindowDeskIdx, _desktops.IdOf(idx), idx))
         {
             _pathsWindow.FireDefault();
             return;
@@ -495,20 +517,34 @@ public sealed class HotkeyRouter
                                               scopeKey: _projects.ResolveScopeKey(name, idx),
                                               parentScopeKey: _projects.ResolveParentScopeKey(name, idx));
         _pathsWindowDeskIdx = idx; // recordamos el desk: el re-press solo cuenta si seguís acá
+        _pathsWindowDeskId = _desktops.IdOf(idx);
         _pathsWindow.Closed += (_, _) => _pathsWindow = null;
         _pathsWindow.ShowFocused();
     }
 
     private void ShowProjectNotes()
     {
-        // Re-press con la ventana abierta → traerla al frente (no abrir otra).
-        if (_notesWindow is not null)
+        int idx = _desktops.Current;
+
+        // Re-press con la ventana abierta EN ESTE escritorio → traerla al frente (no abrir otra). La
+        // restaura si estaba minimizada; y si alguien la mandó a otro escritorio (Win+Shift+Numpad)
+        // la trae de vuelta acá, en vez de dejar que activarla te saque de donde estás.
+        if (_notesWindow is not null && SameDesk(_notesWindowDeskId, _notesWindowDeskIdx, _desktops.IdOf(idx), idx))
         {
+            IntPtr hwnd = new System.Windows.Interop.WindowInteropHelper(_notesWindow).Handle;
+            int home = _desktops.GetWindowDesktop(hwnd);
+            if (home >= 0 && home != idx) _desktops.SendWindowTo(hwnd, idx, follow: false);
+            WindowActivation.CloseEphemeralWindows(_notesWindow);
             _notesWindow.BringToFront();
             return;
         }
+        // Quedó abierta para OTRO escritorio → se cierra (guarda sola en Closing; su handler limpia
+        // _notesWindow) y se abre la de éste. Es lo mismo que pasaba cuando la ventana se cerraba al
+        // perder el foco —cambiar de desk la cerraba, y el atajo abría SIEMPRE las notas de donde
+        // estás— y el mismo criterio que Variables: la nota "de este escritorio" es la de ESTE scope,
+        // y traer la ventana vieja mostraría como tuya la del escritorio anterior.
+        _notesWindow?.Close();
 
-        int idx = _desktops.Current;
         string name = _desktops.GetName(idx);
 
         // Capturamos la carpeta del Explorer AHORA, antes de crear la ventana: en este punto el
@@ -517,8 +553,16 @@ public sealed class HotkeyRouter
         string folder = ExplorerContext.GetActiveFolder();
 
         _notesWindow = new ProjectNotesWindow(_projects, name, idx, folder);
+        _notesWindowDeskIdx = idx;
+        _notesWindowDeskId = _desktops.IdOf(idx);
         _notesWindow.Closed += (_, _) => _notesWindow = null;
-        _notesWindow.ShowFocused();
+        // Ventana de trabajo largo (no Topmost, minimizable): NO se cierra al perder el foco, y por
+        // lo tanto tampoco la cierra el abrir otro modal utilitario. Minimizarla corre la misma red
+        // anti-foco-huérfano que cerrarla (RearmHookOnMinimize); y al mostrarla se cierran los
+        // modales efímeros que hubiera, que al ser Topmost la taparían (CloseEphemeralWindows).
+        _notesWindow.RearmHookOnMinimize();
+        _notesWindow.ShowFocused(closeOnDeactivate: false);
+        WindowActivation.CloseEphemeralWindows(_notesWindow);
     }
 
     private void ShowServices()
@@ -578,7 +622,7 @@ public sealed class HotkeyRouter
 
     /// <summary>
     /// El DeskPicker (saltar a un espacio de la sesión). PERDIÓ SU ATAJO por decisión del usuario el
-    /// 2026-10-10: NumpadClear pelado pasó al playbooker (<see cref="TogglePlaybook"/>). La ventana y
+    /// 2026-10-10: NumpadClear pelado pasó al playbooker (<see cref="ShowPlaybook"/>). La ventana y
     /// este método se conservan enteros a propósito — hoy no los llama ninguna tecla, pero se pueden
     /// volver a enlazar con una línea en <see cref="Route"/> cuando haya una tecla libre para darle.
     /// </summary>

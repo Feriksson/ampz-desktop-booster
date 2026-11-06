@@ -31,7 +31,7 @@ namespace AmpzDesktopBooster.Knowledge;
 /// </summary>
 public sealed partial class KnowledgeStore
 {
-    private const int SchemaVersion = 2;
+    private const int SchemaVersion = 3;
 
     // Códigos primarios de SQLite que significan "esto no es (o ya no es) una base sana". Cualquier
     // otro error (archivo tomado, sin permisos, disco lleno) NO es corrupción: apartar el archivo por
@@ -44,7 +44,12 @@ public sealed partial class KnowledgeStore
     private const int SqliteLocked = 6;
 
     private const string EntryColumns =
-        "e.id, e.library_id, e.kind, e.front, e.back, e.nature_id, e.word_type, e.usage_context, e.origin, e.created_at, e.updated_at";
+        "e.id, e.library_id, e.kind, e.front, e.back, e.nature_id, e.word_type, e.usage_context, e.origin, e.created_at, e.updated_at, " +
+        "e.issue_note, e.issue_at";
+
+    // Las columnas de una biblioteca, en el orden que lee ReadLibrary. En UN lugar: las dos consultas
+    // que arman un Library (la de la UI y la de la exportación) no pueden leer columnas distintas.
+    private const string LibraryColumns = "id, parent_id, name, default_nature_id, sort, created_at, collapsed";
 
     private readonly string _path;
     private readonly string _connectionString;
@@ -139,7 +144,7 @@ public sealed partial class KnowledgeStore
     /// <summary>Todas, PLANAS, ordenadas por padre y posición. El árbol lo arma la UI.</summary>
     public IReadOnlyList<Library> GetLibraries() => Read<IReadOnlyList<Library>>(Array.Empty<Library>(), c =>
         Query(c, null,
-            "SELECT id, parent_id, name, default_nature_id, sort, created_at FROM libraries " +
+            $"SELECT {LibraryColumns} FROM libraries " +
             "ORDER BY parent_id IS NOT NULL, parent_id, sort, id",
             ReadLibrary));
 
@@ -213,6 +218,77 @@ public sealed partial class KnowledgeStore
         return KnowledgeOpResult.Ok;
     });
 
+    /// <summary>
+    /// Sube o baja una biblioteca <paramref name="delta"/> lugares ENTRE SUS HERMANAS (-1 = un lugar
+    /// hacia arriba). <see cref="KnowledgeOpResult.SameTarget"/> si ya está en esa punta.
+    /// </summary>
+    public KnowledgeOpResult ReorderLibrary(long id, int delta) =>
+        Write(KnowledgeOpResult.Failed, (c, tx) => Place(c, tx, id, newParentId: null, delta, relative: true));
+
+    /// <summary>
+    /// Deja una biblioteca (con todo su subárbol) bajo <paramref name="newParentId"/> (null = raíz) en
+    /// la posición <paramref name="index"/> entre las hijas de ese padre: 0 = primera; un índice más
+    /// allá del final = última. Sirve para reordenar dentro del mismo padre y para mover a otro
+    /// eligiendo DÓNDE cae (lo que hace un arrastre); <see cref="MoveLibrary"/> es el caso "al final".
+    ///
+    /// Mismas reglas que <see cref="MoveLibrary"/> al cambiar de padre (ciclo y nombre repetido entre
+    /// hermanas). <see cref="KnowledgeOpResult.SameTarget"/> si ya estaba exactamente ahí.
+    /// </summary>
+    public KnowledgeOpResult PlaceLibrary(long id, long? newParentId, int index) =>
+        Write(KnowledgeOpResult.Failed, (c, tx) => Place(c, tx, id, newParentId, index, relative: false));
+
+    /// <summary>
+    /// El cuerpo de las dos de arriba, dentro de UNA transacción: valida, cambia el padre si hace
+    /// falta y RENUMERA a las hermanas 0..n-1 en su orden nuevo. Renumerar a todas (y no hacerle un
+    /// hueco a una sola) es lo que mantiene el orden sin empates: bases anteriores pueden traer
+    /// hermanas con el mismo <c>sort</c>, y ahí "sumarle uno" no garantiza quedar donde se pidió.
+    /// </summary>
+    private static KnowledgeOpResult Place(SqliteConnection c, SqliteTransaction tx, long id, long? newParentId, int index, bool relative)
+    {
+        var current = Query(c, tx, "SELECT parent_id, name FROM libraries WHERE id = $id",
+            r => (Parent: NullableLong(r, 0), Name: r.GetString(1)), ("$id", id));
+        if (current.Count == 0) return KnowledgeOpResult.NotFound;
+
+        long? oldParentId = current[0].Parent;
+        if (relative) newParentId = oldParentId;
+        bool sameParent = oldParentId == newParentId;
+        if (!sameParent)
+        {
+            if (newParentId == id) return KnowledgeOpResult.WouldCycle;
+            if (newParentId is { } p)
+            {
+                if (!Exists(c, tx, "libraries", p)) return KnowledgeOpResult.NotFound;
+                if (DescendantIds(c, tx, id).Contains(p)) return KnowledgeOpResult.WouldCycle;
+            }
+            if (SiblingNameTaken(c, tx, newParentId, current[0].Name, exceptId: id)) return KnowledgeOpResult.NameTaken;
+        }
+
+        // Las hermanas del destino, en su orden de hoy. Si ya vivía ahí, se anota dónde y se la saca:
+        // `index` es la posición FINAL, contada sin ella.
+        var siblings = ChildIds(c, tx, newParentId);
+        int from = siblings.IndexOf(id);
+        if (from >= 0) siblings.RemoveAt(from);
+        int to = Math.Clamp(relative ? from + index : index, 0, siblings.Count);
+        if (sameParent && to == from) return KnowledgeOpResult.SameTarget;
+        siblings.Insert(to, id);
+
+        if (!sameParent)
+            Execute(c, tx, "UPDATE libraries SET parent_id = $p WHERE id = $id", ("$p", newParentId), ("$id", id));
+        Renumber(c, tx, siblings);
+        // Las que dejó atrás también quedan 0..n-1: sin el hueco de la que se fue.
+        if (!sameParent) Renumber(c, tx, ChildIds(c, tx, oldParentId));
+        return KnowledgeOpResult.Ok;
+    }
+
+    private static List<long> ChildIds(SqliteConnection c, SqliteTransaction? tx, long? parentId) => Query(c, tx,
+        "SELECT id FROM libraries WHERE parent_id IS $p ORDER BY sort, id", r => r.GetInt64(0), ("$p", parentId));
+
+    private static void Renumber(SqliteConnection c, SqliteTransaction? tx, IReadOnlyList<long> orderedIds)
+    {
+        for (int i = 0; i < orderedIds.Count; i++)
+            Execute(c, tx, "UPDATE libraries SET sort = $s WHERE id = $id AND sort <> $s", ("$s", i), ("$id", orderedIds[i]));
+    }
+
     /// <summary>Borra la biblioteca y, en cascada, sus hijas, entradas, traducciones y repasos.</summary>
     public bool DeleteLibrary(long id) => Write(false, (c, tx) =>
         Execute(c, tx, "DELETE FROM libraries WHERE id = $id", ("$id", id)) > 0);
@@ -222,6 +298,23 @@ public sealed partial class KnowledgeStore
     public bool SetLibraryDefaultNature(long id, long? natureId) => Write(false, (c, tx) =>
         Execute(c, tx, "UPDATE libraries SET default_nature_id = $n WHERE id = $id",
             ("$n", ExistingOrNull(c, tx, "natures", natureId)), ("$id", id)) > 0);
+
+    /// <summary>
+    /// Pliega o despliega una biblioteca en las listas (ver <see cref="Library.Collapsed"/>). Es un
+    /// dato de vista: no toca el contenido ni el orden.
+    /// </summary>
+    public bool SetLibraryCollapsed(long id, bool collapsed) => Write(false, (c, tx) =>
+        Execute(c, tx, "UPDATE libraries SET collapsed = $c WHERE id = $id", ("$c", collapsed ? 1 : 0), ("$id", id)) > 0);
+
+    /// <summary>
+    /// "Expandir todo" / "Contraer todo": deja TODAS las bibliotecas plegadas o desplegadas en una
+    /// sola escritura (no una por biblioteca). Plegar una que no tiene hijas no se nota: no hay qué ocultar.
+    /// </summary>
+    public bool SetAllLibrariesCollapsed(bool collapsed) => Write(false, (c, tx) =>
+    {
+        Execute(c, tx, "UPDATE libraries SET collapsed = $c WHERE collapsed <> $c", ("$c", collapsed ? 1 : 0));
+        return true;
+    });
 
     /// <summary>Ids de TODAS las descendientes (hijas, nietas…), sin incluir a la propia.</summary>
     public IReadOnlyList<long> GetDescendantLibraryIds(long id) =>
@@ -336,6 +429,33 @@ public sealed partial class KnowledgeStore
             return Query(c, null, sql, ReadEntry, args.ToArray());
         });
 
+    // ── El problema anotado de una entrada ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Anota (o corrige) el problema de una entrada; con el texto vacío lo BORRA, que es como se da
+    /// por resuelto. Guardar una nota le pone la fecha de ahora; borrarla también borra la fecha.
+    ///
+    /// NO toca <c>updated_at</c> a propósito: anotar que una card tiene un error no es editarla — el
+    /// contenido sigue siendo el mismo — y esa fecha tiene que seguir diciendo cuándo cambió de verdad.
+    /// Por lo mismo <see cref="UpdateEntry"/> no toca la nota: editar una entrada no resuelve su
+    /// problema por sí solo (eso lo decide quien la editó).
+    /// </summary>
+    public bool SetEntryIssue(long entryId, string? note)
+    {
+        string clean = (note ?? "").Trim();
+        return Write(false, (c, tx) => Execute(c, tx,
+            "UPDATE entries SET issue_note = $n, issue_at = $at WHERE id = $id",
+            ("$n", clean), ("$at", clean == "" ? null : UtcNow()), ("$id", entryId)) > 0);
+    }
+
+    /// <summary>Las entradas con un problema anotado, la anotada más recientemente primero.</summary>
+    public IReadOnlyList<Entry> GetEntriesWithIssue() => Read<IReadOnlyList<Entry>>(Array.Empty<Entry>(), c =>
+        Query(c, null, $"SELECT {EntryColumns} FROM entries e WHERE e.issue_note <> '' ORDER BY e.issue_at DESC, e.id", ReadEntry));
+
+    /// <summary>Cuántas entradas tienen un problema anotado (un número que describe; no una cuenta de nada que haya que hacer).</summary>
+    public int CountEntriesWithIssue() => Read(0, c =>
+        Convert.ToInt32(Scalar(c, null, "SELECT COUNT(*) FROM entries WHERE issue_note <> ''"), CultureInfo.InvariantCulture));
+
     /// <summary>Alta. Devuelve el id, o null si el frente quedó vacío, la biblioteca no existe o falló la base.</summary>
     public long? CreateEntry(long libraryId, EntryDraft draft)
     {
@@ -344,7 +464,8 @@ public sealed partial class KnowledgeStore
             Exists(c, tx, "libraries", libraryId) ? InsertEntry(c, tx, libraryId, draft, UtcNow()) : null);
     }
 
-    /// <summary>Reemplaza el contenido de una entrada (no la mueve de biblioteca ni toca sus repasos).</summary>
+    /// <summary>Reemplaza el contenido de una entrada (no la mueve de biblioteca ni toca sus repasos
+    /// ni su problema anotado: ver <see cref="SetEntryIssue"/>).</summary>
     public bool UpdateEntry(long id, EntryDraft draft)
     {
         if (draft is null || string.IsNullOrWhiteSpace(draft.Front)) return false;
@@ -734,6 +855,10 @@ public sealed partial class KnowledgeStore
         // (una tabla nueva y una columna con valor por defecto): ninguna fila existente se toca, y los
         // repasos de antes quedan con helped = 0, que es la verdad — entonces no había ayuda.
         if (version < 2) Execute(c, tx, SchemaV2);
+        // 2→3: el problema anotado de una entrada y el "plegada" de una biblioteca. Otra vez sólo
+        // AGREGA columnas con valor por defecto: toda entrada existente queda sin problema anotado y
+        // toda biblioteca desplegada, que es exactamente como se veían antes.
+        if (version < 3) Execute(c, tx, SchemaV3);
 
         // El ejemplo se siembra SÓLO en la apertura en que la base nace, que ocurre una única vez en
         // su vida, y DESPUÉS de todas las migraciones (usa las tablas de hoy). Una biblioteca que el
@@ -807,6 +932,14 @@ public sealed partial class KnowledgeStore
         CREATE INDEX ix_glossary_entry ON glossary(entry_id);
 
         ALTER TABLE reviews ADD COLUMN helped INTEGER NOT NULL DEFAULT 0;
+        """;
+
+    // issue_note '' = sin problema anotado; issue_at (ISO UTC) acompaña a la nota y es NULL sin ella.
+    // collapsed: 1 = la biblioteca se muestra plegada en las listas (dato de vista, ver Library.Collapsed).
+    private const string SchemaV3 = """
+        ALTER TABLE entries ADD COLUMN issue_note TEXT NOT NULL DEFAULT '';
+        ALTER TABLE entries ADD COLUMN issue_at TEXT NULL;
+        ALTER TABLE libraries ADD COLUMN collapsed INTEGER NOT NULL DEFAULT 0;
         """;
 
     /// <summary>La base abre pero <c>quick_check</c> encontró páginas rotas.</summary>
@@ -1098,11 +1231,13 @@ public sealed partial class KnowledgeStore
     // ── Plomería: conversiones fila ↔ record ─────────────────────────────────────────────────
 
     private static Library ReadLibrary(SqliteDataReader r) => new(
-        r.GetInt64(0), NullableLong(r, 1), r.GetString(2), NullableLong(r, 3), r.GetInt32(4), FromDb(r.GetString(5)));
+        r.GetInt64(0), NullableLong(r, 1), r.GetString(2), NullableLong(r, 3), r.GetInt32(4), FromDb(r.GetString(5)),
+        r.GetInt32(6) != 0);
 
     private static Entry ReadEntry(SqliteDataReader r) => new(
         r.GetInt64(0), r.GetInt64(1), KindFromDb(r.GetString(2)), r.GetString(3), r.GetString(4), NullableLong(r, 5),
-        r.GetString(6), r.GetString(7), r.GetString(8), FromDb(r.GetString(9)), FromDb(r.GetString(10)));
+        r.GetString(6), r.GetString(7), r.GetString(8), FromDb(r.GetString(9)), FromDb(r.GetString(10)),
+        r.GetString(11), r.IsDBNull(12) ? null : FromDb(r.GetString(12)));
 
     private static Review ReadReview(SqliteDataReader r) => new(
         r.GetInt64(0), r.GetInt64(1), r.GetString(2), (Grade)r.GetInt32(3), FromDb(r.GetString(4)), r.GetInt32(5) != 0);

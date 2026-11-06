@@ -54,7 +54,7 @@ public partial class App : Application
     private DesktopConfig _desktopConfig = new();
     private Apps.AppsConfig _appsConfig = new();
     private ConfigWindow? _configWindow;
-    // El playbooker abierto (NumpadClear). Instancia única, como la config: ver TogglePlaybook.
+    // El playbooker abierto (NumpadClear). Instancia única, como la config: ver ShowPlaybook.
     private PlaybookWindow? _playbookWindow;
 
     // La barra. Se guarda porque la config le avisa cambios (la marca) DESPUÉS del arranque, y
@@ -261,7 +261,7 @@ public partial class App : Application
         // Win+NumpadDel abre la MISMA config que el tray (instancia única; si ya está, la trae al frente).
         _router.OpenConfig = () => bar.OpenConfig?.Invoke();
         // NumpadClear pelado: el playbooker (jugar la biblioteca de conocimiento).
-        _router.TogglePlaybook = TogglePlaybook;
+        _router.ShowPlaybook = ShowPlaybook;
 
         // Widget de atención (dots por desk que reclama). App es el TRADUCTOR: convierte el estado del
         // servicio (Pending: desk→nivel) en lo que la barra pinta (idx + nombre + urgencia + espacio).
@@ -330,8 +330,16 @@ public partial class App : Application
         // del hook no se puede bloquear. Tras minimizar todo, el foreground puede quedar HUÉRFANO
         // (mismo mecanismo que cerrar la última ventana de un desk) → aplicamos la MISMA red de
         // OnUtilityWindowClosed: ~80ms a que se asiente, foco al escritorio y ReinstallHook.
+        //
+        // "Todo menos lo nuestro" era cierto mientras lo nuestro eran la barra y popups efímeros. Las
+        // ventanas de trabajo largo (playbooker, Notas, Config) son ventanas NORMALES: si quedaran a
+        // la vista, el foco se iría al escritorio 80ms después y estarían visibles pero muertas de
+        // teclado. Se minimizan PRIMERO, por su camino normal (ver MinimizeLongLivedWindows); la red
+        // de abajo no lleva el guard de HasFocusedUtilityWindow a propósito: después de un "mostrar
+        // escritorio" no tiene que quedar ninguna ventana nuestra con el foco.
         _hotkeys.ShowDesktopRequested += () => Dispatcher.BeginInvoke(() =>
         {
+            WindowActivation.MinimizeLongLivedWindows();
             Interop.WindowMethods.MinimizeForeignTopLevel("AmpzDesktopBooster.exe");
             var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
             t.Tick += (_, _) =>
@@ -510,6 +518,11 @@ public partial class App : Application
     /// huérfano)? Se excluyen la barra y el overlay a propósito: ninguna de las dos toma foco de
     /// teclado (la AppBar es no-activable y el overlay es WS_EX_NOACTIVATE), así que si el foreground
     /// fuera una de ellas el foco SÍ estaría efectivamente perdido y la restauración debe correr.
+    ///
+    /// Una ventana MINIMIZADA tampoco cuenta, aunque Windows la siga informando como foreground (pasa
+    /// cuando se minimiza la única ventana del desk y no hay otra a la que activar): no tiene el
+    /// teclado, así que el foco está tan huérfano como si se hubiera cerrado. El playbooker y Notas se
+    /// minimizan, y su red (<see cref="WindowActivation.RearmHookOnMinimize"/>) depende de esto.
     /// </summary>
     private static bool HasFocusedUtilityWindow()
     {
@@ -519,6 +532,7 @@ public partial class App : Application
         foreach (Window w in Current.Windows)
         {
             if (w is BarWindow or OverlayWindow) continue;
+            if (w.WindowState == WindowState.Minimized) continue;
             if (new System.Windows.Interop.WindowInteropHelper(w).Handle == fg) return true;
         }
         return false;
@@ -533,19 +547,32 @@ public partial class App : Application
             a.StartsWith("http", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// NumpadClear pelado. Instancia única con un re-press de DOS caras: en la búsqueda cierra la
-    /// ventana (toggle, como el Shortcuts Helper); en cualquier otro paso —armando, jugando, leyendo
-    /// el resumen— sólo la trae al frente. Un quiz no puede morir por una tecla suelta: la numpad 5
-    /// está justo en el medio del teclado numérico que se usa para navegar.
+    /// NumpadClear pelado: MUESTRA el playbooker. Instancia única; si ya existe —minimizado, tapado
+    /// por otra ventana o en otro escritorio— lo trae acá, al frente y con foco. El atajo ya NO lo
+    /// cierra nunca (antes lo cerraba desde la búsqueda): desde que la ventana se puede minimizar y
+    /// vive detrás de las demás, apretar la tecla significa "mostrame el playbook", y una tecla suelta
+    /// del medio del numpad no puede destruir una sesión. Se cierra desde adentro, con su confirmación.
+    ///
+    /// OTRO ESCRITORIO: una ventana normal (no Topmost) vive en el desk donde se abrió. En vez de
+    /// saltar a ese desk —que es lo que hace Windows al activar una ventana de otro escritorio, y lo
+    /// que le pasa hoy a la Config— la ventana se MUDA al desk actual: el playbook no pertenece a
+    /// ningún espacio, y pedirlo no debería sacarte de donde estás.
     ///
     /// Corre en el hilo de UI: el router ya difirió al Dispatcher antes de invocar esto.
     /// </summary>
-    private void TogglePlaybook()
+    private void ShowPlaybook()
     {
         if (_playbookWindow is not null)
         {
-            if (_playbookWindow.CanCloseOnRepress) _playbookWindow.Close();
-            else _playbookWindow.BringToFront();
+            if (_desktops is not null)
+            {
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(_playbookWindow).Handle;
+                int current = _desktops.Current;
+                int home = _desktops.GetWindowDesktop(hwnd);
+                if (home >= 0 && home != current) _desktops.SendWindowTo(hwnd, current, follow: false);
+            }
+            WindowActivation.CloseEphemeralWindows(_playbookWindow);
+            _playbookWindow.BringToFront(); // también la restaura si estaba minimizada
             return;
         }
         if (_knowledge is null) return; // sólo antes de terminar de arrancar: no hay hotkeys todavía
@@ -556,8 +583,13 @@ public partial class App : Application
         // a un cambio de escritorio (mismo criterio que la config). Al no estar "armada", tampoco
         // la cierra el abrir otro modal utilitario encima (ver CloseOtherUtilityWindows). Para la
         // red anti-foco-huérfano es una utilitaria más: HasFocusedUtilityWindow la cuenta sola
-        // (excluye únicamente barra y overlay), y su Closed pasa por OnUtilityWindowClosed.
+        // (excluye barra, overlay y lo minimizado), su Closed pasa por OnUtilityWindowClosed y
+        // minimizarla dispara esa misma red (RearmHookOnMinimize).
+        _playbookWindow.RearmHookOnMinimize();
         _playbookWindow.ShowFocused(closeOnDeactivate: false);
+        // No es Topmost: un modal efímero que hubiera quedado abierto (Variables, un picker) la
+        // taparía. Ver CloseEphemeralWindows.
+        WindowActivation.CloseEphemeralWindows(_playbookWindow);
     }
 
     /// <summary>Abre la ventana de configuración (instancia única — si ya está, la trae al frente).</summary>

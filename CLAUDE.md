@@ -134,12 +134,9 @@ Config → Escritorios. Un `desktops.json` de una versión anterior con entradas
 DESCARTA al cargar (persiste enseguida, mismo patrón que la migración del formato viejo).
 
 **⚠ Pero el nombre es SÓLO la etiqueta — no lo vuelvas a cargar de responsabilidades.**
-Durante mucho tiempo el catálogo fue un `List<string>` y ese string hacía de identificador, de ROL y
-de etiqueta a la vez. Renombrar un desk desde la config lo rompía TODO en silencio: el atajo del
-numpad (era un `switch` con literales hardcodeados en `HotkeyRouter`), el setter de Espacios, el scope
-de variables/notas/servicios, el color, la protegibilidad y el color del widget de la barra — seis
-copias de `name.Contains("DESK +")` desperdigadas que un renombre desincronizaba de golpe. Nada
-avisaba: la app seguía andando, sorda.
+Cuando el catálogo era un `List<string>`, ese string era identificador, ROL y etiqueta a la vez:
+renombrar un desk rompía en silencio atajo, scope, color y protegibilidad (seis copias de
+`name.Contains("DESK +")` desperdigadas).
 
 Hoy cada entrada es un `ManagedDesktop` con **identidad propia** — `name`, `key` (la tecla del numpad),
 `role` y `color`. El atajo y el rol viven pegados a la ENTRADA y sobreviven a cualquier renombre.
@@ -170,13 +167,9 @@ mientras el orden de los escritorios VIVOS coincidiera con el orden del catálog
 reforma de escritorios DINÁMICOS rompió de raíz: un dinámico se crea/borra en caliente y corre el
 índice de todo lo que esté después.
 
-**El bug reproducido**: catálogo `MAIN(0) / NOTES(1) / MISCS(2)`. El usuario cerró NOTES a mano un día
-cualquiera. Al reiniciar Windows, los escritorios vivos quedaron `[MAIN, <dinámico "Geocontrol /
-Plataforma">, <dinámico "Geocontrol / Plataforma Develop">]` — NOTES ya no estaba, pero el índice 1
-SÍ, ocupado por un espacio real registrado en `DynamicDeskStore`. El bootstrapper viejo, renombrando
-por índice, le puso "NOTES" al desk dinámico del índice 1. Resultado: `Win+Numpad2` (NOTES por nombre)
-y la tecla dinámica de ESE espacio apuntaban al MISMO escritorio — indistinguibles, sin ningún error
-visible.
+**El bug reproducido**: catálogo `MAIN / NOTES / MISCS`, NOTES cerrado a mano; al reiniciar, el índice 1
+lo ocupaba un dinámico vivo y el bootstrapper le puso "NOTES". `Win+Numpad2` y la tecla de ESE espacio
+apuntaban al MISMO escritorio, sin ningún error visible.
 
 **La cura, hoy**: por cada entrada del catálogo, `DesktopBootstrapper.Ensure` busca un desktop que YA
 se llame así (`DesktopService.FindExact` — el mismo criterio de nombre de toda la app). Si falta:
@@ -279,13 +272,9 @@ Main) se re-hidrata su sesión, para que no caiga al scope global.
 los N desks de un mismo espacio no se agrupan visualmente. Se eligió así porque el espacio lo elegís
 al sentarte y el contexto es el que rotás — la señal de reflejo le sirve al que rota.
 
-**⚠ `Win+NumpadDot` (cambiar sólo el contexto en el mismo desk) SE RETIRÓ** con la reforma de
-escritorios dinámicos: ya no hay "el mismo desk, otro contexto" — cada par espacio+contexto ES su
-propio escritorio, así que "rotar de contexto" es abrir (o saltar a, si ya está abierto) el desk de
-ESE otro contexto con el launcher. El contexto se elige una sola vez, en el paso 2 del launcher
-(`Win+NumpadEnter` → confirmás espacio → aparece el picker de contexto). La **pestaña Espacios de la
-config** (ver sección 4-bis) sigue siendo la única superficie donde se REORGANIZA (renombrar, mover,
-promover, degradar) sin pasar por el launcher.
+**⚠ No hay "cambiar de contexto en el mismo desk"** (el viejo `Win+NumpadDot`, retirado): cada par
+espacio+contexto ES su propio escritorio, y el contexto se elige una vez, en el paso 2 del launcher.
+Reorganizar sin el launcher es la pestaña Espacios de la config (sección 4-bis).
 
 ### 4. Scope de variables y notas — herencia de TRES niveles
 `ProjectStore.ResolvePoolWithGlobal` / `GetNotes`: si el desk es de rol `Space` (vía `DeskCatalog.IsSpace`)
@@ -301,10 +290,9 @@ todos sus contextos.
 > describe el modelo mejor de lo que lo hacía `módulo → proyecto → global`.
 
 ### 4-bis. Reorganizar el catálogo (pestaña **Espacios** de la config)
-Durante mucho tiempo el catálogo sólo supo **crear** (setter/picker) y **borrar** en cascada.
-Reorganizar había que hacerlo editando el JSON A MANO — y no es un caso raro: la estructura mental
-del usuario cambia (todo el renombre nació de descubrir que 11 "proyectos" eran contextos de dos
-espacios). Las operaciones viven en `ProjectStore` y la UI en `ConfigWindow`:
+La estructura mental del usuario cambia (el renombre nació de descubrir que 11 "proyectos" eran
+contextos de dos espacios), así que el catálogo se reorganiza sin tocar el JSON a mano. Las
+operaciones viven en `ProjectStore` y la UI en `ConfigWindow`:
 
 | Operación | Sobre | Nota |
 |---|---|---|
@@ -384,11 +372,11 @@ que agregues tiene que describir un estado, no reclamar una obligación.
 
 | Pieza | Qué es | Lo que NO es obvio |
 |---|---|---|
-| `Library` | Árbol por `ParentId` (null = raíz) | **Este árbol SÍ anida (hijas, nietas…) y NO tiene nada que ver con Espacio/Contexto** (que son dos niveles y punto). Dos HERMANAS no pueden llamarse igual: la regla vive sola en `LibraryTree.SiblingNames` porque crear, renombrar, mover e importar tienen que opinar lo mismo. Mover dentro de sí misma se rechaza (`KnowledgeOpResult.WouldCycle`). |
-| `Entry` | `EntryKind.Card` o `EntryKind.Term`, conviven en la misma biblioteca | Un solo motor, un solo quiz, un solo seguimiento. En un término `Front` = palabra y `Back` = definición, más `WordType`, `UsageContext`, `Origin`. |
+| `Library` | Árbol por `ParentId` (null = raíz) | **Este árbol SÍ anida (hijas, nietas…) y NO tiene nada que ver con Espacio/Contexto** (que son dos niveles y punto). Dos HERMANAS no pueden llamarse igual: la regla vive sola en `LibraryTree.SiblingNames` porque crear, renombrar, mover e importar tienen que opinar lo mismo. Mover dentro de sí misma se rechaza (`KnowledgeOpResult.WouldCycle`). **El orden entre hermanas es `Sort`** (lo da el usuario: Subir/Bajar, `Alt+↑ ↓` o arrastrando; `ReorderLibrary` / `PlaceLibrary` renumeran a todas las hermanas en una transacción) y es el que se ve en TODOS lados: árbol, playbook, destinos de «mover» y exportación. `Collapsed` = plegada en las listas: es cómo se MIRA el árbol, lo comparten la config y el playbook, y no viaja en una exportación. |
+| `Entry` | `EntryKind.Card` o `EntryKind.Term`, conviven en la misma biblioteca | Un solo motor, un solo quiz, un solo seguimiento. En un término `Front` = palabra y `Back` = definición, más `WordType`, `UsageContext`, `Origin`. `IssueNote` / `IssueAt` = el **problema anotado** (tecla `R` del playbook): una nota personal para arreglar la entrada después. `SetEntryIssue` NO toca `updated_at`, `UpdateEntry` no la borra, vaciarla es resolverla, y no viaja ni la toca una importación. Es una marca de CONTENIDO a corregir, no un estado de estudio: no entra en la solidez ni decide qué sale en una ronda. |
 | `Nature` | Lista PERSONAL y creciente (técnica, legal, general…), UNA por entrada | `Entry.NatureId` null NO es "sin naturaleza": es "la que herede", subiendo por el árbol hasta la primera biblioteca con `DefaultNatureId`. La regla está DOS veces y tienen que coincidir: `LibraryTree.EffectiveNatureId` (memoria) y `KnowledgeStore.GetEntriesByNature` (SQL). Tampoco es Espacio/Contexto. |
 | `Language` / `Translation` | Idiomas dinámicos; a lo sumo una traducción por término+idioma | Un idioma es además un LADO jugable. |
-| `GlossaryItem` | El GLOSARIO de una card: palabra difícil + definición breve. Es la ayuda del quiz (`H`) | **Sólo las CARDS** lo llevan, y a lo sumo `Glossary.MaxGlossaryItems` (5: es una ayuda para LEER la pregunta, no un segundo diccionario, y tiene que entrar en pantalla sin scroll). Un término NO lleva glosario: su ayuda es `Entry.Origin` (etimología y composición). Las reglas (recortar, descartar renglones a medias, sin repetidas) viven solas en `Glossary.Normalize` porque las aplican el store, el lector del archivo y el diálogo. |
+| `GlossaryItem` | El GLOSARIO de una card: palabra difícil + definición breve. Es la ayuda del quiz (`A`) | **Sólo las CARDS** lo llevan, y a lo sumo `Glossary.MaxGlossaryItems` (5: es una ayuda para LEER la pregunta, no un segundo diccionario, y tiene que entrar en pantalla sin scroll). Un término NO lleva glosario: su ayuda es `Entry.Origin` (etimología y composición). Las reglas (recortar, descartar renglones a medias, sin repetidas) viven solas en `Glossary.Normalize` porque las aplican el store, el lector del archivo y el diálogo. |
 | `Review` | Historial de SÓLO-AGREGAR: entrada + lado MOSTRADO + `Grade` (1..4) + fecha UTC + `Helped` | `Side` es el lado que se mostró como pregunta: `front`, `back` o `lang:<id>` (`ReviewSide`). Cada lado lleva su propia solidez: reconocer una palabra no es evocarla desde la definición. Los números de `Grade` SE PERSISTEN: no reordenar el enum. `Helped` (`reviews.helped`) = se abrió la ayuda ANTES de revelar; es un dato para mirar después y **no entra en la solidez ni cambia la nota**. |
 
 Las operaciones devuelven `KnowledgeOpResult` (un motivo), por lo mismo que `ScopeOpResult`.
@@ -413,17 +401,22 @@ pueden contar dos historias. Con las constantes de hoy:
   falta tres «Un espectáculo» seguidos para pasarlo y el desgaste lo baja). La evolución son 26
   muestras semanales y se dibuja recién con 14 días de historia.
 
-**El playbooker (`PlaybookWindow`, partials `.Browse` / `.Ficha` / `.Stats` / `.Helper`)**: una ventana, seis
-vistas alternadas por `Visibility`. Carga TODO una vez al abrir (`LoadData`) y arma conteos y solidez
-en memoria. Teclado primero, pero cada tecla tiene su botón a la vista.
+**El playbooker (`PlaybookWindow`, partials `.Browse` / `.Ficha` / `.Stats` / `.Helper` / `.Guard` /
+`.Actions`)**: una ventana, seis vistas alternadas por `Visibility`. Carga TODO una vez al abrir
+(`LoadData`) y arma conteos y solidez en memoria. Teclado primero, pero cada tecla tiene su botón a la vista.
+
+**El quiz se juega con la MANO IZQUIERDA** (pedido del usuario: es el gesto que se repite cientos de
+veces). Las teclas viejas (`H`, `Enter`, flechas) siguen valiendo como alias, pero las pistas, los
+keycaps y los textos anuncian SÓLO las de la tabla. Ninguna letra dispara con Ctrl/Alt/Win ni con el
+foco en un campo de texto (`LetterAllowed`).
 
 | Vista | Teclas |
 |---|---|
-| Búsqueda | tipear filtra · `↑ ↓` · `Enter` JUEGA una biblioteca/naturaleza/«Vocabulario», LEE una entrada (ficha), o CARGA lo tipeado si no existía (`KnowledgeEntryWindow.ShowCapture`) · `F2` estadísticas · `Esc` limpia el texto y, vacío, cierra |
-| Armado | `← →` o `1..n` eligen qué lado se muestra (frente, dorso, mezclado o un idioma) · `F` filtra términos/cards · `Enter` arranca · `Esc` vuelve |
-| Quiz | `Espacio` revela (y, ya revelada, salta sin anotar) · `1..4` responden, SÓLO con la respuesta a la vista (fila superior o numpad) · `H` abre / cierra la ayuda · `Esc` cierra la ayuda si está abierta y, si no, corta la ronda |
-| Resumen | `Enter` otra ronda · `Esc` vuelve a la búsqueda |
-| Ficha | `E` edita · `← →` entrada anterior/siguiente · `Esc` vuelve. Leer NO anota nada |
+| Búsqueda | tipear filtra · `↑ ↓` · `← →` pliegan / despliegan una biblioteca (sólo con el foco en la lista y el buscador vacío) · `Enter` JUEGA una biblioteca/naturaleza/«Vocabulario», REVISA «Con un problema anotado» (sus entradas, como fichas), LEE una entrada (ficha), o CARGA lo tipeado si no existía (`KnowledgeEntryWindow.ShowCapture`) · `F2` estadísticas · `Esc` limpia el texto y, vacío, PIDE cerrar |
+| Armado | `1..n` eligen qué lado se muestra (frente, dorso, mezclado o un idioma) · `F` filtra términos/cards · `Espacio` arranca · `Esc` vuelve. Alias: `← →`, `Enter` |
+| Quiz | `Espacio` revela (y, ya revelada, salta sin anotar) · `1..4` responden, SÓLO con la respuesta a la vista (fila superior o numpad) · `A` abre / cierra la ayuda · `E` edita · `X` elimina (pide otra `X`) · `R` anota un problema · `Esc` cierra la ayuda si está abierta y, si no, corta la ronda (pide otro `Esc` si ya hay respuestas anotadas). Alias: `H` |
+| Resumen | `Espacio` otra ronda · `Esc` vuelve a la búsqueda. Alias: `Enter` |
+| Ficha | `E` edita · `X` elimina (pide otra `X`) · `R` anota un problema · `Q` / `W` entrada anterior/siguiente · `Esc` vuelve. Leer NO anota nada. Alias: `← →` |
 | Estadísticas | `Enter` juega la fila enfocada · `← →` cambian de lista · `Esc`/`F2` vuelven |
 
 - **⚠ La ayuda NUNCA regala la respuesta** (`PlaybookWindow.Helper.cs`). Muestra lo que la entrada
@@ -438,27 +431,63 @@ en memoria. Teclado primero, pero cada tecla tiene su botón a la vista.
   0.82 y `MaxScale` 1.6). Requisito del usuario, no estética: **una entrada revelada tiene que entrar
   ENTERA sin scrollear**. Los `ScrollViewer` de la card y la ficha son red de seguridad para un texto
   desmesurado, no el diseño. Si agregás campos a la card, comprobalo en la altura de referencia.
-- **`ShowFocused(closeOnDeactivate: false)`**: una sesión de estudio tiene que sobrevivir a un
-  Alt+Tab o a un cambio de escritorio (mismo criterio que la Config).
-- **Re-press de `NumpadClear`** (`App.TogglePlaybook`): cierra SÓLO desde la búsqueda
-  (`CanCloseOnRepress`); en cualquier otra vista la trae al frente. El numpad 5 está en el medio del
-  teclado con el que se navega: una tecla suelta no puede matar un quiz a la mitad.
+- **Es una ventana de trabajo LARGO, no un popup** (pedido del usuario): NO es Topmost, se MINIMIZA
+  (botón «Minimizar»; `ResizeMode="CanMinimize"`), figura en la barra de tareas y en Alt+Tab, y se
+  abre con `ShowFocused(closeOnDeactivate: false)`. Ver la ⚠ de "ventanas utilitarias NO Topmost" en
+  Interop antes de tocar cualquiera de esas cuatro cosas.
+- **⚠ Nada la cierra ni destruye de UN gesto** (`PlaybookWindow.Guard.cs`, `ConfirmTwice`). Cerrar
+  (Esc en la búsqueda vacía, «Cerrar», Alt+F4), cortar una ronda con respuestas y eliminar una entrada
+  piden REPETIR el gesto: el primero muestra un aviso en el pie ("Esc otra vez para cerrar") ~2,5s, y
+  cualquier otra cosa —otra tecla, un click en otro lado, cambiar de ventana, esperar— lo desarma. No
+  es un diálogo modal a propósito (sería otra cosa que mirar en medio de un quiz). El aviso ocupa el
+  lugar de la pista y no mueve nada. `Application.Shutdown` ignora la cancelación: salir de la app
+  no queda trabado.
+- **⚠ Esas confirmaciones IGNORAN la auto-repetición y están atadas a la ENTRADA.** `OnPreviewKeyDown`
+  descarta `e.IsRepeat` de toda tecla de acción ANTES de las guardas (`IsRepeatSwallowed`): una tecla
+  mantenida no es "apretarla otra vez" — sin eso, dejar el dedo en la `X` armaba, confirmaba y seguía
+  borrando las cards que venían, y `Esc` mantenido cortaba la ronda y cerraba la ventana. La
+  repetición vale sólo donde es inofensiva (flechas, escribir). Y un eliminar armado lo confirma
+  únicamente el segundo gesto sobre ESA entrada (`_guardEntryId`), además de desarmarse al cambiar de
+  tarjeta o de ficha: armado sobre una card y saltada con Espacio, la siguiente se iba con una sola
+  `X`. Los atajos piden tecla pelada (`PlainKey`); ojo que `Keyboard.Modifiers` de WPF NUNCA informa
+  la tecla Windows — se lee aparte (`ModifiersOf`).
+- **`NumpadClear` ya NO la cierra nunca** (`App.ShowPlaybook`): la abre o la trae al frente —
+  restaurándola si estaba minimizada y MUDÁNDOLA al escritorio actual si vivía en otro
+  (`DesktopService.SendWindowTo`, sin seguirla). Antes cerraba desde la búsqueda (`CanCloseOnRepress`,
+  retirado): con la ventana viviendo detrás de las demás, la tecla significa "mostrame el playbook".
+- **Editar / eliminar / anotar un problema sin salir** (`PlaybookWindow.Actions.cs`). La ventana
+  trabaja sobre una FOTO de la base; editar o borrar una entrada en medio de una ronda la cambia en
+  cada lugar de esa foto (`AdoptEntry` / `ForgetEntry` — están los dos juntos para que ninguna
+  operación se olvide uno) en vez de releer todo, que rearmaría el mazo. La tarjeta editada se
+  repinta en su lugar, revelada o no como estaba. El campo de `R` aparece DENTRO del área de la
+  tarjeta (no es otra ventana), y mientras está abierto no vale ningún atajo: Esc sólo lo cancela.
 
 **Config → Conocimiento** (sub-pestañas «Bibliotecas» y «Naturalezas e idiomas», con `SubTabControl` /
 `SubTabItem`): árbol de bibliotecas como lista plana con sangría (un `TreeView` trae su template
 claro), entradas de la elegida, y los diálogos `KnowledgeEntryWindow` (alta/edición; guarda él mismo
-por el "Guardar y nueva") y `KnowledgeImportWindow`. Vive en DOS partials de `ConfigWindow` —
-`ConfigWindow.Knowledge.cs` y `ConfigWindow.KnowledgeExchange.cs` — porque `ConfigWindow.xaml.cs` ya
-pasa las 2.700 líneas y esta pestaña no comparte nada con las demás. Cada botón es UNA operación del
-store que se guarda sola, y después se relee todo (`RefreshKnowledge`): no hay "Guardar" ni estado a
-medias.
+por el "Guardar y nueva") y `KnowledgeImportWindow`. Vive en TRES partials de `ConfigWindow` —
+`ConfigWindow.Knowledge.cs`, `ConfigWindow.KnowledgeTree.cs` y `ConfigWindow.KnowledgeExchange.cs` —
+porque `ConfigWindow.xaml.cs` ya pasa las 2.700 líneas y esta pestaña no comparte nada con las demás.
+Cada botón es UNA operación del store que se guarda sola, y después se relee todo
+(`RefreshKnowledge`): no hay "Guardar" ni estado a medias.
+- **El árbol** (`ConfigWindow.KnowledgeTree.cs`): cada biblioteca con hijas se PLIEGA (el triángulo
+  ▸ / ▾, `← →`, «Expandir todo» / «Contraer todo»); lo que queda elegido siempre se ve (el refresco
+  despliega el camino hasta ahí). Se REORDENA entre hermanas con Subir / Bajar o `Alt+↑ ↓`, y se
+  ARRASTRA: sobre una fila = adentro (la fila se rellena), al borde = entre (una línea), al hueco de
+  abajo = a la raíz. **El arrastre es un atajo, nunca el único camino**: todo tiene su equivalente
+  sin mouse («Mover a…», Subir / Bajar), y el destino —o por qué ahí no se puede— se dice además con
+  TEXTO bajo los botones.
+- **Problemas anotados**: la fila lo dice escrito («Con problema · …»), el filtro «Con problema (N)»
+  las junta, y el diálogo de la entrada trae la nota en un campo con «Marcar como resuelto».
 
 **Import / export** (`Knowledge/KnowledgeExchange.cs` = el formato; `KnowledgeStore.Exchange.cs` = la
 base). Formato `"format": "ampz-knowledge-library"`, `"version": 1`; una versión distinta se RECHAZA
 con su mensaje en vez de importarse "como se pueda".
 - Viaja el CONTENIDO **por NOMBRE**: sin ids, sin repasos, sin solidez. Naturalezas e idiomas se
   buscan por nombre en el destino y se crean los que falten. La naturaleza de una entrada viaja sólo
-  si es PROPIA (escribir la heredada la congelaría).
+  si es PROPIA (escribir la heredada la congelaría). Tampoco viajan —ni los toca una importación— el
+  problema anotado de una entrada ni el "plegada" de una biblioteca: son de quien usa la base. Las
+  bibliotecas salen en SU orden (`sort`).
 - El glosario viaja como `glossary` en las cards (`[{ "term", "definition" }]`), **opcional, y la
   versión sigue en 1**: un lector anterior ignora la clave que no conoce e importa la card sin su
   ayuda; subir la versión le habría hecho rechazar el archivo entero.
@@ -494,11 +523,11 @@ legacy guardaba en `A_ScriptDir`; esto se modernizó para que la app sea compart
 |---|---|---|
 | `desk_project_data.json` | JSON | Catálogo durable: `history` (los ESPACIOS), `notes`, `paths` (key = espacio **o** `"Espacio/Contexto"`), `modules` (los CONTEXTOS + su color, por espacio), `defaults` (predeterminado por scope), `services` (cómo levantar lo básico, key = scope) + `shared_services`, `shared_notes`, `shared_paths`, `shared_default`, `folder_notes`. |
 | `settings.ini` | INI custom | `[Projects]` sugerencias (`desk_N` y `desk_N_module`), `[Pins]` `proc.exe=idx`, `[Restricted]` `idx=1`, `[Whitelist_IDX]` `proc.exe=1`. |
-| `desktops.json` | JSON | `DesktopConfig`: lista `managed` de los desks **FIJOS** (cada ítem = `name` + `key` + `role` + `color`, ver `ManagedDesktop`) + flag `autoCreate`. El formato VIEJO (`managed` como array de strings) se migra solo al cargar; una entrada de rol Espacio de una versión anterior también se descarta al cargar (ya no vive acá). Ambas migraciones persisten enseguida. |
-| `dynamic_desks.json` | JSON | `DynamicDeskStore`: los escritorios DINÁMICOS vivos que abrió el launcher (`Win+NumpadEnter`), indexados por GUID del desktop (`id` + `project` + `module` + `key`). Al cargar se descarta cualquier entrada cuyo GUID ya no resuelva a un desktop real (Windows lo cerró). Separado del catálogo de espacios (`desk_project_data.json`, que es durable aunque nadie lo tenga abierto): esto es la lista de "qué desk vivo ES cada asignación", en la práctica vive y muere con la app: `OnExit` cierra los dinámicos y `OnStartup` barre los que dejó una sesión que terminó mal. |
+| `desktops.json` | JSON | `DesktopConfig`: lista `managed` de los desks **FIJOS** (cada ítem = `name` + `key` + `role` + `color`, ver `ManagedDesktop`) + flag `autoCreate`. Migraciones al cargar (formato viejo de strings, entradas de rol Espacio) — ver sección 1. |
+| `dynamic_desks.json` | JSON | `DynamicDeskStore`: los dinámicos vivos del launcher, por GUID del desktop (`id` + `project` + `module` + `key`). Al cargar descarta los GUID que ya no existen. Es "qué desk vivo ES cada asignación" (no el catálogo durable) y vive y muere con la app (ver sección 3). |
 | `apps.json` | JSON | `AppsConfig`: apps de usuario (`name`, `exePath`, `args` con `{path}`). |
 | `widgets.json` | JSON | `WidgetSettings`: qué widgets de la barra están activos (defaults: Clock + Ram + Ip). |
-| `knowledge.db` | SQLite | `KnowledgeStore`: biblioteca de conocimiento — tablas `libraries`, `entries`, `natures`, `languages`, `translations`, `glossary`, `reviews` (esquema versionado por `PRAGMA user_version`, hoy **v2**: la v1→v2 sumó `glossary` y `reviews.helped`, sólo agregando). El ÚNICO dato que no es JSON/INI; ver la ⚠ de abajo. Un archivo ilegible se aparta como `knowledge.db.corrupt-<fecha>`. |
+| `knowledge.db` | SQLite | `KnowledgeStore`: biblioteca de conocimiento — tablas `libraries`, `entries`, `natures`, `languages`, `translations`, `glossary`, `reviews` (esquema versionado por `PRAGMA user_version`, hoy **v3**: la v1→v2 sumó `glossary` y `reviews.helped`; la v2→v3, `entries.issue_note` / `issue_at` y `libraries.collapsed` — siempre sólo AGREGANDO columnas con valor por defecto, en una transacción). El ÚNICO dato que no es JSON/INI; ver la ⚠ de abajo. Un archivo ilegible se aparta como `knowledge.db.corrupt-<fecha>`. |
 | ~~`ports.json`~~ | JSON | **MIGRADO** a `services` del catálogo (ver arriba). `PortStore` queda como legacy de sólo-lectura para `ServiceMigration`; al migrar, el archivo se renombra a `ports.json.migrated`. |
 | `ampz-crash.log` | texto | Junto al **exe** (no en APPDATA). Log de excepciones no manejadas. |
 
@@ -553,14 +582,14 @@ del hook no se puede bloquear).
 | Atajo | Acción |
 |---|---|
 | `Win+Numpad 1..9` | Ir al desk que TENGA esa tecla asignada, sea del catálogo **fijo** (**configurable** en Config → Escritorios) o uno **dinámico** abierto por el launcher (ver `DeskLauncher.Open` — reparte la más baja libre). Defaults: 1/2/3 → MAIN / CONSOLES / MISCS (fila inferior, la más cómoda); 4..9 quedan libres para los dinámicos |
-| ~~`Win+Numpad` (tecla del desk **donde ya estás**)~~ | **RETIRADO** a pedido del usuario: hacía "volver al desk anterior" (toggle tipo Alt+Tab). Hoy apretar la tecla del desk activo NO hace nada. El historial `DesktopService.NoteCurrent`/`Previous` se borró con él — no lo reintroduzcas. |
+| ~~`Win+Numpad` (tecla del desk **donde ya estás**)~~ | **RETIRADO** a pedido del usuario ("volver al desk anterior"): hoy NO hace nada. No reintroduzcas `DesktopService.NoteCurrent`/`Previous`. |
 | `Win+Shift+`(navegación) | Enviar la ventana activa a ese desk **y seguirla** |
-| `Win+NumpadEnter` | **Launcher**, usable desde CUALQUIER desk: elegís Espacio (`ProjectSetterWindow`) → encadena el picker de Contexto (`ModulePickerWindow`) → crea un escritorio DINÁMICO nuevo (o salta al que ya lo tenga abierto), lo asigna y salta ahí. **Ya NO auto-lanza sus servicios `AutoStart`** (se retiró a pedido del usuario: abrir un escritorio no dispara procesos solo — se levantan a mano con el re-press de `Win+Numpad +` o `Ctrl+Enter` en Servicios). Ambos pasos MARCAN lo que ya está abierto (leyendo `DynamicDeskStore.CountOpenModules`/`OpenKeyFor`, mismo criterio de comparación que el dedupe): el paso Espacio muestra "● N abiertos" junto a los que tengan algún contexto (o "sin contexto") vivo; el paso Contexto marca cada fila abierta con "● abierto — <tecla>" (reusa `NumpadDecoder.Label`), incluida la opción "Sin contexto". Elegir uno YA abierto no crea nada: `DeskLauncher.Open` dedupea primero y SALTA ahí (`LauncherOpenResult.SwitchedExisting`). **Re-press con el launcher abierto** cierra el picker y, si el desk donde estás parado es uno dinámico, lo BORRA (`RemoveDesktop`, fallback = el Main); en un desk fijo sólo cierra el picker (toast). Ver `DeskLauncher`. |
-| `Win+Numpad .` (Del) | Abrir la **Config** (o traerla al frente si ya está abierta; `Esc` la cierra). La tecla quedó libre cuando se RETIRÓ su uso anterior, "cambiar de contexto en el mismo desk": con escritorios dinámicos el contexto se elige UNA sola vez, en el paso 2 del launcher. |
-| `NumpadClear` (Numpad5, **sin Win ni Shift**) | Abrir el **Playbooker** (jugar / consultar la biblioteca de conocimiento, ver sección 6). Instancia única; el re-press la cierra sólo desde la búsqueda, si no la trae al frente (`App.TogglePlaybook`). Con Win, el Numpad5 es navegación como cualquier otro dígito. |
+| `Win+NumpadEnter` | **Launcher**, usable desde CUALQUIER desk: elegís Espacio (`ProjectSetterWindow`) → encadena el picker de Contexto (`ModulePickerWindow`) → crea un escritorio DINÁMICO nuevo (o salta al que ya lo tenga abierto), lo asigna y salta ahí. **NO auto-lanza servicios `AutoStart`** (pedido del usuario: se levantan a mano). Ambos pasos MARCAN lo ya abierto (`DynamicDeskStore.CountOpenModules`/`OpenKeyFor`, mismo criterio que el dedupe): "● N abiertos" en el paso Espacio, "● abierto — <tecla>" en el de Contexto. Elegir uno abierto no crea nada: SALTA ahí (`LauncherOpenResult.SwitchedExisting`). **Re-press con el launcher abierto** cierra el picker y, si el desk donde estás parado es uno dinámico, lo BORRA (`RemoveDesktop`, fallback = el Main); en un desk fijo sólo cierra el picker (toast). Ver `DeskLauncher`. |
+| `Win+Numpad .` (Del) | Abrir la **Config** (o traerla al frente si ya está abierta; `Esc` la cierra). Antes era "cambiar de contexto en el mismo desk" (retirado, ver sección 3). |
+| `NumpadClear` (Numpad5, **sin Win ni Shift**) | Abrir el **Playbooker** (jugar / consultar la biblioteca de conocimiento, ver sección 6). Instancia única; el re-press NUNCA la cierra: la trae al frente, la restaura si estaba minimizada y la muda al escritorio actual (`App.ShowPlaybook`). Con Win, el Numpad5 es navegación como cualquier otro dígito. |
 | ~~`NumpadClear` → DeskPicker~~ | **RETIRADO** por decisión del usuario el 2026-10-10: la tecla pasó al playbooker. `DeskPickerWindow` y `HotkeyRouter.ShowDeskPicker` se CONSERVAN enteros a propósito, hoy sin ninguna tecla que los llame; re-enlazarlos es una línea en `HotkeyRouter.Route` el día que haya una tecla libre. No los borres por "código muerto". |
 | `Win+Numpad *` | **Variables** del espacio/contexto/global (Paths Manager); re-press dispara el predeterminado |
-| `Win+Numpad /` | **Notas** del espacio/contexto/global |
+| `Win+Numpad /` | **Notas** del espacio/contexto/global. Ventana de trabajo largo: NO es Topmost, se minimiza y no se cierra al perder el foco (guarda sola al perderlo). Re-press en el MISMO escritorio → la trae al frente (la restaura si estaba minimizada); desde OTRO escritorio → cierra la vieja (guardando) y abre las notas de éste |
 | `Win+Numpad −` (Sub) | **Send-window picker** (mandar la ventana activa a un desk elegido) |
 | `Win+Numpad +` (Add) | **Servicios** del espacio/contexto/global: cómo levantar lo básico y qué está levantado (estado vivo 🟢/⚪ por puerto, copiar localhost / IP de red, QR). Re-press → levanta lo que falte |
 | `Win+Numpad 0` (Insert) | **Tareas**: picker para asignarle una tarea al desk actual (`TaskPickerWindow`); re-press con el picker abierto DESASIGNA la del desk donde se abrió y cierra. Migró desde `Win+NumLock`: Shift/Alt+NumLock togglea NumLock por debajo del hook y no se puede neutralizar; el Insert va por scancode. |
@@ -578,7 +607,9 @@ del hook no se puede bloquear).
 | `F1` (**sin Win**) | **Tragado** (down y up) para que nunca abra la Ayuda de Windows en la app activa. Todavía no dispara nada. |
 
 Las ventanas de Variables y Notas son de **instancia única**: re-presionar el atajo con la ventana
-abierta NO abre otra (Variables dispara el path predeterminado; Notas la trae al frente).
+abierta NO abre otra (Variables dispara el path predeterminado; Notas la trae al frente). Las dos
+recuerdan PARA QUÉ escritorio se abrieron (`_pathsWindowDeskIdx` / `_notesWindowDeskIdx`): el re-press
+desde otro desk cierra la vieja y abre la de ése — su contenido es el del scope de ESE escritorio.
 
 ---
 
@@ -607,13 +638,13 @@ abierta NO abre otra (Variables dispara el path predeterminado; Notas la trae al
 
 **Ventanas WPF** (raíz): `BarWindow` (la AppBar + widgets), `OverlayWindow` (feedback central de
 cambio de desk), `ConfigWindow` (config, instancia única), `ProjectSetterWindow`, `ProjectPathsWindow`
-(variables), `ProjectNotesWindow`, `EnvVarsWindow`, `DockerWindow`, `HzWindow` (refresh rate),
+(variables), `ProjectNotesWindow` (no Topmost, minimizable), `EnvVarsWindow`, `DockerWindow`, `HzWindow` (refresh rate),
 `WhitelistPickerWindow`, `SendWindowPickerWindow`, `ModulePickerWindow` (paso 2 del launcher),
 `AbrirConWindow` ("Abrir con"), `DeskPickerWindow` (hoy SIN atajo, ver la tabla de hotkeys),
 `ShortcutsHelperWindow` (`Win+/`), `TaskPickerWindow` + `TaskDetailWindow` (tareas),
 `ServicesWindow` (servicios del scope) + `ServiceEditWindow` (título, comando, directorio, puerto,
 URL + los flags "levantar todo" y "cerrar la terminal al terminar"), `PlaybookWindow` (el playbooker,
-partials `.Browse` / `.Ficha` / `.Stats` / `.Helper`), `KnowledgeEntryWindow` (alta/edición de una card o un
+partials `.Browse` / `.Ficha` / `.Stats` / `.Helper` / `.Guard` / `.Actions`), `KnowledgeEntryWindow` (alta/edición de una card o un
 término; también la captura rápida del playbooker) y `KnowledgeImportWindow` (vista previa y
 confirmación de una importación), `PromptDialog`, `ToastWindow`. `PinManagerWindow` y
 `DeskRestrictionsWindow` YA NO EXISTEN: su gestión vive en las pestañas Anclajes y Protecciones de
@@ -715,8 +746,7 @@ filtrando a Win+numpad) + el usuario observando el PATRÓN, que son COROLARIOS d
 
 **1. El watchdog NO debe resetear `_winDown` a ciegas — descolgaba `Win+Numpad`.**
 Síntoma: con Win MANTENIDA, rafagueando `Win+Numpad`, el combo se descolgaba tras unos saltos
-(NumpadClear pasaba a abrir el DeskPicker PELADO — así era entonces; hoy esa tecla pelada abre el
-playbooker, y el síntoma equivalente sería ése). Patrón clave (lo encontró el usuario): se rafaguea
+(el Numpad5 actuaba como tecla pelada). Patrón clave (lo encontró el usuario): se rafaguea
 INFINITO entre desks VACÍOS, pero el **primer desk CON ventana** lo mata.
 - **Causa**: `bar.OnBarZOrderChanged → ReinstallHook` NO sólo salta al salir de fullscreen — también
   salta al navegar a un desk CON ventana (la ventana toma foreground → la barra re-evalúa z-order →
@@ -726,7 +756,7 @@ INFINITO entre desks VACÍOS, pero el **primer desk CON ventana** lo mata.
 - **Fix**: `HotkeyService.ReinstallHook` re-sincroniza los modificadores con su estado FÍSICO real
   (`WindowMethods.IsKeyPhysicallyDown` vía `GetAsyncKeyState`), NUNCA los fuerza a `false`. El log
   probó que `_winDown` caía a false SIN ningún Win-up en el hook (el hook seguía VIVO entregando
-  teclas — por eso el NumpadClear abría el DeskPicker pelado: hook vivo + flag corrupto).
+  teclas: hook vivo + flag corrupto).
 - **Teorías DESCARTADAS por el log (no repetir)**: NO hay Win-up sintético/inyectado del sistema; la
   tecla Win NO auto-repite en este teclado; NO era el "hook muerto" (entregaba todas las teclas).
   Filtrar `e.IsInjected` en el branch de Win EMPEORÓ las cosas y se revirtió.
@@ -767,6 +797,51 @@ aparecía al frente pero SIN foco de teclado — había que clickearlo.
 **Regla transversal**: estos bugs de hook/foco se cazan SIEMPRE con instrumentación a archivo + el
 usuario reproduciendo y observando el PATRÓN, NUNCA con teoría. Las teorías "lindas" fallaron varias
 veces; el log y el patrón observado siempre ganaron.
+
+### ⚠ Ventanas utilitarias NO Topmost y minimizables (playbooker, Notas): lo que cambia en la red de foco
+
+El playbooker y Notas dejaron de ser popups Topmost que se cierran al perder el foco: son ventanas
+normales, minimizables y con botón en la barra de tareas. Todo lo de arriba se escribió suponiendo
+"Topmost y efímera", así que cuatro cosas dejaron de ser gratis. Están resueltas; **no se probaron en
+vivo cuando se escribieron** — si algo de foco/hotkeys se porta raro con estas dos ventanas, empezá
+por acá, y con log (la regla transversal).
+
+1. **Minimizar deja el foco huérfano igual que cerrar** (la única ventana de un desk, minimizada). La
+   red sólo corría en `Closed`. → `WindowActivation.RearmHookOnMinimize` (opt-in: lo piden estas dos
+   ventanas) dispara el MISMO `OnUtilityWindowClosed` al pasar a `Minimized`.
+2. **Una ventana minimizada puede seguir figurando como foreground** → `HasFocusedUtilityWindow` la
+   saltea (`WindowState == Minimized`): si la contara, la red creería que el foco está bien y no
+   restauraría nada.
+3. **Los modales efímeros (Topmost, `CloseOnDeactivate`) la TAPAN**. Su guarda "el foco se fue a una
+   ventana NUESTRA → no cierres" los deja abiertos cuando se pide el playbooker o Notas, y como ellos
+   sí son Topmost quedan encima. Antes no se veía porque la ventana pedida también era Topmost. →
+   `WindowActivation.CloseEphemeralWindows` al mostrarlas o traerlas al frente (es la regla de "un
+   solo modal utilitario a la vez", aplicada desde el otro lado).
+4. **`ForceWithRetry` des-minimizaba**: machaca `ForceForeground` ~600ms y éste restaura lo
+   iconizado; minimizar la ventana en ese tramo la hacía reaparecer sola. → corta si
+   `WindowState == Minimized`. (El re-press de una minimizada no se rompe: el primer
+   `ForceForeground`, inmediato, ya la restauró.)
+5. **Un modal efímero no se cerraba al VOLVER a una de ellas** (click, Alt+Tab, barra de tareas): la
+   misma guarda las contaba como "hija". → `ShowFocused(closeOnDeactivate: false)` anota la ventana
+   como de trabajo largo y `FocusWentToOwnWindow` no la cuenta (tampoco a la Config, que ya tenía el
+   problema). El criterio es CÓMO se abrió, no qué tipo es; un diálogo hijo o un picker encadenado
+   no se abren así, y siguen dejando abierto a su padre.
+6. **`Win+D` las dejaba a la vista y sin teclado**: `MinimizeForeignTopLevel` saltea todo lo nuestro
+   y 80ms después el foco se iba al escritorio. → el handler llama antes a
+   `WindowActivation.MinimizeLongLivedWindows` (las de trabajo largo, no Topmost, del escritorio
+   actual — Config incluida), por su `WindowState` normal. `MinimizeForeignTopLevel` no cambió.
+
+Lo que NO cambió, a propósito: `RestoreForegroundOrDesktop` sigue excluyendo TODO lo de nuestro
+proceso, así que con el foco huérfano se lo da a otra app o al escritorio aunque el playbooker esté
+visible detrás (queda a la vista y sin foco; el atajo o un click se lo devuelven).
+
+**Notas abierta mientras se reorganiza el catálogo**: `ProjectStore.ScopeKeysChanging` avisa ANTES de
+mover o borrar una key de scope y el router CIERRA Notas (guarda en `Closing`, bajo la key que todavía
+existe, y el texto viaja con ella). Si agregás una operación que mueva keys, tiene que avisar igual.
+
+**Otro escritorio**: una ventana normal vive en el desk donde se abrió, y activarla desde otro hace
+que Windows SALTE a ese desk (le pasa a la Config). El playbooker se MUDA al desk actual
+(`DesktopService.SendWindowTo(…, follow: false)`); Notas se cierra y se reabre con las de ese desk.
 
 ### ⚠ "Mostrar escritorio" (Win+D / Win+M / gesto de 3 dedos) escondía la barra — DOS causas distintas
 

@@ -14,8 +14,13 @@ namespace AmpzDesktopBooster.Knowledge;
 /// planas y la UI arma el árbol. <see cref="DefaultNatureId"/> es la naturaleza que HEREDAN sus
 /// entradas mientras no fijen una propia; null = la que le llegue de su biblioteca madre (ver
 /// <see cref="LibraryTree.EffectiveNatureId(long, IReadOnlyDictionary{long, Library})"/>).
+/// <see cref="Sort"/> es su posición entre sus HERMANAS (el orden que el usuario les dio; el desempate
+/// es el id). <see cref="Collapsed"/> = en las listas se muestra PLEGADA, con sus hijas ocultas: es un
+/// dato de cómo se MIRA el árbol, no de su contenido — lo comparten el árbol de la config y la lista
+/// del playbooker, y por eso se guarda con la biblioteca en vez de vivir en cada ventana.
 /// </summary>
-public sealed record Library(long Id, long? ParentId, string Name, long? DefaultNatureId, int Sort, DateTime CreatedAt);
+public sealed record Library(long Id, long? ParentId, string Name, long? DefaultNatureId, int Sort, DateTime CreatedAt,
+    bool Collapsed = false);
 
 /// <summary>
 /// Preguntas sobre el ÁRBOL de bibliotecas que se contestan en memoria, con la lista plana que
@@ -117,10 +122,21 @@ public enum EntryKind { Card, Term }
 /// <see cref="WordType"/>, <see cref="UsageContext"/> y <see cref="Origin"/> (vacíos en una tarjeta).
 /// <see cref="NatureId"/> null NO es "sin naturaleza": es "la que diga mi biblioteca" (o, si ella
 /// tampoco tiene, la primera de sus ancestros que sí).
+///
+/// <see cref="IssueNote"/> es el PROBLEMA ANOTADO: lo que el usuario escribió sobre esta entrada
+/// mientras la jugaba ("el dorso está mal", "falta un ejemplo") para arreglarla después. "" = sin
+/// nada anotado; <see cref="IssueAt"/> (UTC) es cuándo se anotó, y es null exactamente cuando la nota
+/// está vacía. Es una nota PERSONAL sobre la entrada, no parte de su contenido: no cambia
+/// <see cref="UpdatedAt"/>, no entra en la solidez y no viaja en una exportación.
 /// </summary>
 public sealed record Entry(
     long Id, long LibraryId, EntryKind Kind, string Front, string Back, long? NatureId,
-    string WordType, string UsageContext, string Origin, DateTime CreatedAt, DateTime UpdatedAt);
+    string WordType, string UsageContext, string Origin, DateTime CreatedAt, DateTime UpdatedAt,
+    string IssueNote = "", DateTime? IssueAt = null)
+{
+    /// <summary>¿Tiene un problema anotado?</summary>
+    public bool HasIssue => IssueNote != "";
+}
 
 /// <summary>Lo que el usuario edita de una entrada (alta y modificación): todo menos identidad y fechas.</summary>
 public sealed record EntryDraft(
@@ -129,7 +145,7 @@ public sealed record EntryDraft(
 
 /// <summary>
 /// Un renglón del GLOSARIO de una card: una palabra difícil del texto y su definición breve. Es lo que
-/// muestra la ayuda del quiz (tecla H) para que una pregunta con jerga no mande a buscar afuera.
+/// muestra la ayuda del quiz (tecla A) para que una pregunta con jerga no mande a buscar afuera.
 /// Sólo las CARDS llevan glosario: un término ya trae <see cref="Entry.Origin"/> (etimología y
 /// composición), que es lo que su ayuda muestra.
 /// </summary>
@@ -180,7 +196,7 @@ public sealed record Translation(long EntryId, long LanguageId, string Text);
 /// <summary>
 /// Un repaso: qué lado se MOSTRÓ como pregunta (<see cref="Side"/>, ver <see cref="ReviewSide"/>),
 /// cómo le fue y cuándo (UTC). El historial es de sólo-agregar: la solidez se DERIVA de él.
-/// <see cref="Helped"/> = se abrió la ayuda (H) ANTES de revelar la respuesta en esa pregunta. Es un
+/// <see cref="Helped"/> = se abrió la ayuda (A) ANTES de revelar la respuesta en esa pregunta. Es un
 /// dato que se guarda para poder mirarlo después; NO entra en la solidez ni cambia la nota.
 /// </summary>
 public sealed record Review(long Id, long EntryId, string Side, Grade Grade, DateTime ReviewedAt, bool Helped = false);
