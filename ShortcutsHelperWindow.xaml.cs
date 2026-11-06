@@ -124,6 +124,7 @@ public partial class ShortcutsHelperWindow : Window
         ("Win + NumpadEnter",     Loc.T("Helper.LauncherOpen")),
         ("Win + Numpad *",        Loc.T("Helper.Variables")),
         ("Win + Numpad /",        Loc.T("Helper.Notes")),
+        ("Win + Shift + Numpad /", Loc.T("Helper.Credentials")),
         ("Win + Numpad +",        Loc.T("Helper.Services")),
         ("Win + Numpad 0",        Loc.T("Helper.Tasks")),
         ("", ""),

@@ -25,6 +25,7 @@ namespace AmpzDesktopBooster.Hotkeys;
 ///   NumpadClear solo → Playbooker (jugar una biblioteca de conocimiento; ver PlaybookWindow)
 ///   Win+NumpadMult   → Variables del espacio/global (Paths Manager) — re-press dispara el predeterminado
 ///   Win+NumpadDiv    → Notes
+///   Win+Shift+NumpadDiv → Credenciales del espacio/contexto/global (CredentialsWindow)
 ///   Win+NumpadSub    → Send-window picker (mandar la ventana activa a un desk elegido)
 ///
 /// Corre headless: el feedback visual lo dispara el DesktopChangeListener, no este router.
@@ -63,6 +64,12 @@ public sealed class HotkeyRouter
     private ProjectNotesWindow? _notesWindow;
     private int _notesWindowDeskIdx = -1; // el desk para el que se abrió: sus notas son las de ESE scope
     private Guid _notesWindowDeskId;
+    // Gestor de credenciales abierto (Win+Shift+Numpad /). Instancia única y DESK-AWARE como
+    // Variables: su contenido es el scope del desk donde se abrió, así que el re-press en ESE desk
+    // la trae al frente y desde otro la reemplaza por la de ahí (mismo GUID + índice de respaldo).
+    private CredentialsWindow? _credentialsWindow;
+    private int _credentialsWindowDeskIdx = -1;
+    private Guid _credentialsWindowDeskId;
     // Picker de tareas abierto (instancia única — re-press DESASIGNA la tarea del desk y cierra).
     // Guardamos también el desk con el que se abrió: el re-press desasigna ESE, no el current (por si
     // navegaste de desk con el picker abierto — la tarea visible es la del desk donde lo abriste).
@@ -133,7 +140,13 @@ public sealed class HotkeyRouter
         // la key que todavía existe y viaja con ella (ver ProjectStore.ScopeKeysChanging). Dejarla
         // abierta era escribir después bajo la key vieja — la nota partida en dos y un scope
         // borrado que resucita. Es además lo que pasaba siempre: antes se cerraba al perder el foco.
-        _projects.ScopeKeysChanging += () => _notesWindow?.Close();
+        // Credenciales, por lo mismo: sus filas apuntan a keys de scope que están por moverse, y un
+        // editar/borrar después actuaría sobre una key que ya no existe (el store diría "no está").
+        _projects.ScopeKeysChanging += () =>
+        {
+            _notesWindow?.Close();
+            _credentialsWindow?.Close();
+        };
         _apps = apps;
         _pins = pins;
         _restrictions = restrictions;
@@ -319,6 +332,9 @@ public sealed class HotkeyRouter
             // era la única superficie grande de la app a la que sólo se llegaba con el mouse (tray).
             case NumpadKey.Decimal:  OpenConfig?.Invoke();    return; // Win+NumpadDel/Dot
             case NumpadKey.Multiply: ShowProjectPaths();      return;
+            // Shift ANTES que el case pelado: el switch no miraba Shift, así que Win+Shift+/ abría Notas
+            // por duplicado. Win+Shift+(dígito) sigue siendo "mandar ventana", eso es navegación abajo.
+            case NumpadKey.Divide when e.Shift: ShowCredentials(); return;
             case NumpadKey.Divide:   ShowProjectNotes();      return;
             case NumpadKey.Add:      ShowServices();          return; // Win+Numpad+ (servicios del scope)
             case NumpadKey.D0:       ShowTaskPicker();        return; // Win+NumpadInsert (scancode 0x52)
@@ -520,6 +536,39 @@ public sealed class HotkeyRouter
         _pathsWindowDeskId = _desktops.IdOf(idx);
         _pathsWindow.Closed += (_, _) => _pathsWindow = null;
         _pathsWindow.ShowFocused();
+    }
+
+    /// <summary>
+    /// Win+Shift+Numpad / → credenciales del scope del desk (contexto, espacio o global) con lo
+    /// heredado debajo. Re-press en el MISMO desk la trae al frente (no hay "acción por defecto" que
+    /// disparar: copiar una contraseña sin mirarla sería el atajo más peligroso de la app). Desde OTRO
+    /// desk cierra la vieja y abre la de éste: mostrar las credenciales del desk anterior como si
+    /// fueran las tuyas es justo el error de contexto que el scope por desk vino a evitar.
+    /// </summary>
+    private void ShowCredentials()
+    {
+        int idx = _desktops.Current;
+        if (_credentialsWindow is not null
+            && SameDesk(_credentialsWindowDeskId, _credentialsWindowDeskIdx, _desktops.IdOf(idx), idx))
+        {
+            _credentialsWindow.BringToFront();
+            return;
+        }
+        _credentialsWindow?.Close();
+
+        string name = _desktops.GetName(idx);
+        _credentialsWindow = new CredentialsWindow(_projects, name,
+                                                   _projects.ResolveScopeKey(name, idx),
+                                                   _projects.ResolveParentScopeKey(name, idx));
+        _credentialsWindowDeskIdx = idx;
+        _credentialsWindowDeskId = _desktops.IdOf(idx);
+        // Captura LOCAL: el Close de la vieja (arriba) corre su Closed DESPUÉS de que ya asignamos la
+        // nueva; sin comparar por referencia, ese handler pondría en null a la recién abierta.
+        var opened = _credentialsWindow;
+        opened.Closed += (_, _) => { if (ReferenceEquals(_credentialsWindow, opened)) _credentialsWindow = null; };
+        // Efímera como Variables (Topmost, se cierra al perder el foco): un gestor de secretos
+        // olvidado abierto encima de lo que hacés es exactamente lo que no tiene que pasar.
+        opened.ShowFocused();
     }
 
     private void ShowProjectNotes()
