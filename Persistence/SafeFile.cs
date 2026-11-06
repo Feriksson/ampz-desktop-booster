@@ -30,8 +30,9 @@ public sealed record CorruptionIncident(string FileName, bool Recovered, string?
 ///     ilegible se APARTA como <c>.corrupt-&lt;fecha&gt;</c> para que ningún Save pueda pisarlo.
 ///   - El incidente se registra y <c>App</c> lo avisa con un toast: degradar en silencio fue parte del bug.
 ///
-/// Contrato: <see cref="WriteAllText"/> PUEDE tirar (el caller mantiene su try/catch → sigue en memoria);
-/// <see cref="LoadJson{T}"/> NUNCA tira. Un <c>.tmp</c> sobrante de un crash se ignora y se pisa.
+/// Contrato: <see cref="WriteAllText"/> / <see cref="WriteAllBytes"/> PUEDEN tirar (el caller mantiene
+/// su try/catch → sigue en memoria); <see cref="LoadJson{T}"/> / <see cref="LoadBytes{T}"/> NUNCA tiran.
+/// Un <c>.tmp</c> sobrante de un crash se ignora y se pisa.
 /// </summary>
 public static class SafeFile
 {
@@ -46,7 +47,15 @@ public static class SafeFile
     private static Action<CorruptionIncident>? _notify;
 
     /// <summary>Escribe <paramref name="text"/> (UTF-8 sin BOM, igual que File.WriteAllText) de forma atómica.</summary>
-    public static void WriteAllText(string path, string text)
+    public static void WriteAllText(string path, string text) => WriteAllBytes(path, Utf8NoBom.GetBytes(text));
+
+    /// <summary>
+    /// Igual que <see cref="WriteAllText"/> pero con bytes ya armados. Existe para el archivo de
+    /// credenciales: el caller CIFRA antes de llamar, así que ni el <c>.tmp</c> ni el <c>.bak</c>
+    /// llegan a contener texto plano. Una sola implementación para los dos: la atomicidad no se
+    /// puede corregir en una copia y olvidarse en la otra.
+    /// </summary>
+    public static void WriteAllBytes(string path, byte[] bytes)
     {
         lock (WriteGate)
         {
@@ -56,7 +65,7 @@ public static class SafeFile
             string tmp = path + ".tmp";
             using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
             {
-                fs.Write(Utf8NoBom.GetBytes(text));
+                fs.Write(bytes);
                 fs.Flush(flushToDisk: true); // sin esto el Replace puede "ganarle" a los datos en caché
             }
 
@@ -85,7 +94,17 @@ public static class SafeFile
     /// el .bak se pudieron leer → el caller usa sus defaults. <paramref name="parse"/> puede tirar;
     /// tirar o devolver null cuenta como archivo dañado.
     /// </summary>
-    public static T? LoadJson<T>(string path, Func<string, T?> parse) where T : class
+    public static T? LoadJson<T>(string path, Func<string, T?> parse) where T : class =>
+        LoadBytes(path, bytes => parse(DecodeText(bytes)));
+
+    /// <summary>
+    /// El mismo recorrido que <see cref="LoadJson{T}"/> (principal → .bak → apartar como .corrupt)
+    /// sobre los bytes crudos. Lo usa el archivo de credenciales, donde <paramref name="parse"/>
+    /// DESCIFRA: un blob que DPAPI no puede abrir tira y cuenta como dañado — se aparta, nunca se
+    /// borra, porque puede ser la única copia (p.ej. el perfil de Windows se restauró y la clave
+    /// volvió más tarde).
+    /// </summary>
+    public static T? LoadBytes<T>(string path, Func<byte[], T?> parse) where T : class
     {
         try
         {
@@ -143,21 +162,29 @@ public static class SafeFile
         try { notify?.Invoke(incident); } catch { /* el aviso nunca voltea una carga */ }
     }
 
-    private static bool TryParse<T>(string path, Func<string, T?> parse, out T? value, int retries) where T : class
+    private static bool TryParse<T>(string path, Func<byte[], T?> parse, out T? value, int retries) where T : class
     {
         value = null;
-        string text;
+        byte[] bytes;
         // Un error de LECTURA (archivo tomado un instante por el antivirus / indexador) no es
         // corrupción: reintentamos corto antes de declararlo ilegible.
         for (int attempt = 1; ; attempt++)
         {
-            try { text = File.ReadAllText(path); break; }
+            try { bytes = File.ReadAllBytes(path); break; }
             catch (Exception) when (attempt < retries) { Thread.Sleep(50); }
             catch { return false; }
         }
-        try { value = parse(text); }
+        try { value = parse(bytes); }
         catch { value = null; }
         return value is not null;
+    }
+
+    /// <summary>Decodifica como lo hacía <c>File.ReadAllText</c>: UTF-8, respetando un BOM si lo hay
+    /// (un JSON editado a mano con el Bloc de notas puede traerlo).</summary>
+    private static string DecodeText(byte[] bytes)
+    {
+        using var reader = new StreamReader(new MemoryStream(bytes), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
     }
 
     /// <summary>Renombra el ilegible a .corrupt-&lt;fecha&gt;. Devuelve el nombre nuevo, o null si no se pudo.</summary>
