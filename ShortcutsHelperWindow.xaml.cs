@@ -114,7 +114,7 @@ public partial class ShortcutsHelperWindow : Window
     [
         ($"§{Loc.T("Helper.SectionDesktops")}", ""),
         ("Win + Numpad 1..9",     Loc.T("Helper.GoDeskKey")),
-        ("NumpadClear",           Loc.T("Helper.Playbook")),
+        ("Win + Shift + Numpad −", Loc.T("Helper.Playbook")),
         ("", ""),
         ($"§{Loc.T("Helper.SectionMoveWindow")}", ""),
         ("Win + Shift + (nav)",   Loc.T("Helper.SendAndFollow")),

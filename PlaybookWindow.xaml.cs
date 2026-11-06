@@ -14,7 +14,7 @@ using AmpzDesktopBooster.Services.Localization;
 namespace AmpzDesktopBooster;
 
 /// <summary>
-/// El PLAYBOOKER (NumpadClear pelado): buscar una biblioteca, una naturaleza o una entrada, jugarla,
+/// El PLAYBOOKER (Win+Shift+Numpad−): buscar una biblioteca, una naturaleza o una entrada, jugarla,
 /// leerla, y mirar cómo viene todo. Una sola ventana con seis vistas que se alternan por Visibility
 /// (mismo recurso que el Shortcuts Helper):
 ///

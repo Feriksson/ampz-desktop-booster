@@ -22,7 +22,7 @@ namespace AmpzDesktopBooster.Hotkeys;
 ///                      MAIN / CONSOLES / MISCS · 4..9 quedan libres para los desks dinámicos.
 ///   Win+Shift+(nav)  → mandar ventana activa ahí + seguir
 ///   Win+NumpadEnter  → LAUNCHER: crea/reutiliza el desk de un espacio+contexto (o lo cierra, en re-press)
-///   NumpadClear solo → Playbooker (jugar una biblioteca de conocimiento; ver PlaybookWindow)
+///   Win+Shift+Numpad− → Playbooker (jugar una biblioteca de conocimiento; ver PlaybookWindow)
 ///   Win+NumpadMult   → Variables del espacio/global (Paths Manager) — re-press dispara el predeterminado
 ///   Win+NumpadDiv    → Notes
 ///   Win+Shift+NumpadDiv → Credenciales del espacio/contexto/global (CredentialsWindow)
@@ -113,7 +113,7 @@ public sealed class HotkeyRouter
     public Action? OpenConfig { get; set; }
 
     /// <summary>
-    /// Abre o trae al frente el playbooker (NumpadClear pelado; nunca lo cierra). Lo inyecta <c>App</c>, igual
+    /// Abre o trae al frente el playbooker (Win+Shift+Numpad−; nunca lo cierra). Lo inyecta <c>App</c>, igual
     /// que <see cref="OpenConfig"/>: la instancia única y la biblioteca de conocimiento viven allá, y
     /// el router no tiene por qué conocer ese dominio para rutear una tecla.
     /// </summary>
@@ -312,17 +312,16 @@ public sealed class HotkeyRouter
 
     private void Route(HotkeyEventArgs e)
     {
-        // ── Atajos pelados (sin Win) ──
+        // Sin Win no hay atajos de numpad (HotkeyService ya no los emite; el guard queda por si vuelve).
         if (!e.WinDown)
-        {
-            if (e.Key == NumpadKey.D5)   // NumpadClear
-                ShowPlaybook?.Invoke();
             return;
-        }
 
         // ── Win + … ──
         switch (e.Key)
         {
+            // Win+Shift+Numpad− → playbooker (antes NumpadClear pelado; movido a pedido del usuario).
+            // Va ANTES del de abajo: sin el guard de Shift, el combo caía en el send-window picker.
+            case NumpadKey.Subtract when e.Shift: ShowPlaybook?.Invoke(); return;
             case NumpadKey.Subtract: ShowSendWindowPicker();  return; // Win+NumpadSub (antes Win+NumpadDel)
             case NumpadKey.Enter:    ShowProjectSetter();     return; // launcher: abre/cierra desks dinámicos
             // Win+NumpadDot (contexto en el desk actual) SE RETIRÓ con los escritorios dinámicos: el
@@ -830,6 +829,6 @@ public sealed class HotkeyRouter
     // usuario: MAIN/CONSOLES/MISCS en la fila INFERIOR (1-2-3), la más cómoda al alcance del pulgar;
     // los de espacio ocupan las filas media (4-5-6) y superior (7-8-9). Ver DesktopConfig.DefaultManaged.
     //
-    // OJO: D5 (Numpad5/Clear) con Win es navegación. El Numpad5 PELADO (sin Win) abre el playbooker —
-    // no colisionan: lo distingue WinDown en Route().
+    // OJO: D5 (Numpad5/Clear) con Win es navegación. El playbooker, que antes vivía en el Numpad5
+    // PELADO, pasó a Win+Shift+Numpad− (2026-11-06): el numpad pelado ya no dispara nada.
 }

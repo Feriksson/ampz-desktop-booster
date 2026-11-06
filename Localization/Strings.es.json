@@ -879,7 +879,7 @@
 
   "Config.KnowledgeTab": "Conocimiento",
   "Config.KnowledgeTitle": "Bibliotecas de conocimiento",
-  "Config.KnowledgeHint": "Lo que juega el Playbook (Numpad 5): bibliotecas, sus cards y términos, y las naturalezas e idiomas que usan. Cada cambio se guarda al hacerlo.",
+  "Config.KnowledgeHint": "Lo que juega el Playbook (Win+Shift+Numpad −): bibliotecas, sus cards y términos, y las naturalezas e idiomas que usan. Cada cambio se guarda al hacerlo.",
   "Config.KnowledgeLibrariesTab": "Bibliotecas",
   "Config.KnowledgeListsTab": "Naturalezas e idiomas",
   "Config.KnowledgeLibrariesHeader": "Bibliotecas",
