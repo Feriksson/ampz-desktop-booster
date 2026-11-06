@@ -399,7 +399,8 @@
 
   "Creds.WindowTitle": "Credentials",
   "Creds.HeaderSuffix": "Credentials",
-  "Creds.ColTitle": "Title",
+  "Creds.ColTitle": "Title / Service",
+  "Creds.ColIdentity": "Identity",
   "Creds.ColUser": "User",
   "Creds.ColPassword": "Password",
   "Creds.ColUrl": "URL",

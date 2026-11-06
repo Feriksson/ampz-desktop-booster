@@ -92,6 +92,11 @@ public partial class CredentialsWindow : Window
     {
         InitializeComponent();
 
+        // El ancho pedido (ver XAML) no cabe en un monitor chico o con escala alta: se recorta al
+        // área de trabajo para que la ventana nunca quede con los bordes fuera de pantalla.
+        Width = Math.Min(Width, SystemParameters.WorkArea.Width - 24);
+        Height = Math.Min(Height, SystemParameters.WorkArea.Height - 24);
+
         _store = store;
         _creds = store.Credentials;
         _scopeKey = scopeKey;
