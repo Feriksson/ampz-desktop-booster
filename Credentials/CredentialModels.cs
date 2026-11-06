@@ -58,6 +58,25 @@ public static class CredentialProviders
 }
 
 /// <summary>
+/// Un DUEÑO posible de credenciales ("Yo", "Sofi", "Synxs"). Es una lista GLOBAL que alimenta el
+/// usuario (no por scope): la misma persona o empresa tiene credenciales en muchos espacios, y una
+/// lista por scope volvería a dejar entrar las grafías distintas que la lista vino a matar.
+/// </summary>
+public sealed class CredentialOwner
+{
+    [JsonPropertyName("id")]   public Guid Id { get; set; } = Guid.NewGuid();
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+
+    public CredentialOwner Clone() => new() { Id = Id, Name = Name };
+}
+
+/// <summary>
+/// Por qué no se pudo renombrar un dueño. Un motivo y no un bool: el diálogo lo dispara un botón, y
+/// un botón que no hace nada se lee igual que uno roto (mismo criterio que ScopeOpResult).
+/// </summary>
+public enum OwnerOpResult { Ok, NotFound, EmptyName, DuplicateName }
+
+/// <summary>
 /// Una credencial. Identidad = <see cref="Id"/>: el título se repite ("Admin" en cada cliente) y se
 /// renombra, así que nunca sirve de key. Las fechas van en UTC: sólo se usan para ordenar y comparar,
 /// y en hora local un cambio de horario de verano las desordenaría.
@@ -101,6 +120,16 @@ public sealed class Credential
     [JsonPropertyName("signInWith")] public List<Guid> SignInWith { get; set; } = new();
 
     /// <summary>
+    /// A quién le PERTENECE (yo, mi hija, Synxs…): id de un <see cref="CredentialOwner"/> de la lista
+    /// global del store. Por id y no por nombre, por lo mismo que <see cref="SignInWith"/>: renombrar
+    /// al dueño corrige todas sus credenciales de un saque. null = de nadie en particular; un id que
+    /// ya no existe en la lista se trata igual (el store lo limpia al cargar y al guardar).
+    /// </summary>
+    [JsonPropertyName("ownerId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Guid? OwnerId { get; set; }
+
+    /// <summary>
     /// Copia PROFUNDA. El store entrega y recibe copias: es el único que escribe, y una ventana que
     /// editara el objeto vivo cambiaría el dato en memoria sin pasar por el Save — en disco quedaría
     /// otra cosa, y al reiniciar el cambio "desaparecería".
@@ -112,6 +141,7 @@ public sealed class Credential
         CreatedAt = CreatedAt, UpdatedAt = UpdatedAt,
         ProviderKey = ProviderKey,
         SignInWith = (SignInWith ?? new()).ToList(),
+        OwnerId = OwnerId,
     };
 
     /// <summary>

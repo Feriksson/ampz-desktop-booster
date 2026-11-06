@@ -61,6 +61,9 @@ public partial class CredentialsWindow : Window
         public string Via { get; init; } = "";
         public bool HasVia => Via != "";
 
+        /// <summary>A quién le pertenece ("Synxs"); vacío = de nadie (columna en blanco, no "—": se lee mejor).</summary>
+        public string Owner { get; init; } = "";
+
         /// <summary>La URL alcanza con su host (y puerto): el path largo no ayuda a reconocer la fila.</summary>
         public string Host => HostOf(Url);
 
@@ -89,6 +92,11 @@ public partial class CredentialsWindow : Window
     {
         InitializeComponent();
 
+        // El ancho pedido (ver XAML) no cabe en un monitor chico o con escala alta: se recorta al
+        // área de trabajo para que la ventana nunca quede con los bordes fuera de pantalla.
+        Width = Math.Min(Width, SystemParameters.WorkArea.Width - 24);
+        Height = Math.Min(Height, SystemParameters.WorkArea.Height - 24);
+
         _store = store;
         _creds = store.Credentials;
         _scopeKey = scopeKey;
@@ -114,6 +122,7 @@ public partial class CredentialsWindow : Window
         EditBtn.Click += (_, _) => EditSelected();
         DeleteBtn.Click += (_, _) => DeleteSelected();
         AllProjectsBtn.Click += (_, _) => ToggleAllProjects();
+        OwnersBtn.Click += (_, _) => ManageOwners();
         CloseBtn.Click += (_, _) => Close();
         MinimizeBtn.Click += (_, _) => WindowState = WindowState.Minimized;
 
@@ -188,6 +197,7 @@ public partial class CredentialsWindow : Window
                 Title = c.Title, User = c.User, Url = c.Url,
                 Project = project, Module = module, ModuleBrush = brush,
                 Badge = CredentialLabels.Badge(c), Via = ViaOf(c),
+                Owner = _creds.OwnerName(c.OwnerId),
             });
         }
     }
@@ -213,12 +223,14 @@ public partial class CredentialsWindow : Window
     ///
     /// Suma el proveedor y los TÍTULOS de las cuentas vinculadas: "¿qué entra con mi Gmail?" se
     /// pregunta tipeando "gmail", y tiene que traer Resend aunque Resend no diga gmail en ningún lado.
+    /// Y el DUEÑO: "sofi" trae todas las de tu hija, que es para lo que existe el dato.
     /// </summary>
     private bool Matches(Credential c, string project, string module, string filter)
     {
         if (filter == "") return true;
         bool Has(string s) => s.Contains(filter, StringComparison.CurrentCultureIgnoreCase);
         return Has(c.Title) || Has(c.User) || Has(c.Url) || Has(project) || Has(module)
+            || Has(_creds.OwnerName(c.OwnerId))
             || c.Fields.Any(f => Has(f.Name))
             || (c.Provider != CredentialProvider.None && Has(CredentialLabels.Provider(c.Provider)))
             || c.SignInWith.Any(id => _titles.TryGetValue(id, out var t) && Has(t));
@@ -289,6 +301,8 @@ public partial class CredentialsWindow : Window
 
         DetailTitle.Text = c.Title;
         DetailScope.Text = string.Format(Loc.T("Scope.SavedIn"), ScopePicker.LabelOf(row.ScopeKey));
+        DetailOwner.Text = row.Owner == "" ? "" : string.Format(Loc.T("Creds.DetailOwner"), row.Owner);
+        DetailOwner.Visibility = row.Owner == "" ? Visibility.Collapsed : Visibility.Visible;
         DetailUser.Text = Or(c.User);
         DetailPassword.Text = c.Password == "" ? Loc.T("Creds.Empty") : _revealed ? c.Password : Mask;
         RevealedText.Visibility = _revealed && c.Password != "" ? Visibility.Visible : Visibility.Collapsed;
@@ -473,6 +487,8 @@ public partial class CredentialsWindow : Window
             case Key.R when ctrl:                   ToggleReveal();      break;
             // Ctrl+G = "Go to" (ir a la cuenta con la que inicia sesión); estaba libre en esta ventana.
             case Key.G when ctrl:                   GoToFirstLinked();   break;
+            // Ctrl+D = "Dueños" (estaba libre; el mismo Ctrl+D salta a "Pertenece a" en el editor).
+            case Key.D when ctrl:                   ManageOwners();      break;
             // Alias por reflejo: Ctrl+C sobre una credencial copia su contraseña, como Enter.
             case Key.C when ctrl && !filterCopies:  CopyPassword();      break;
             case Key.Delete when !filterDeletes:    DeleteSelected();    break;
@@ -616,6 +632,17 @@ public partial class CredentialsWindow : Window
     }
 
     private void AddNew() => OpenEditor(null);
+
+    /// <summary>
+    /// Diálogo de Dueños (renombrar / borrar / agregar). Al volver se refresca SIEMPRE: un renombre
+    /// cambia lo que dice cada fila y un borrado deja credenciales sin dueño, y el diálogo no avisa qué
+    /// tocó — releer es barato y nunca miente.
+    /// </summary>
+    private void ManageOwners()
+    {
+        CredentialOwnersWindow.Show(this, _creds);
+        RefreshList();
+    }
 
     private void EditSelected()
     {
